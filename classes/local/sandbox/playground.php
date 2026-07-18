@@ -95,9 +95,22 @@ class playground {
         $steps[] = ['step' => 'login', 'username' => 'admin'];
 
         foreach ($allowedplugininstalls as $plugin) {
+            // pluginType/pluginName must be explicit: Moodle Playground only
+            // auto-detects them from a GitHub-style archive URL matching
+            // /<repo>/archive/... (moodle-{type}_{name} naming) - our
+            // allowlist_file.php?id=N URLs never match that, so omitting
+            // these silently threw "pluginType could not be detected from
+            // URL" inside the sandbox on every install attempt (found live,
+            // 2026-07-19, tracing why mod_quizquest never appeared in a
+            // trial despite an active allowlist entry - see
+            // reference-clones/moodle-playground/src/blueprint/steps/moodle-plugins.js
+            // detectPluginTypeAndName()). We already know both values
+            // exactly; there's no need to rely on auto-detection at all.
             $steps[] = [
                 'step' => 'installMoodlePlugin',
                 'url' => $plugin['zipurl'],
+                'pluginType' => $plugin['type'],
+                'pluginName' => $plugin['name'],
             ];
         }
 

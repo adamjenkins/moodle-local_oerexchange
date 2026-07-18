@@ -57,6 +57,34 @@ final class playground_test extends \basic_testcase {
         $this->assertSame('/course/view.php?id=2', $blueprint['landingPage']);
     }
 
+    /**
+     * Moodle Playground's installMoodlePlugin step only auto-detects
+     * pluginType/pluginName from a GitHub-style archive URL
+     * (/<repo>/archive/... matching moodle-{type}_{name} naming) - our
+     * allowlist_file.php?id=N URLs never match that pattern, so the step
+     * MUST carry pluginType/pluginName explicitly or the install throws
+     * inside the sandbox. Found live, 2026-07-19: this previously silently
+     * omitted both fields.
+     */
+    public function test_build_blueprint_installs_plugin_step_carries_explicit_type_and_name(): void {
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [['type' => 'mod', 'name' => 'quizquest', 'zipurl' => 'https://exchange.example/allowlist_file.php?id=1']]
+        );
+
+        $installstep = null;
+        foreach ($blueprint['steps'] as $step) {
+            if ($step['step'] === 'installMoodlePlugin') {
+                $installstep = $step;
+            }
+        }
+        $this->assertNotNull($installstep);
+        $this->assertSame('mod', $installstep['pluginType']);
+        $this->assertSame('quizquest', $installstep['pluginName']);
+        $this->assertSame('https://exchange.example/allowlist_file.php?id=1', $installstep['url']);
+    }
+
     public function test_build_launch_url_embeds_branch_and_base64_blueprint(): void {
         $blueprint = ['steps' => [['step' => 'installMoodle']], 'landingPage' => '/course/view.php?id=2'];
         $url = playground::build_launch_url('https://exchange.example/try/', '5.2', $blueprint);
