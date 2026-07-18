@@ -77,7 +77,7 @@ foreach ($requiredplugins as $plugin) {
 }
 
 $signedmbzurl = download_signer::sign_url($version->id, playground::SIGNED_URL_TTL)->out(false);
-$blueprint = playground::build_blueprint($resource->title, $signedmbzurl, $allowedinstalls);
+$blueprint = playground::build_blueprint($resource->title, $signedmbzurl, $allowedinstalls, $branch);
 $launchurl = playground::build_launch_url($sandboxbaseurl, $branch, $blueprint);
 
 $DB->insert_record('local_oerexchange_trials', (object) [

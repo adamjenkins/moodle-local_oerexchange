@@ -150,6 +150,39 @@ if ($resource->forkedfromid) {
 
 echo html_writer::tag('div', format_text($resource->summary ?? '', FORMAT_PLAIN), ['class' => 'mb-3']);
 
+// Work out each required plugin's real trial status up front (used by both
+// the Try it warning below and the Required plugins list further down), in
+// three states rather than a boolean "in trial" — found live, 2026-07-19:
+// a plugin merely being on the allowlist only means the sandbox *attempts*
+// to install it via a fragile runtime upgrade path that does not reliably
+// complete (see playground::BAKED_IN_PLUGINS docblock and
+// dev-docs/oer-platform/discoveries/2026-07-19-sandbox-thirdparty-plugin-db-install-limitation.md).
+// Only a plugin actually baked into the bundle at build time is reliable:
+// - 'bakedin'    — baked into the branch's bundle; Try it will fully work.
+// - 'attempted'  — on the allowlist but not baked in; Try it will install
+// the plugin's files but may not finish registering it.
+// - 'missing'    — not on the allowlist at all; skipped entirely.
+$pluginstatuses = [];
+$branch = $version && $version->moodleversion
+    ? \local_oerexchange\local\sandbox\playground::map_branch($version->moodleversion)
+    : null;
+foreach ($requiredplugins as $plugin) {
+    $status = 'missing';
+    if ($branch !== null) {
+        $onallowlist = (bool) $DB->record_exists('local_oerexchange_pluginallowlist', [
+            'plugintype' => $plugin['type'], 'pluginname' => $plugin['name'],
+            'moodlebranch' => $branch, 'status' => 'active',
+        ]);
+        if ($onallowlist) {
+            $status = \local_oerexchange\local\sandbox\playground::is_baked_in($plugin['type'], $plugin['name'], $branch)
+                ? 'bakedin'
+                : 'attempted';
+        }
+    }
+    $pluginstatuses[] = ['type' => $plugin['type'], 'name' => $plugin['name'], 'status' => $status];
+}
+$hasunreliableplugin = (bool) array_filter($pluginstatuses, fn($p) => $p['status'] === 'attempted');
+
 // Action buttons.
 echo html_writer::start_tag('div', ['class' => 'mb-3']);
 if ($sandboxenabled && $version) {
@@ -160,6 +193,13 @@ if ($sandboxenabled && $version) {
         ['class' => 'btn btn-success me-2', 'target' => '_blank']
     );
     echo html_writer::tag('div', get_string('tryitloadinghint', 'local_oerexchange'), ['class' => 'small text-muted d-inline']);
+    if ($hasunreliableplugin) {
+        echo html_writer::tag(
+            'div',
+            get_string('tryitpluginwarning', 'local_oerexchange'),
+            ['class' => 'alert alert-warning mt-2 mb-0 py-2 px-3 small']
+        );
+    }
 }
 if ($version) {
     $dlurl = new moodle_url('/local/oerexchange/download.php', ['id' => $version->id]);
@@ -172,22 +212,26 @@ echo $OUTPUT->heading(get_string('requiredplugins', 'local_oerexchange'), 4);
 if (empty($requiredplugins)) {
     echo html_writer::tag('p', get_string('requiredpluginsnone', 'local_oerexchange'));
 } else {
-    $branch = $version && $version->moodleversion
-        ? \local_oerexchange\local\sandbox\playground::map_branch($version->moodleversion)
-        : null;
     echo html_writer::start_tag('ul');
-    foreach ($requiredplugins as $plugin) {
-        $intrial = false;
-        if ($branch !== null) {
-            $intrial = (bool) $DB->record_exists('local_oerexchange_pluginallowlist', [
-                'plugintype' => $plugin['type'], 'pluginname' => $plugin['name'],
-                'moodlebranch' => $branch, 'status' => 'active',
-            ]);
-        }
+    foreach ($pluginstatuses as $plugin) {
         $label = $plugin['type'] . '_' . $plugin['name'];
-        $badge = $intrial
-            ? html_writer::tag('span', get_string('includedintrial', 'local_oerexchange'), ['class' => 'badge bg-success ms-2'])
-            : html_writer::tag('span', get_string('missingfromtrial', 'local_oerexchange'), ['class' => 'badge bg-secondary ms-2']);
+        $badge = match ($plugin['status']) {
+            'bakedin' => html_writer::tag(
+                'span',
+                get_string('includedintrial', 'local_oerexchange'),
+                ['class' => 'badge bg-success ms-2']
+            ),
+            'attempted' => html_writer::tag(
+                'span',
+                get_string('attemptedintrial', 'local_oerexchange'),
+                ['class' => 'badge bg-warning text-dark ms-2']
+            ),
+            default => html_writer::tag(
+                'span',
+                get_string('missingfromtrial', 'local_oerexchange'),
+                ['class' => 'badge bg-secondary ms-2']
+            ),
+        };
         echo html_writer::tag('li', s($label) . $badge);
     }
     echo html_writer::end_tag('ul');

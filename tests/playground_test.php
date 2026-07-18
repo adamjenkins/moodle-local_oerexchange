@@ -83,6 +83,79 @@ final class playground_test extends \basic_testcase {
         $this->assertSame('https://exchange.example/allowlist_file.php?id=1', $installstep['url']);
     }
 
+    /**
+     * mod_quizquest is baked into the deployed 5.2 bundle (see
+     * playground::BAKED_IN_PLUGINS) — a real fix for the sandbox's
+     * third-party-plugin DB-install limitation, found live 2026-07-19
+     * (dev-docs/oer-platform/discoveries/2026-07-19-sandbox-thirdparty-plugin-db-install-limitation.md).
+     */
+    public function test_is_baked_in_recognises_the_known_baked_in_plugin(): void {
+        $this->assertTrue(playground::is_baked_in('mod', 'quizquest', '5.2'));
+    }
+
+    public function test_is_baked_in_is_false_for_a_plugin_not_baked_into_that_branch(): void {
+        $this->assertFalse(playground::is_baked_in('mod', 'board', '5.2'));
+    }
+
+    public function test_is_baked_in_is_false_for_a_branch_with_no_baked_in_plugins(): void {
+        $this->assertFalse(playground::is_baked_in('mod', 'quizquest', '5.0'));
+    }
+
+    public function test_is_baked_in_is_false_for_an_unknown_branch(): void {
+        $this->assertFalse(playground::is_baked_in('mod', 'quizquest', '4.4'));
+    }
+
+    /**
+     * When the caller resolves and passes a branch, a baked-in plugin's
+     * runtime installMoodlePlugin step is skipped entirely — it's already
+     * present and fully registered in that branch's bundle, so attempting
+     * the runtime install would be redundant at best.
+     */
+    public function test_build_blueprint_skips_the_install_step_for_a_baked_in_plugin(): void {
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [['type' => 'mod', 'name' => 'quizquest', 'zipurl' => 'https://exchange.example/allowlist_file.php?id=1']],
+            '5.2'
+        );
+
+        $steps = array_column($blueprint['steps'], 'step');
+        $this->assertSame(['installMoodle', 'login', 'restoreCourse'], $steps);
+    }
+
+    /**
+     * A plugin that ISN'T baked in still gets the ordinary runtime install
+     * step, even when a branch is passed — the skip is per-plugin, not
+     * all-or-nothing for the branch.
+     */
+    public function test_build_blueprint_still_installs_a_non_baked_in_plugin_at_runtime(): void {
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [['type' => 'mod', 'name' => 'board', 'zipurl' => 'https://exchange.example/allowlist_file.php?id=1']],
+            '5.2'
+        );
+
+        $steps = array_column($blueprint['steps'], 'step');
+        $this->assertSame(['installMoodle', 'login', 'installMoodlePlugin', 'restoreCourse'], $steps);
+    }
+
+    /**
+     * Omitting the branch (the default, '') never skips a runtime install —
+     * a caller that hasn't resolved a branch yet must not silently drop a
+     * plugin install it didn't actually verify is baked in.
+     */
+    public function test_build_blueprint_without_a_branch_never_skips_the_install_step(): void {
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [['type' => 'mod', 'name' => 'quizquest', 'zipurl' => 'https://exchange.example/allowlist_file.php?id=1']]
+        );
+
+        $steps = array_column($blueprint['steps'], 'step');
+        $this->assertSame(['installMoodle', 'login', 'installMoodlePlugin', 'restoreCourse'], $steps);
+    }
+
     public function test_build_launch_url_embeds_branch_and_base64_blueprint(): void {
         $blueprint = ['steps' => [['step' => 'installMoodle']], 'landingPage' => '/course/view.php?id=2'];
         $url = playground::build_launch_url('https://exchange.example/try/', '5.2', $blueprint);
