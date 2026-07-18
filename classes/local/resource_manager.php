@@ -65,61 +65,84 @@ class resource_manager {
 
         $now = time();
 
-        if ($resourceid === null) {
-            $resourceid = (int) $DB->insert_record('local_oerexchange_resources', (object) [
-                'type' => $metadata['type'],
-                'title' => $metadata['title'],
-                'summary' => $metadata['summary'] ?? '',
-                'language' => $metadata['language'] ?? '',
-                'tags' => $metadata['tags'] ?? '',
-                'licenseshortname' => $metadata['licenseshortname'],
-                'activitytype' => $metadata['activitytype'] ?? null,
-                'courseformat' => null,
-                'creatorid' => $creatorid,
-                'siteid' => $siteid,
-                'status' => 'published',
-                'downloadcount' => 0,
-                'importcount' => 0,
-                'forkedfromid' => $metadata['forkedfromid'] ?? null,
-                'timeshared' => $now,
-                'timemodified' => $now,
-            ]);
-            $versionnumber = 1;
-        } else {
-            $resource = $DB->get_record('local_oerexchange_resources', ['id' => $resourceid], '*', MUST_EXIST);
-            if ((int) $resource->creatorid !== $creatorid) {
-                throw new \moodle_exception('error_notyourresource', 'local_oerexchange');
+        // Everything below — the resource/version rows, moving the file into
+        // permanent storage, and queuing the parse task — must land atomically.
+        // Without this boundary, a failure part-way through (file_save_draft_area_files()
+        // throwing, or the request dying) left a permanently "published" resource
+        // whose only version was stuck at 'parsing' with no file and no parse task
+        // ever queued — a publicly-listed catalogue entry that could never recover.
+        // Files are content-addressed, so a rollback leaves only harmless orphaned
+        // content in filedir (its {files} row is rolled back with everything else);
+        // the queued adhoc task's row is likewise invisible to cron until commit.
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            if ($resourceid === null) {
+                $resourceid = (int) $DB->insert_record('local_oerexchange_resources', (object) [
+                    'type' => $metadata['type'],
+                    'title' => $metadata['title'],
+                    'summary' => $metadata['summary'] ?? '',
+                    'language' => $metadata['language'] ?? '',
+                    'tags' => $metadata['tags'] ?? '',
+                    'licenseshortname' => $metadata['licenseshortname'],
+                    'activitytype' => $metadata['activitytype'] ?? null,
+                    'courseformat' => null,
+                    'creatorid' => $creatorid,
+                    'siteid' => $siteid,
+                    'status' => 'published',
+                    'downloadcount' => 0,
+                    'importcount' => 0,
+                    'forkedfromid' => $metadata['forkedfromid'] ?? null,
+                    'timeshared' => $now,
+                    'timemodified' => $now,
+                ]);
+                $versionnumber = 1;
+            } else {
+                $resource = $DB->get_record('local_oerexchange_resources', ['id' => $resourceid], '*', MUST_EXIST);
+                if ((int) $resource->creatorid !== $creatorid) {
+                    throw new \moodle_exception('error_notyourresource', 'local_oerexchange');
+                }
+                $versionnumber = 1 + (int) $DB->get_field_sql(
+                    'SELECT MAX(versionnumber) FROM {local_oerexchange_versions} WHERE resourceid = ?',
+                    [$resourceid]
+                );
+                // Bump only timemodified with a targeted UPDATE. Writing the whole
+                // $resource object back (update_record) would re-persist the
+                // downloadcount/importcount values read above, clobbering any atomic
+                // "col = col + 1" increment committed concurrently by get_resource or
+                // record_import — the exact lost-update the atomic increments exist
+                // to prevent.
+                $DB->set_field('local_oerexchange_resources', 'timemodified', $now, ['id' => $resourceid]);
             }
-            $versionnumber = 1 + (int) $DB->get_field_sql(
-                'SELECT MAX(versionnumber) FROM {local_oerexchange_versions} WHERE resourceid = ?',
-                [$resourceid]
-            );
-            $resource->timemodified = $now;
-            $DB->update_record('local_oerexchange_resources', $resource);
+
+            $versionid = (int) $DB->insert_record('local_oerexchange_versions', (object) [
+                'resourceid' => $resourceid,
+                'versionnumber' => $versionnumber,
+                'itemid' => 0, // Filled in below once we know it (reused as the permanent-area itemid).
+                'filename' => $draftfile->get_filename(),
+                'filesize' => $draftfile->get_filesize(),
+                'moodleversion' => null,
+                'backupversion' => null,
+                'structurejson' => null,
+                'requiredplugins' => null,
+                'status' => 'parsing',
+                'parseerror' => null,
+                'timecreated' => $now,
+            ]);
+
+            // Move the file out of the draft area into permanent storage, itemid = versionid.
+            file_save_draft_area_files($draftitemid, $context->id, 'local_oerexchange', 'resource', $versionid);
+            $DB->set_field('local_oerexchange_versions', 'itemid', $versionid, ['id' => $versionid]);
+
+            $task = new parse_backup_task();
+            $task->set_custom_data(['versionid' => $versionid]);
+            \core\task\manager::queue_adhoc_task($task);
+
+            $transaction->allow_commit();
+        } catch (\Throwable $e) {
+            // The rollback() call re-throws $e after unwinding the transaction, so
+            // callers still see the original failure and no partial state is committed.
+            $transaction->rollback($e);
         }
-
-        $versionid = (int) $DB->insert_record('local_oerexchange_versions', (object) [
-            'resourceid' => $resourceid,
-            'versionnumber' => $versionnumber,
-            'itemid' => 0, // Filled in below once we know it (reused as the permanent-area itemid).
-            'filename' => $draftfile->get_filename(),
-            'filesize' => $draftfile->get_filesize(),
-            'moodleversion' => null,
-            'backupversion' => null,
-            'structurejson' => null,
-            'requiredplugins' => null,
-            'status' => 'parsing',
-            'parseerror' => null,
-            'timecreated' => $now,
-        ]);
-
-        // Move the file out of the draft area into permanent storage, itemid = versionid.
-        file_save_draft_area_files($draftitemid, $context->id, 'local_oerexchange', 'resource', $versionid);
-        $DB->set_field('local_oerexchange_versions', 'itemid', $versionid, ['id' => $versionid]);
-
-        $task = new parse_backup_task();
-        $task->set_custom_data(['versionid' => $versionid]);
-        \core\task\manager::queue_adhoc_task($task);
 
         return [$resourceid, $versionid];
     }

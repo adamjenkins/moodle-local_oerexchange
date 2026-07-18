@@ -105,6 +105,86 @@ final class resource_manager_test extends \advanced_testcase {
         $this->assertGreaterThan(0, $versionid);
     }
 
+    public function test_publish_new_version_increments_number_without_disturbing_counts(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+        set_config('maxbackupbytes', 1000, 'local_oerexchange');
+
+        // First publish: a brand-new resource (version 1).
+        [$resourceid, $v1] = resource_manager::publish(
+            $this->create_draft_file($user->id, str_repeat('x', 50)),
+            (int) $user->id,
+            1,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ]
+        );
+
+        // Simulate downloads/imports having accrued on the catalogue entry.
+        $DB->set_field('local_oerexchange_resources', 'downloadcount', 7, ['id' => $resourceid]);
+        $DB->set_field('local_oerexchange_resources', 'importcount', 3, ['id' => $resourceid]);
+        $DB->set_field('local_oerexchange_resources', 'timemodified', 100, ['id' => $resourceid]);
+
+        // Second publish: a new version of the SAME resource.
+        [$resourceid2, $v2] = resource_manager::publish(
+            $this->create_draft_file($user->id, str_repeat('y', 50)),
+            (int) $user->id,
+            1,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ],
+            $resourceid
+        );
+
+        $this->assertSame($resourceid, $resourceid2, 'new version stays on the same resource');
+        $this->assertSame(1, (int) $DB->get_field('local_oerexchange_versions', 'versionnumber', ['id' => $v1]));
+        $this->assertSame(2, (int) $DB->get_field('local_oerexchange_versions', 'versionnumber', ['id' => $v2]));
+
+        // Adding a version must bump timemodified but leave the atomic counters
+        // untouched — the timemodified update is a targeted set_field, not a
+        // whole-row write-back that would re-persist (and clobber) the counts.
+        $resource = $DB->get_record('local_oerexchange_resources', ['id' => $resourceid], '*', MUST_EXIST);
+        $this->assertSame(7, (int) $resource->downloadcount);
+        $this->assertSame(3, (int) $resource->importcount);
+        $this->assertGreaterThan(100, (int) $resource->timemodified);
+    }
+
+    public function test_publish_new_version_rejects_other_users_resource(): void {
+        $this->resetAfterTest();
+        set_config('maxbackupbytes', 1000, 'local_oerexchange');
+
+        $owner = $this->getDataGenerator()->create_user();
+        $this->setUser($owner);
+        [$resourceid] = resource_manager::publish(
+            $this->create_draft_file($owner->id, str_repeat('x', 50)),
+            (int) $owner->id,
+            1,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ]
+        );
+
+        $intruder = $this->getDataGenerator()->create_user();
+        $this->setUser($intruder);
+        $this->expectException(\moodle_exception::class);
+        resource_manager::publish(
+            $this->create_draft_file($intruder->id, str_repeat('z', 50)),
+            (int) $intruder->id,
+            1,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ],
+            $resourceid
+        );
+    }
+
     /**
      * Creates a draft-area file with the given contents, for use as a fake upload in tests.
      *
