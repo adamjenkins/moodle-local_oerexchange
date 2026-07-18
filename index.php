@@ -74,6 +74,27 @@ $resources = $DB->get_records_select(
     $perpage
 );
 
+// Populate the license/language filters from what's actually in the
+// catalogue, rather than a hardcoded list — these strings existed
+// (filterlicense, filterlanguage) but the form never used them, so the
+// only way to filter by license/language was to know the exact query
+// string params (found live, 2026-07-19, while documenting the browse
+// page for the walkthrough).
+$distinctlicenses = $DB->get_fieldset_select(
+    'local_oerexchange_resources',
+    'DISTINCT licenseshortname',
+    "status = :status AND licenseshortname <> ''",
+    ['status' => 'published']
+);
+sort($distinctlicenses);
+$distinctlanguages = $DB->get_fieldset_select(
+    'local_oerexchange_resources',
+    'DISTINCT language',
+    "status = :status AND language <> ''",
+    ['status' => 'published']
+);
+sort($distinctlanguages);
+
 echo $OUTPUT->header();
 
 echo html_writer::start_tag('form', ['method' => 'get', 'action' => new moodle_url('/local/oerexchange/index.php'), 'class' => 'oerexchange-searchform mb-3']);
@@ -81,19 +102,40 @@ echo html_writer::empty_tag('input', [
     'type' => 'text', 'name' => 'q', 'value' => $query,
     'placeholder' => get_string('searchplaceholder', 'local_oerexchange'), 'class' => 'form-control d-inline w-auto',
 ]);
+echo html_writer::tag('label', get_string('filterbytype', 'local_oerexchange'), ['for' => 'oerexchange-filter-type', 'class' => 'ms-2 me-1']);
 echo html_writer::select(
     ['' => '', 'course' => get_string('typecourse', 'local_oerexchange'), 'activity' => get_string('typeactivity', 'local_oerexchange')],
     'type',
     $type,
     false,
-    ['class' => 'form-select d-inline w-auto ms-2']
+    ['id' => 'oerexchange-filter-type', 'class' => 'form-select d-inline w-auto']
+);
+echo html_writer::tag('label', get_string('filterlicense', 'local_oerexchange'), ['for' => 'oerexchange-filter-license', 'class' => 'ms-2 me-1']);
+echo html_writer::select(
+    array_merge(['' => ''], array_combine($distinctlicenses, $distinctlicenses)),
+    'license',
+    $license,
+    false,
+    ['id' => 'oerexchange-filter-license', 'class' => 'form-select d-inline w-auto']
+);
+echo html_writer::tag('label', get_string('filterlanguage', 'local_oerexchange'), ['for' => 'oerexchange-filter-language', 'class' => 'ms-2 me-1']);
+echo html_writer::select(
+    array_merge(['' => ''], array_combine($distinctlanguages, $distinctlanguages)),
+    'language',
+    $language,
+    false,
+    ['id' => 'oerexchange-filter-language', 'class' => 'form-select d-inline w-auto']
 );
 echo ' ';
 echo html_writer::empty_tag('input', ['type' => 'submit', 'value' => get_string('searchbutton', 'local_oerexchange'), 'class' => 'btn btn-primary ms-2']);
 echo html_writer::end_tag('form');
 
 if (empty($resources)) {
-    echo $OUTPUT->notification(get_string('nocatalogresources', 'local_oerexchange'), 'info');
+    $hasfilters = $query !== '' || $type !== '' || $license !== '' || $language !== '';
+    $message = $hasfilters
+        ? get_string('nocatalogresources', 'local_oerexchange')
+        : get_string('catalogueempty', 'local_oerexchange');
+    echo $OUTPUT->notification($message, 'info');
 } else {
     echo html_writer::start_tag('div', ['class' => 'oerexchange-list row row-cols-1 row-cols-md-3 g-3']);
     foreach ($resources as $r) {

@@ -67,6 +67,7 @@ $string['managepluginallowlisttitle'] = 'Sandbox plugin allowlist';
 
 // Catalogue / browse.
 $string['nocatalogresources'] = 'No resources match your search.';
+$string['catalogueempty'] = 'No resources have been shared to this Exchange yet.';
 $string['filterbytype'] = 'Type';
 $string['filtersubject'] = 'Subject';
 $string['filterlicense'] = 'License';
