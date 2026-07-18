@@ -51,6 +51,19 @@ git clone https://github.com/adamjenkins/moodle-local_oerexchange.git local/oere
 php admin/cli/upgrade.php
 ```
 
+## Acknowledgments
+
+This plugin's sandbox integration (`classes/local/sandbox/`) builds launch
+URLs for **[Moodle Playground](https://github.com/ateeducacion/moodle-playground)**
+— all of the actual work of running Moodle in a browser (WASM boot,
+blueprint provisioning, service-worker/bundle machinery) is that project's,
+not ours; this plugin only constructs a URL for it. Moodle Playground itself
+runs on **[WordPress Playground](https://github.com/WordPress/wordpress-playground)**'s
+`@php-wasm/web` PHP-in-WebAssembly runtime, the foundational piece that makes
+any of this possible in a browser tab. Deployment of the actual sandbox
+(building and serving the static bundles) lives in the companion `oer-sandbox`
+repo, whose README carries the fuller acknowledgment.
+
 ## License
 
 GPL-3.0-or-later, see [LICENSE](LICENSE).

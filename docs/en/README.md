@@ -73,8 +73,8 @@ its documentation for the "Link my Exchange account" step).
 ### Initial setup
 
 After installing the plugin (`Site administration ▸ Notifications`, then
-follow the upgrade prompt), open **Site administration ▸ Plugins ▸ Local
-plugins ▸ OER Exchange** to configure:
+follow the upgrade prompt), open **Site administration ▸ Plugins ▸
+OER Exchange** to configure:
 
 - **Enable sandbox (Try it)** — turns the "Try it" button on across the
   catalogue. Requires a Moodle Playground deployment to point at (see
@@ -93,7 +93,7 @@ role by default.
 
 When a Moodle site registers itself against your Exchange (via its own
 `local_oerclient` plugin's "Register with the Exchange" page), it appears
-under **Site administration ▸ Plugins ▸ Local plugins ▸ OER Exchange ▸
+under **Site administration ▸ Plugins ▸ OER Exchange ▸
 Registered sites**, listed as *pending*.
 
 1. Review the site's name, URL, and contact email.
@@ -119,7 +119,7 @@ plugins your site administrator has explicitly curated and uploaded — this
 is a deliberate safety boundary: resource metadata alone can never cause a
 visitor's browser to install and run arbitrary code.
 
-Under **Site administration ▸ Plugins ▸ Local plugins ▸ OER Exchange ▸
+Under **Site administration ▸ Plugins ▸ OER Exchange ▸
 Sandbox plugin allowlist**:
 
 1. Enter the plugin type (e.g. `mod`), plugin name (frankenstyle without the
@@ -135,7 +135,7 @@ Sandbox plugin allowlist**:
 
 ### Moderation
 
-**Site administration ▸ Plugins ▸ Local plugins ▸ OER Exchange ▸ Moderation
+**Site administration ▸ Plugins ▸ OER Exchange ▸ Moderation
 queue** (requires `local/oerexchange:moderate`) shows:
 
 - **Open reports** — resolve (mark handled) or dismiss (no action needed);
@@ -173,3 +173,12 @@ uploading site claims.
   your own site before importing instead.
 - **Download link is missing** — the resource hasn't finished processing
   yet, or was hidden/removed by moderation.
+
+## Acknowledgments
+
+"Try it" is powered by **[Moodle Playground](https://github.com/ateeducacion/moodle-playground)**
+— a full, disposable Moodle running entirely in your browser is their work
+(WASM boot, blueprint provisioning, service worker), not this plugin's; this
+plugin only builds the launch URL. Moodle Playground itself runs on
+**[WordPress Playground](https://github.com/WordPress/wordpress-playground)**'s
+PHP-in-WebAssembly runtime.
