@@ -80,6 +80,7 @@ $string['searchbutton'] = 'Search';
 $string['sharedby'] = 'Shared by {$a}';
 $string['licenselabel'] = 'License: {$a}';
 $string['structurepreview'] = 'Structure preview';
+$string['sectionnumber'] = 'Section {$a}';
 $string['requiredplugins'] = 'Required plugins';
 $string['requiredpluginsnone'] = 'No non-core plugins required.';
 $string['includedintrial'] = 'Included in trial';

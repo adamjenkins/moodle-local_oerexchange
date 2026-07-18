@@ -165,7 +165,14 @@ if ($structure && !empty($structure['sections'])) {
     echo html_writer::start_tag('ul');
     foreach ($structure['sections'] as $section) {
         echo html_writer::start_tag('li');
-        echo s($section['title'] ?: '');
+        $title = $section['title'] ?? '';
+        // Unnamed topics/weekly sections store just the bare section number
+        // in the backup XML (Moodle applies "Topic N"/"Week N" only at
+        // display time in core, not in the backup) — show that number in a
+        // readable label instead of leaving it as a bare digit.
+        echo ctype_digit((string) $title)
+            ? s(get_string('sectionnumber', 'local_oerexchange', $title))
+            : s($title);
         if (!empty($section['activities'])) {
             echo html_writer::start_tag('ul');
             foreach ($section['activities'] as $activity) {
