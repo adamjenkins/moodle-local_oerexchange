@@ -29,9 +29,10 @@ $plugin->version   = 2026071800;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass
-// (2026-07-19). Nine sibling plugins in this workspace already carry the
-// corrected value for the same supported=[500, 502] range (verified via
-// `grep -rn "requires\s*=" */version.php`, 2026-07-19).
+// (2026-07-19). Eight sibling plugins in this workspace already carry the
+// exact same (requires, supported) pair for this range — recounted
+// precisely on the independent second pass, 2026-07-19, correcting an
+// earlier off-by-one estimate of nine.
 $plugin->requires  = 2025041400;
 $plugin->supported = [500, 502];
 $plugin->release   = '0.1.0';
