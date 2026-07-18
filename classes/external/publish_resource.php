@@ -106,6 +106,23 @@ class publish_resource extends external_api {
             throw new \moodle_exception('error_sitenotactive', 'local_oerexchange');
         }
 
+        // Siteid is client-supplied and otherwise only checked for "exists
+        // and active" — re-validate it against $USER's own link history so
+        // a site can't attribute a share to a *different* site the caller
+        // never actually linked through. Checking "any completed handshake
+        // ever" (not "most recent") is deliberate: a teacher legitimately
+        // linked to several sites over time holds several simultaneously
+        // valid personal tokens, and "most recent" would false-positive
+        // reject that case.
+        $everlinked = $DB->record_exists('local_oerexchange_linkcodes', [
+            'userid' => (int) $USER->id,
+            'siteid' => $site->id,
+            'status' => 'used',
+        ]);
+        if (!$everlinked) {
+            throw new \moodle_exception('error_sitenotlinked', 'local_oerexchange');
+        }
+
         [$newresourceid, $versionid] = resource_manager::publish(
             $params['draftitemid'],
             (int) $USER->id,

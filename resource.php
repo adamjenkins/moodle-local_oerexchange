@@ -46,6 +46,16 @@ if ($resource->status !== 'published' && !has_capability('local/oerexchange:mode
 if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser()) {
     require_login();
     $type = required_param('reporttype', PARAM_ALPHA);
+    // Re-validate against the same set the <select> on this page actually
+    // offers - PARAM_ALPHA alone accepts any alphabetic string, and an
+    // unrecognised value would later break moderate.php (it feeds
+    // get_string('reporttype_' . $rep->type, ...), which has no fallback
+    // for a value outside {copyright,quality,spam,other}), denying admins
+    // the moderation queue over a single bad report row.
+    $allowedreporttypes = ['copyright', 'quality', 'spam', 'other'];
+    if (!in_array($type, $allowedreporttypes, true)) {
+        throw new moodle_exception('error_invalidreporttype', 'local_oerexchange');
+    }
     $details = required_param('reportdetails', PARAM_TEXT);
     $DB->insert_record('local_oerexchange_reports', (object) [
         'resourceid' => $resource->id,

@@ -17,20 +17,16 @@
 namespace local_oerexchange\external;
 
 /**
- * Tests for local_oerexchange_publish_resource. Added on the fourth MDL
- * Shield audit pass (2026-07-19) — no WS-layer coverage existed for this
- * function before this pass, which is also the function with the audit's
- * one open (unfixed) trust-boundary finding: `siteid` is only checked for
- * "exists and active", never cross-checked against the calling user's own
- * link history (`classes/external/publish_resource.php`). A correct fix
- * needs a data-model change — `local_oerexchange\local\link_manager` mints
- * a generic per-user WS token with no durable siteid binding at all, and a
- * teacher legitimately linked to more than one client site can hold several
- * simultaneously-valid personal tokens, so "most recently linked site" is
- * not a safe proxy for "the site this specific call's token belongs to".
- * `test_siteid_is_not_cross_checked_against_caller_identity_known_gap()`
- * below documents the current (unfixed) behaviour explicitly so it stays
- * visible to the next audit pass rather than silently regressing further.
+ * Tests for local_oerexchange_publish_resource. WS-layer coverage was added
+ * on the fourth MDL Shield audit pass (2026-07-19), which also flagged (but
+ * did not fix) a trust-boundary gap: `siteid` was only checked for "exists
+ * and active", never cross-checked against the calling user's own link
+ * history. A fifth pass closed this: publish_resource now requires a
+ * completed ('used') local_oerexchange_linkcodes row for
+ * ($USER->id, siteid) — see classes/external/publish_resource.php and
+ * dev-docs for why "any completed handshake ever" (not "most recent") is
+ * the safe check, given a teacher can legitimately hold several
+ * simultaneously-valid personal tokens from linking to multiple sites.
  *
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -76,6 +72,31 @@ final class publish_resource_test extends \advanced_testcase {
         ]);
     }
 
+    /**
+     * Record a completed account-linking handshake for ($userid, $siteid),
+     * as link_manager::issue_code() + consume() would leave behind — this is
+     * what publish_resource now requires before it will accept that siteid
+     * from that caller.
+     *
+     * @param int $userid
+     * @param int $siteid
+     */
+    protected function create_link(int $userid, int $siteid): void {
+        global $DB;
+
+        $now = time();
+        $DB->insert_record('local_oerexchange_linkcodes', (object) [
+            'code' => 'testcode_' . $userid . '_' . $siteid . '_' . random_string(8),
+            'siteid' => $siteid,
+            'userid' => $userid,
+            'token' => '',
+            'tokenid' => null,
+            'status' => 'used',
+            'timecreated' => $now,
+            'timeexpires' => $now + 300,
+        ]);
+    }
+
     public function test_execute_creates_a_new_resource_and_version(): void {
         global $DB;
         $this->resetAfterTest();
@@ -83,6 +104,7 @@ final class publish_resource_test extends \advanced_testcase {
         $user = $this->getDataGenerator()->create_user();
         $this->setUser($user);
         $siteid = $this->create_site();
+        $this->create_link((int) $user->id, $siteid);
         $draftitemid = $this->create_draft_file((int) $user->id);
 
         $result = publish_resource::execute(
@@ -110,6 +132,7 @@ final class publish_resource_test extends \advanced_testcase {
         $user = $this->getDataGenerator()->create_user();
         $this->setUser($user);
         $siteid = $this->create_site();
+        $this->create_link((int) $user->id, $siteid);
         $draftitemid = $this->create_draft_file((int) $user->id);
 
         $this->expectException(\moodle_exception::class);
@@ -122,6 +145,7 @@ final class publish_resource_test extends \advanced_testcase {
         $user = $this->getDataGenerator()->create_user();
         $this->setUser($user);
         $siteid = $this->create_site('revoked');
+        $this->create_link((int) $user->id, $siteid);
         $draftitemid = $this->create_draft_file((int) $user->id);
 
         $this->expectException(\moodle_exception::class);
@@ -134,6 +158,7 @@ final class publish_resource_test extends \advanced_testcase {
         $user = $this->getDataGenerator()->create_user();
         $this->setUser($user);
         $siteid = $this->create_site('pending');
+        $this->create_link((int) $user->id, $siteid);
         $draftitemid = $this->create_draft_file((int) $user->id);
 
         $this->expectException(\moodle_exception::class);
@@ -146,12 +171,14 @@ final class publish_resource_test extends \advanced_testcase {
 
         $owner = $this->getDataGenerator()->create_user();
         $siteid = $this->create_site();
+        $this->create_link((int) $owner->id, $siteid);
 
         $this->setUser($owner);
         $ownerdraft = $this->create_draft_file((int) $owner->id);
         $result = publish_resource::execute($siteid, $ownerdraft, 'course', 'Owner course', '', '', '', 'cc-4.0');
 
         $intruder = $this->getDataGenerator()->create_user();
+        $this->create_link((int) $intruder->id, $siteid);
         $this->setUser($intruder);
         $intruderdraft = $this->create_draft_file((int) $intruder->id);
 
@@ -171,45 +198,49 @@ final class publish_resource_test extends \advanced_testcase {
     }
 
     /**
-     * Known gap, not a regression: documents current behaviour rather than
-     * asserting it is correct. See the class docblock and the fourth MDL
-     * Shield audit pass report (2026-07-19) for why this was reported, not
-     * fixed, in that pass. If this test starts failing because the siteid is
-     * now cross-checked against the caller's actual link history, that is
-     * progress — delete/rewrite this test rather than "fixing" it back to
-     * green.
+     * The trust-boundary fix itself: a caller with an active token but no
+     * completed link to the claimed site must be rejected, even though the
+     * site itself is perfectly valid (active) and the caller *is* linked to
+     * a different site.
      */
-    public function test_siteid_is_not_cross_checked_against_caller_identity_known_gap(): void {
-        global $DB;
+    public function test_siteid_is_rejected_when_caller_never_linked_through_it(): void {
         $this->resetAfterTest();
 
-        // Two active, unrelated sites; the caller has no recorded connection
-        // to either one (no local_oerexchange_linkcodes row at all) — yet
-        // execute() accepts any of them as long as status=active.
+        $linkedsiteid = $this->create_site();
         $unrelatedsiteid = $this->create_site();
-        $anotherunrelatedsiteid = $this->create_site();
 
         $user = $this->getDataGenerator()->create_user();
+        $this->create_link((int) $user->id, $linkedsiteid);
         $this->setUser($user);
         $draftitemid = $this->create_draft_file((int) $user->id);
 
-        $result = publish_resource::execute(
-            $unrelatedsiteid,
-            $draftitemid,
-            'course',
-            'Attributed to an unrelated site',
-            '',
-            '',
-            '',
-            'cc-4.0'
-        );
+        $this->expectException(\moodle_exception::class);
+        publish_resource::execute($unrelatedsiteid, $draftitemid, 'course', 'Spoofed attribution', '', '', '', 'cc-4.0');
+    }
 
-        $resource = $DB->get_record('local_oerexchange_resources', ['id' => $result['resourceid']], '*', MUST_EXIST);
-        $this->assertSame(
-            $unrelatedsiteid,
-            (int) $resource->siteid,
-            'current behaviour: siteid is stored verbatim from the client, with no check that $USER ever linked through it'
-        );
-        $this->assertNotSame($anotherunrelatedsiteid, (int) $resource->siteid);
+    /**
+     * A teacher linked to multiple sites over time must be able to publish
+     * attributed to any of them — "most recently linked" would be an unsafe
+     * proxy here, so the check must accept any completed link, not just the
+     * latest one.
+     */
+    public function test_a_teacher_linked_to_multiple_sites_may_publish_to_either(): void {
+        $this->resetAfterTest();
+
+        $firstsiteid = $this->create_site();
+        $secondsiteid = $this->create_site();
+
+        $user = $this->getDataGenerator()->create_user();
+        $this->create_link((int) $user->id, $firstsiteid);
+        $this->create_link((int) $user->id, $secondsiteid);
+        $this->setUser($user);
+
+        $draft1 = $this->create_draft_file((int) $user->id, 'first');
+        $result1 = publish_resource::execute($firstsiteid, $draft1, 'course', 'From the first site', '', '', '', 'cc-4.0');
+        $this->assertGreaterThan(0, $result1['resourceid']);
+
+        $draft2 = $this->create_draft_file((int) $user->id, 'second');
+        $result2 = publish_resource::execute($secondsiteid, $draft2, 'course', 'From the second site', '', '', '', 'cc-4.0');
+        $this->assertGreaterThan(0, $result2['resourceid']);
     }
 }

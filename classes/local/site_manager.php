@@ -107,6 +107,19 @@ class site_manager {
      * Revoke a site: suspend its service account (kills every token minted
      * against it) and delete the tokens for cleanliness.
      *
+     * Known gap (reported, not fixed — see dev-docs): this does NOT revoke
+     * personal teacher tokens minted via this site's account-linking
+     * handshakes (link_manager::issue_code() mints those against the
+     * teacher's own userid, not this site's service account, so suspending
+     * the service account alone does not touch them). A correct fix needs
+     * `local_oerexchange_linkcodes` to durably record the minted token's
+     * `external_tokens.id` at mint time (it currently only stores the raw
+     * token, cleared after consume()) — a schema change, deliberately not
+     * made in this pass to avoid an unplanned plugin version bump while
+     * other agents share this test site's PHPUnit environment (bumping any
+     * plugin's version invalidates `core\component::get_all_versions_hash()`
+     * for every plugin, breaking concurrent PHPUnit runs site-wide).
+     *
      * @param int $siteid
      */
     public static function revoke(int $siteid): void {
