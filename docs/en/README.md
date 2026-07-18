@@ -5,12 +5,11 @@ Exchange platform — the central site where open educational resources shared
 from teachers' own Moodle sites are published, browsed, previewed, reviewed,
 and imported. It is installed on one dedicated "Exchange" site; teachers
 interact with it either directly (browsing, reviewing) or through the
-[`local_oerclient`](../../moodle-local_oerclient/docs/en/README.md) plugin
-installed on their own Moodle.
+[`local_oerclient`](https://github.com/adamjenkins/moodle-local_oerclient)
+plugin installed on their own Moodle.
 
-For architecture and implementation notes, see the platform design
-documentation (`dev-docs/oer-platform/DESIGN.md` in the development
-workspace) — this document is for people *using* the site, not developing it.
+This document is for people *using* the site, not developing it — see the
+repository's own source and commit history for implementation details.
 
 ## Contents
 

@@ -25,8 +25,17 @@
 defined('MOODLE_INTERNAL') || die();
 
 if ($hassiteconfig) {
-    $settings = new admin_settingpage('local_oerexchange', get_string('pluginname', 'local_oerexchange'));
-    $ADMIN->add('localplugins', $settings);
+    // Own category, nested under Plugins, instead of everything landing in
+    // the generic "Local plugins" list indistinguishable from every other
+    // local plugin (found live, 2026-07-19: 4 pages were all flattened
+    // there with no grouping at all).
+    $ADMIN->add('localplugins', new admin_category(
+        'local_oerexchange_category',
+        get_string('pluginname', 'local_oerexchange')
+    ));
+
+    $settings = new admin_settingpage('local_oerexchange', get_string('generalsettings', 'local_oerexchange'));
+    $ADMIN->add('local_oerexchange_category', $settings);
 
     $settings->add(new admin_setting_heading(
         'local_oerexchange/heading',
@@ -49,21 +58,47 @@ if ($hassiteconfig) {
         PARAM_URL
     ));
 
-    $ADMIN->add('localplugins', new admin_externalpage(
+    // Anonymous access, corrected against what the code actually does
+    // (verified live, 2026-07-19 - an earlier draft of this setting
+    // wrongly assumed resource.php and "Try it" required login; neither
+    // does: index.php has never gated browsing, resource.php only calls
+    // require_login() inside the report/review submission branches (not
+    // for viewing), and sandbox_launch.php has no login gate at all and
+    // already handles the anonymous case explicitly (`isloggedin() &&
+    // !isguestuser() ? $USER->id : null`). The one real gap: the visible
+    // "Download" button on resource.php links to download.php with a
+    // plain unsigned id, which does call require_login() when unsigned -
+    // so an anonymous visitor can browse, view, and Try it, then hit a
+    // login wall specifically on Download. Off by default so this ships
+    // as a no-op until an admin deliberately opts in.
+    $settings->add(new admin_setting_heading(
+        'local_oerexchange/anonymousheading',
+        get_string('settings_anonymousheading', 'local_oerexchange'),
+        get_string('settings_anonymousheading_desc', 'local_oerexchange')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_oerexchange/anonymousdownload',
+        get_string('settings_anonymousdownload', 'local_oerexchange'),
+        get_string('settings_anonymousdownload_desc', 'local_oerexchange'),
+        0
+    ));
+
+    $ADMIN->add('local_oerexchange_category', new admin_externalpage(
         'local_oerexchange_managesites',
         get_string('managesitestitle', 'local_oerexchange'),
         new moodle_url('/local/oerexchange/manage_sites.php'),
         'local/oerexchange:managesites'
     ));
 
-    $ADMIN->add('localplugins', new admin_externalpage(
+    $ADMIN->add('local_oerexchange_category', new admin_externalpage(
         'local_oerexchange_manageallowlist',
         get_string('managepluginallowlisttitle', 'local_oerexchange'),
         new moodle_url('/local/oerexchange/manage_allowlist.php'),
         'local/oerexchange:managesites'
     ));
 
-    $ADMIN->add('localplugins', new admin_externalpage(
+    $ADMIN->add('local_oerexchange_category', new admin_externalpage(
         'local_oerexchange_moderate',
         get_string('moderatetitle', 'local_oerexchange'),
         new moodle_url('/local/oerexchange/moderate.php'),

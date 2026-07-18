@@ -169,11 +169,16 @@ $string['notifyreportsubject'] = 'Your resource "{$a}" was reported';
 $string['notifyreportbody'] = 'Your shared resource "{$a}" was reported and is now under moderation review.';
 
 // Settings.
+$string['generalsettings'] = 'General settings';
 $string['settingsheading'] = 'OER Exchange settings';
 $string['settings_sandboxenabled'] = 'Enable sandbox (Try it)';
 $string['settings_sandboxenabled_desc'] = 'Show the Try it button and allow launching Moodle Playground trials.';
 $string['settings_sandboxbaseurl'] = 'Sandbox base URL';
 $string['settings_sandboxbaseurl_desc'] = 'Same-origin path where the Moodle Playground static bundle is deployed, e.g. https://vagrant.wisecat.net/try/';
+$string['settings_anonymousheading'] = 'Anonymous access';
+$string['settings_anonymousheading_desc'] = 'Browsing the catalogue, viewing a resource, and Try it already work without logging in. Download does not by default — this section controls that.';
+$string['settings_anonymousdownload'] = 'Allow anonymous download';
+$string['settings_anonymousdownload_desc'] = 'Let visitors download a resource\'s .mbz file directly (via the Download button on its resource page) without logging in.';
 
 // Errors.
 $string['error_invalidsitekey'] = 'Invalid site key.';

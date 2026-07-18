@@ -6,10 +6,6 @@ dedicated Exchange site; teachers share and import through the companion
 [`local_oerclient`](https://github.com/adamjenkins/moodle-local_oerclient)
 plugin installed on their own Moodle sites.
 
-Full design: [DESIGN.md](https://github.com/adamjenkins/oer-platform-dev-docs)
-(workspace dev-docs — not shipped in this repo, see `/vagrant/moodle-dev/dev-docs/oer-platform/`
-during development).
-
 ## What it does
 
 - **Catalogue**: publish, browse, search, structure-preview courses/activities

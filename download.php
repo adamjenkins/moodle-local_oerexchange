@@ -35,7 +35,7 @@ $exp = optional_param('exp', 0, PARAM_INT);
 $sig = optional_param('sig', '', PARAM_ALPHANUM);
 
 $signed = $sig !== '' && download_signer::verify($versionid, $exp, $sig);
-if (!$signed) {
+if (!$signed && !get_config('local_oerexchange', 'anonymousdownload')) {
     require_login();
 }
 
