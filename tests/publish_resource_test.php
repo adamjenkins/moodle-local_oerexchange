@@ -41,6 +41,8 @@ defined('MOODLE_INTERNAL') || die();
  */
 final class publish_resource_test extends \advanced_testcase {
     /**
+     * Create a single-file draft area holding a fake .mbz for $userid.
+     *
      * @param int $userid
      * @param string $contents
      * @return int the new draftitemid
@@ -61,6 +63,8 @@ final class publish_resource_test extends \advanced_testcase {
     }
 
     /**
+     * Create a registered client site with the given status.
+     *
      * @param string $status
      * @return int the new site id
      */
@@ -84,7 +88,14 @@ final class publish_resource_test extends \advanced_testcase {
         $draftitemid = $this->create_draft_file((int) $user->id);
 
         $result = publish_resource::execute(
-            $siteid, $draftitemid, 'course', 'My course', '', '', '', 'cc-4.0'
+            $siteid,
+            $draftitemid,
+            'course',
+            'My course',
+            '',
+            '',
+            '',
+            'cc-4.0'
         );
 
         $this->assertGreaterThan(0, $result['resourceid']);
@@ -148,7 +159,16 @@ final class publish_resource_test extends \advanced_testcase {
 
         $this->expectException(\moodle_exception::class);
         publish_resource::execute(
-            $siteid, $intruderdraft, 'course', 'Hijacked version', '', '', '', 'cc-4.0', '', $result['resourceid']
+            $siteid,
+            $intruderdraft,
+            'course',
+            'Hijacked version',
+            '',
+            '',
+            '',
+            'cc-4.0',
+            '',
+            $result['resourceid']
         );
     }
 
@@ -176,7 +196,14 @@ final class publish_resource_test extends \advanced_testcase {
         $draftitemid = $this->create_draft_file((int) $user->id);
 
         $result = publish_resource::execute(
-            $unrelatedsiteid, $draftitemid, 'course', 'Attributed to an unrelated site', '', '', '', 'cc-4.0'
+            $unrelatedsiteid,
+            $draftitemid,
+            'course',
+            'Attributed to an unrelated site',
+            '',
+            '',
+            '',
+            'cc-4.0'
         );
 
         $resource = $DB->get_record('local_oerexchange_resources', ['id' => $result['resourceid']], '*', MUST_EXIST);

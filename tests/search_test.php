@@ -32,6 +32,8 @@ defined('MOODLE_INTERNAL') || die();
  */
 final class search_test extends \advanced_testcase {
     /**
+     * Insert a catalogue resource row with the given attributes.
+     *
      * @param string $title
      * @param string $status
      * @param string $type
