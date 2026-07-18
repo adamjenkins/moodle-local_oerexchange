@@ -1,0 +1,185 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+/**
+ * English language strings for local_oerexchange.
+ *
+ * @package    local_oerexchange
+ * @copyright  2026 Adam Jenkins <adam@wisecat.net>
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
+defined('MOODLE_INTERNAL') || die();
+
+$string['pluginname'] = 'OER Exchange';
+
+// Capabilities.
+$string['oerexchange:moderate'] = 'Moderate reports and failed parses';
+$string['oerexchange:managesites'] = 'Manage registered client sites and the sandbox plugin allowlist';
+
+// Privacy.
+$string['privacy:metadata:local_oerexchange_reviews'] = 'Adaptation-story reviews written by users of this site.';
+$string['privacy:metadata:local_oerexchange_reviews:userid'] = 'The user who wrote the review.';
+$string['privacy:metadata:local_oerexchange_reviews:contexttext'] = 'The teaching context described in the review.';
+$string['privacy:metadata:local_oerexchange_reviews:adaptationtext'] = 'The adaptation described in the review.';
+$string['privacy:metadata:local_oerexchange_reviews:outcometext'] = 'The outcome described in the review.';
+$string['privacy:metadata:local_oerexchange_reviews:rating'] = 'The rating given.';
+$string['privacy:metadata:local_oerexchange_reviews:timecreated'] = 'The time the review was created.';
+$string['privacy:metadata:local_oerexchange_reports'] = 'Moderation reports filed by users of this site.';
+$string['privacy:metadata:local_oerexchange_reports:userid'] = 'The user who filed the report.';
+$string['privacy:metadata:local_oerexchange_reports:details'] = 'The details supplied with the report.';
+$string['privacy:metadata:local_oerexchange_reports:timecreated'] = 'The time the report was filed.';
+$string['privacy:metadata:local_oerexchange_resources'] = 'Resources created (shared) by users of this site.';
+$string['privacy:metadata:local_oerexchange_resources:creatorid'] = 'The user who shared the resource.';
+$string['privacy:metadata:local_oerexchange_resources:title'] = 'The title of the resource.';
+$string['privacy:metadata:local_oerexchange_resources:timeshared'] = 'The time the resource was shared.';
+$string['privacy:metadata:local_oerexchange_imports'] = 'A record that a user imported a resource on a client site.';
+$string['privacy:metadata:local_oerexchange_imports:userid'] = 'The user who imported the resource.';
+$string['privacy:metadata:local_oerexchange_imports:timecreated'] = 'The time of the import.';
+$string['privacy:metadata:local_oerexchange_trials'] = 'A record that a user launched a sandbox trial for a resource.';
+$string['privacy:metadata:local_oerexchange_trials:userid'] = 'The user who launched the trial.';
+$string['privacy:metadata:local_oerexchange_trials:timecreated'] = 'The time the trial was launched.';
+
+// Pages.
+$string['catalogtitle'] = 'Browse OER catalogue';
+$string['resourcetitle'] = 'Resource';
+$string['moderatetitle'] = 'Moderation queue';
+$string['managesitestitle'] = 'Registered sites';
+$string['connecttitle'] = 'Link your Exchange account';
+$string['managepluginallowlisttitle'] = 'Sandbox plugin allowlist';
+
+// Catalogue / browse.
+$string['nocatalogresources'] = 'No resources match your search.';
+$string['filterbytype'] = 'Type';
+$string['filtersubject'] = 'Subject';
+$string['filterlicense'] = 'License';
+$string['filterlanguage'] = 'Language';
+$string['searchplaceholder'] = 'Search title, summary, tags…';
+$string['typecourse'] = 'Course';
+$string['typeactivity'] = 'Activity';
+$string['searchbutton'] = 'Search';
+
+// Resource detail.
+$string['sharedby'] = 'Shared by {$a}';
+$string['licenselabel'] = 'License: {$a}';
+$string['structurepreview'] = 'Structure preview';
+$string['requiredplugins'] = 'Required plugins';
+$string['requiredpluginsnone'] = 'No non-core plugins required.';
+$string['includedintrial'] = 'Included in trial';
+$string['missingfromtrial'] = 'Not in trial — won\'t appear when you try it';
+$string['missingfromimport'] = 'not installed on your site — this activity will be skipped unless you install it first';
+$string['tryit'] = 'Try it';
+$string['tryitloadinghint'] = 'Loads a full Moodle in your browser — first visit takes a moment.';
+$string['tryitunavailable'] = 'Try it is currently unavailable.';
+$string['download'] = 'Download';
+$string['report'] = 'Report';
+$string['reviewsheading'] = 'Adaptation stories';
+$string['addreview'] = 'Share your adaptation story';
+$string['downloadcountlabel'] = '{$a} downloads';
+$string['importcountlabel'] = '{$a} imports';
+$string['courseformatlabel'] = 'Course format: {$a}';
+$string['moodleversionlabel'] = 'Shared from Moodle {$a}';
+$string['attributionchain'] = 'Adapted from: {$a}';
+
+// Report form.
+$string['reporttype'] = 'Reason';
+$string['reportdetails'] = 'Details';
+$string['reportsubmit'] = 'Submit report';
+$string['reportsubmitted'] = 'Thank you — your report has been submitted for review.';
+$string['reporttype_copyright'] = 'Copyright concern';
+$string['reporttype_quality'] = 'Quality issue';
+$string['reporttype_spam'] = 'Spam';
+$string['reporttype_other'] = 'Other';
+
+// Review form.
+$string['reviewcontext'] = 'How did you use this? (e.g. "45 first-year nursing students")';
+$string['reviewadaptation'] = 'What did you change?';
+$string['reviewoutcome'] = 'How did it go?';
+$string['reviewrating'] = 'Rating (optional)';
+$string['reviewsubmit'] = 'Post review';
+$string['reviewsubmitted'] = 'Thank you for sharing your adaptation story.';
+
+// Site management.
+$string['sitename'] = 'Site name';
+$string['siteurl'] = 'Site URL';
+$string['sitecontact'] = 'Contact email';
+$string['sitestatus'] = 'Status';
+$string['siteapprove'] = 'Approve';
+$string['siterevoke'] = 'Revoke';
+$string['pendingsites'] = 'Pending sites';
+$string['activesites'] = 'Active sites';
+$string['revokedsites'] = 'Revoked sites';
+$string['approvesuccess'] = 'Site approved. The site key has been emailed to {$a}.';
+$string['revokesuccess'] = 'Site key revoked.';
+$string['nositesyet'] = 'No sites in this category.';
+$string['sitekeyemailsubject'] = 'Your OER Exchange site key';
+$string['sitekeyemailbody'] = "Your site \"{\$a->name}\" has been approved.\n\nSite key: {\$a->sitekey}\n\nPaste this into the OER Client plugin's settings on your Moodle site to finish registration. Keep it secret — anyone with this key can publish to the Exchange as your site.";
+
+// Moderation.
+$string['openreports'] = 'Open reports';
+$string['failedparses'] = 'Failed parses';
+$string['hideresource'] = 'Hide';
+$string['removeresource'] = 'Remove';
+$string['resolvereport'] = 'Resolve';
+$string['dismissreport'] = 'Dismiss';
+$string['resolvernote'] = 'Note';
+$string['noopenreports'] = 'No open reports.';
+$string['nofailedparses'] = 'No failed parses.';
+
+// Plugin allowlist admin.
+$string['allowlistadd'] = 'Add allowlist entry';
+$string['allowlistplugintype'] = 'Plugin type';
+$string['allowlistpluginname'] = 'Plugin name (frankenstyle, without type prefix)';
+$string['allowlistbranch'] = 'Moodle branch';
+$string['allowlistsourceurl'] = 'Source ZIP URL';
+$string['allowlistupload'] = 'ZIP file';
+$string['allowlistsha256'] = 'SHA-256';
+$string['allowlistdisable'] = 'Disable';
+$string['allowlistenable'] = 'Enable';
+$string['allowlistempty'] = 'No plugins on the allowlist yet.';
+
+// Notifications (core message API).
+$string['messageprovider:import'] = 'Notification that your shared resource was imported';
+$string['messageprovider:review'] = 'Notification that your shared resource received a review';
+$string['messageprovider:report'] = 'Notification that your shared resource was reported';
+$string['notifyimportsubject'] = 'Your resource "{$a}" was imported';
+$string['notifyimportbody'] = 'Someone just imported your shared resource "{$a}" on their Moodle site.';
+$string['notifyreviewsubject'] = 'New adaptation story on "{$a}"';
+$string['notifyreviewbody'] = 'Someone shared how they adapted your resource "{$a}".';
+$string['notifyreportsubject'] = 'Your resource "{$a}" was reported';
+$string['notifyreportbody'] = 'Your shared resource "{$a}" was reported and is now under moderation review.';
+
+// Settings.
+$string['settingsheading'] = 'OER Exchange settings';
+$string['settings_sandboxenabled'] = 'Enable sandbox (Try it)';
+$string['settings_sandboxenabled_desc'] = 'Show the Try it button and allow launching Moodle Playground trials.';
+$string['settings_sandboxbaseurl'] = 'Sandbox base URL';
+$string['settings_sandboxbaseurl_desc'] = 'Same-origin path where the Moodle Playground static bundle is deployed, e.g. https://vagrant.wisecat.net/try/';
+
+// Errors.
+$string['error_invalidsitekey'] = 'Invalid site key.';
+$string['error_sitenotactive'] = 'This site is not active on the Exchange.';
+$string['error_linkcodeexpired'] = 'This link code has expired.';
+$string['error_linkcodeused'] = 'This link code has already been used.';
+$string['error_notfound'] = 'Not found.';
+$string['error_nofile'] = 'No backup file was found in the draft area.';
+$string['error_sanitycheckfailed'] = 'This backup appears to contain user data and cannot be published. Re-export it with user data excluded.';
+$string['error_invalidresourcetype'] = 'Invalid resource type.';
+$string['error_notyourresource'] = 'You did not share this resource.';
+
+// Connect / linking.
+$string['connectintro'] = 'Sign in or create an Exchange account to link it with your Moodle site.';
+$string['connectsuccess'] = 'Your account is linked. You can close this window.';

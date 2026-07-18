@@ -1,0 +1,136 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+namespace local_oerexchange\local;
+
+use local_oerexchange\task\parse_backup_task;
+
+defined('MOODLE_INTERNAL') || die();
+
+/**
+ * Publish an uploaded backup (already landed in the teacher's Exchange-account
+ * draft area via webservice/upload.php) as a new resource or a new version of
+ * an existing one, then queue the parse task.
+ *
+ * @package    local_oerexchange
+ * @copyright  2026 Adam Jenkins <adam@wisecat.net>
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+class resource_manager {
+    /**
+     * Publish a draft-area backup as a resource (new, or a new version of an
+     * existing one when $resourceid is given).
+     *
+     * @param int $draftitemid draft area holding exactly one .mbz file
+     * @param int $creatorid Exchange-local userid
+     * @param int $siteid the registered site the share came from
+     * @param array $metadata title, summary, language, tags, licenseshortname, type, activitytype
+     * @param int|null $resourceid null to create a new resource, or an existing resource's id
+     *                              (must belong to $creatorid) to add a version to it
+     * @return array [resourceid, versionid]
+     */
+    public static function publish(
+        int $draftitemid,
+        int $creatorid,
+        int $siteid,
+        array $metadata,
+        ?int $resourceid = null
+    ): array {
+        global $DB;
+
+        $context = \context_system::instance();
+        $usercontext = \context_user::instance($creatorid);
+        $fs = get_file_storage();
+        $draftfiles = $fs->get_area_files($usercontext->id, 'user', 'draft', $draftitemid, 'id', false);
+        if (empty($draftfiles)) {
+            throw new \moodle_exception('error_nofile', 'local_oerexchange');
+        }
+        $draftfile = reset($draftfiles);
+
+        $now = time();
+
+        if ($resourceid === null) {
+            $resourceid = (int) $DB->insert_record('local_oerexchange_resources', (object) [
+                'type' => $metadata['type'],
+                'title' => $metadata['title'],
+                'summary' => $metadata['summary'] ?? '',
+                'language' => $metadata['language'] ?? '',
+                'tags' => $metadata['tags'] ?? '',
+                'licenseshortname' => $metadata['licenseshortname'],
+                'activitytype' => $metadata['activitytype'] ?? null,
+                'courseformat' => null,
+                'creatorid' => $creatorid,
+                'siteid' => $siteid,
+                'status' => 'published',
+                'downloadcount' => 0,
+                'importcount' => 0,
+                'forkedfromid' => $metadata['forkedfromid'] ?? null,
+                'timeshared' => $now,
+                'timemodified' => $now,
+            ]);
+            $versionnumber = 1;
+        } else {
+            $resource = $DB->get_record('local_oerexchange_resources', ['id' => $resourceid], '*', MUST_EXIST);
+            if ((int) $resource->creatorid !== $creatorid) {
+                throw new \moodle_exception('error_notyourresource', 'local_oerexchange');
+            }
+            $versionnumber = 1 + (int) $DB->get_field_sql(
+                'SELECT MAX(versionnumber) FROM {local_oerexchange_versions} WHERE resourceid = ?',
+                [$resourceid]
+            );
+            $resource->timemodified = $now;
+            $DB->update_record('local_oerexchange_resources', $resource);
+        }
+
+        $versionid = (int) $DB->insert_record('local_oerexchange_versions', (object) [
+            'resourceid' => $resourceid,
+            'versionnumber' => $versionnumber,
+            'itemid' => 0, // Filled in below once we know it (reused as the permanent-area itemid).
+            'filename' => $draftfile->get_filename(),
+            'filesize' => $draftfile->get_filesize(),
+            'moodleversion' => null,
+            'backupversion' => null,
+            'structurejson' => null,
+            'requiredplugins' => null,
+            'status' => 'parsing',
+            'parseerror' => null,
+            'timecreated' => $now,
+        ]);
+
+        // Move the file out of the draft area into permanent storage, itemid = versionid.
+        file_save_draft_area_files($draftitemid, $context->id, 'local_oerexchange', 'resource', $versionid);
+        $DB->set_field('local_oerexchange_versions', 'itemid', $versionid, ['id' => $versionid]);
+
+        $task = new parse_backup_task();
+        $task->set_custom_data(['versionid' => $versionid]);
+        \core\task\manager::queue_adhoc_task($task);
+
+        return [$resourceid, $versionid];
+    }
+
+    /**
+     * Fetch the stored file for a version.
+     *
+     * @param int $versionid
+     * @return \stored_file|null
+     */
+    public static function get_version_file(int $versionid): ?\stored_file {
+        $context = \context_system::instance();
+        $fs = get_file_storage();
+        $files = $fs->get_area_files($context->id, 'local_oerexchange', 'resource', $versionid, 'id', false);
+        return $files ? reset($files) : null;
+    }
+}

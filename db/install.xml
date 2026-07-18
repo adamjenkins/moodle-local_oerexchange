@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/oerexchange/db" VERSION="20260718" COMMENT="XMLDB file for Moodle local/oerexchange"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="local_oerexchange_sites" COMMENT="Registered client sites">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="name" TYPE="char" LENGTH="255" NOTNULL="true"/>
+        <FIELD NAME="url" TYPE="char" LENGTH="255" NOTNULL="true"/>
+        <FIELD NAME="contact" TYPE="char" LENGTH="255" NOTNULL="true" COMMENT="Contact email for the registering site"/>
+        <FIELD NAME="serviceuserid" TYPE="int" LENGTH="10" NOTNULL="false" COMMENT="Dedicated Moodle user account (auth=manual, suspended until approval) that the site's WS token is minted against; the token itself (the 'site key') is never stored, only mintable/revocable via this account"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="pending" COMMENT="pending|active|revoked"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="url" UNIQUE="false" FIELDS="url"/>
+        <INDEX NAME="status" UNIQUE="false" FIELDS="status"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_oerexchange_resources" COMMENT="Catalogue entries">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="type" TYPE="char" LENGTH="20" NOTNULL="true" COMMENT="course|activity"/>
+        <FIELD NAME="title" TYPE="char" LENGTH="255" NOTNULL="true"/>
+        <FIELD NAME="summary" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="language" TYPE="char" LENGTH="30" NOTNULL="false"/>
+        <FIELD NAME="tags" TYPE="text" NOTNULL="false" COMMENT="comma-separated subject tags"/>
+        <FIELD NAME="licenseshortname" TYPE="char" LENGTH="255" NOTNULL="true"/>
+        <FIELD NAME="activitytype" TYPE="char" LENGTH="100" NOTNULL="false" COMMENT="modname, set when type=activity"/>
+        <FIELD NAME="courseformat" TYPE="char" LENGTH="100" NOTNULL="false"/>
+        <FIELD NAME="creatorid" TYPE="int" LENGTH="10" NOTNULL="true" COMMENT="Exchange-local userid of the creator"/>
+        <FIELD NAME="siteid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="published" COMMENT="published|hidden|removed"/>
+        <FIELD NAME="downloadcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="importcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="forkedfromid" TYPE="int" LENGTH="10" NOTNULL="false"/>
+        <FIELD NAME="timeshared" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="siteid" TYPE="foreign" FIELDS="siteid" REFTABLE="local_oerexchange_sites" REFFIELDS="id"/>
+        <KEY NAME="forkedfromid" TYPE="foreign" FIELDS="forkedfromid" REFTABLE="local_oerexchange_resources" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="status" UNIQUE="false" FIELDS="status"/>
+        <INDEX NAME="type" UNIQUE="false" FIELDS="type"/>
+        <INDEX NAME="creatorid" UNIQUE="false" FIELDS="creatorid"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_oerexchange_versions" COMMENT="One row per uploaded backup file for a resource">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="resourceid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="versionnumber" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="1"/>
+        <FIELD NAME="itemid" TYPE="int" LENGTH="10" NOTNULL="true" COMMENT="File API itemid, component local_oerexchange, filearea resource"/>
+        <FIELD NAME="filename" TYPE="char" LENGTH="255" NOTNULL="true"/>
+        <FIELD NAME="filesize" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
+        <FIELD NAME="moodleversion" TYPE="char" LENGTH="30" NOTNULL="false"/>
+        <FIELD NAME="backupversion" TYPE="char" LENGTH="30" NOTNULL="false"/>
+        <FIELD NAME="structurejson" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="requiredplugins" TYPE="text" NOTNULL="false" COMMENT="JSON array of {type,name} non-core components found in the backup"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="parsing" COMMENT="parsing|ready|failed"/>
+        <FIELD NAME="parseerror" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="resourceid" TYPE="foreign" FIELDS="resourceid" REFTABLE="local_oerexchange_resources" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="status" UNIQUE="false" FIELDS="status"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_oerexchange_reviews" COMMENT="Adaptation-story reviews">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="resourceid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="contexttext" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="adaptationtext" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="outcometext" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="rating" TYPE="int" LENGTH="2" NOTNULL="false"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="visible" COMMENT="visible|hidden"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="resourceid" TYPE="foreign" FIELDS="resourceid" REFTABLE="local_oerexchange_resources" REFFIELDS="id"/>
+      </KEYS>
+    </TABLE>
+
+    <TABLE NAME="local_oerexchange_reports" COMMENT="Moderation reports">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="resourceid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="type" TYPE="char" LENGTH="30" NOTNULL="true" COMMENT="copyright|quality|spam|other"/>
+        <FIELD NAME="details" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="open" COMMENT="open|resolved|dismissed"/>
+        <FIELD NAME="resolvernote" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timeresolved" TYPE="int" LENGTH="10" NOTNULL="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="resourceid" TYPE="foreign" FIELDS="resourceid" REFTABLE="local_oerexchange_resources" REFFIELDS="id"/>
+      </KEYS>
+    </TABLE>
+
+    <TABLE NAME="local_oerexchange_imports" COMMENT="Completed import events">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="resourceid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="versionid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="siteid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="false" COMMENT="Exchange-local userid, null if unlinked importer"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="resourceid" TYPE="foreign" FIELDS="resourceid" REFTABLE="local_oerexchange_resources" REFFIELDS="id"/>
+      </KEYS>
+    </TABLE>
+
+    <TABLE NAME="local_oerexchange_trials" COMMENT="Sandbox trial launches (analytics/audit only, option-B design)">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="resourceid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="versionid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="false"/>
+        <FIELD NAME="moodlebranch" TYPE="char" LENGTH="60" NOTNULL="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="resourceid" TYPE="foreign" FIELDS="resourceid" REFTABLE="local_oerexchange_resources" REFFIELDS="id"/>
+      </KEYS>
+    </TABLE>
+
+    <TABLE NAME="local_oerexchange_linkcodes" COMMENT="Short-lived signed single-use codes for the account-linking handshake">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="code" TYPE="char" LENGTH="64" NOTNULL="true"/>
+        <FIELD NAME="siteid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" COMMENT="Exchange-local userid the token belongs to"/>
+        <FIELD NAME="token" TYPE="char" LENGTH="255" NOTNULL="true" COMMENT="core web service token, consumed once then cleared"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="pending" COMMENT="pending|used|expired"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timeexpires" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="siteid" TYPE="foreign" FIELDS="siteid" REFTABLE="local_oerexchange_sites" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="code" UNIQUE="true" FIELDS="code"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_oerexchange_pluginallowlist" COMMENT="Exchange-curated contrib plugins installable in sandbox trials">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="plugintype" TYPE="char" LENGTH="30" NOTNULL="true"/>
+        <FIELD NAME="pluginname" TYPE="char" LENGTH="100" NOTNULL="true"/>
+        <FIELD NAME="moodlebranch" TYPE="char" LENGTH="60" NOTNULL="true" COMMENT="e.g. MOODLE_502_STABLE"/>
+        <FIELD NAME="sourceurl" TYPE="char" LENGTH="255" NOTNULL="true" COMMENT="Upstream release ZIP this entry was mirrored from"/>
+        <FIELD NAME="itemid" TYPE="int" LENGTH="10" NOTNULL="false" COMMENT="File API itemid of the same-origin mirrored ZIP"/>
+        <FIELD NAME="sha256" TYPE="char" LENGTH="64" NOTNULL="false"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="active" COMMENT="active|disabled"/>
+        <FIELD NAME="notes" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="typenamebranch" UNIQUE="false" FIELDS="plugintype, pluginname, moodlebranch"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>

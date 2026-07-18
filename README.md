@@ -1,0 +1,60 @@
+# local_oerexchange
+
+The central catalogue and API plugin for the **OER Exchange** platform — an
+open-educational-resources sharing platform built on Moodle. Runs on the
+dedicated Exchange site; teachers share and import through the companion
+[`local_oerclient`](https://github.com/adamjenkins/moodle-local_oerclient)
+plugin installed on their own Moodle sites.
+
+Full design: [DESIGN.md](https://github.com/adamjenkins/oer-platform-dev-docs)
+(workspace dev-docs — not shipped in this repo, see `/vagrant/moodle-dev/dev-docs/oer-platform/`
+during development).
+
+## What it does
+
+- **Catalogue**: publish, browse, search, structure-preview courses/activities
+  shared from client sites, before anyone imports them.
+- **Identity**: site registration (with admin approval) for client sites, plus
+  a personal account-linking handshake so shares/reviews are attributed to a
+  real Exchange account.
+- **Licensing**: Creative Commons via core's `license_manager`.
+- **Community**: adaptation-story reviews, reports, and a moderation queue.
+- **Sandbox integration**: builds Moodle Playground (in-browser, WASM) trial
+  launch URLs — no server-side trial execution. See `classes/local/sandbox/`.
+
+## Web services
+
+Custom service `local_oerexchange` (`db/services.php`):
+
+| Function | Auth | Purpose |
+|---|---|---|
+| `local_oerexchange_search` | site token | Browse/search the catalogue |
+| `local_oerexchange_get_resource` | site token | Full detail + structure preview |
+| `local_oerexchange_publish_resource` | personal token | Publish a share |
+| `local_oerexchange_record_import` | site token | Record a completed import |
+| `local_oerexchange_get_config` | site token | Advertised limits |
+
+Two bootstrap steps have no token yet, so they are plain public endpoints
+rather than WS functions: `register.php` (site registration) and
+`link_consume.php` (exchange a one-time code for the freshly minted personal
+token, from the `connect.php` account-linking handshake).
+
+A "site key" issued on approval **is a real core web service token**, minted
+against a dedicated, non-interactive Moodle account created for that site
+(`local_oerexchange\local\site_manager`) — not a custom auth scheme.
+
+## Requirements
+
+- Moodle 5.0–5.2 (`$plugin->supported`).
+- PHP as required by the target Moodle version.
+
+## Installation
+
+```bash
+git clone https://github.com/adamjenkins/moodle-local_oerexchange.git local/oerexchange
+php admin/cli/upgrade.php
+```
+
+## License
+
+GPL-3.0-or-later, see [LICENSE](LICENSE).

@@ -1,0 +1,20 @@
+{
+    "name": "adamjenkins/moodle-local_oerexchange",
+    "description": "Central catalogue and API for the OER Exchange platform: publish, browse, structure preview, licensing, reviews, moderation, sandbox integration.",
+    "type": "moodle-local",
+    "license": "GPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Adam Jenkins",
+            "email": "adam@wisecat.net"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/adamjenkins/moodle-local_oerexchange/issues",
+        "source": "https://github.com/adamjenkins/moodle-local_oerexchange"
+    },
+    "require": {
+        "moodle/moodle": ">=5.0 <5.3",
+        "moodle/composer-installer": "^1.0"
+    }
+}
