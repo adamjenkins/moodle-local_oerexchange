@@ -16,8 +16,6 @@
 
 namespace local_oerexchange\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Account-linking handshake: after the teacher logs in/signs up on the
  * Exchange (connect.php), mint a scoped WS token and hand it to the client

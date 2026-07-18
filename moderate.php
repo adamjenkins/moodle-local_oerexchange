@@ -62,17 +62,40 @@ if (empty($reports)) {
     echo html_writer::tag('p', get_string('noopenreports', 'local_oerexchange'));
 } else {
     $table = new html_table();
-    $table->head = [get_string('resourcetitle', 'local_oerexchange'), get_string('reporttype', 'local_oerexchange'), get_string('reportdetails', 'local_oerexchange'), ''];
+    $table->head = [
+        get_string('resourcetitle', 'local_oerexchange'),
+        get_string('reporttype', 'local_oerexchange'),
+        get_string('reportdetails', 'local_oerexchange'),
+        '',
+    ];
     foreach ($reports as $rep) {
         $resource = $DB->get_record('local_oerexchange_resources', ['id' => $rep->resourceid]);
         $resurl = new moodle_url('/local/oerexchange/resource.php', ['id' => $rep->resourceid]);
         $sesskey = sesskey();
-        $resolveurl = new moodle_url('/local/oerexchange/moderate.php', ['reportid' => $rep->id, 'reportaction' => 'resolve', 'sesskey' => $sesskey]);
-        $dismissurl = new moodle_url('/local/oerexchange/moderate.php', ['reportid' => $rep->id, 'reportaction' => 'dismiss', 'sesskey' => $sesskey]);
-        $hideurl = new moodle_url('/local/oerexchange/moderate.php', ['hideid' => $rep->resourceid, 'sesskey' => $sesskey]);
-        $actions = html_writer::link($resolveurl, get_string('resolvereport', 'local_oerexchange'), ['class' => 'btn btn-sm btn-success me-1'])
-            . html_writer::link($dismissurl, get_string('dismissreport', 'local_oerexchange'), ['class' => 'btn btn-sm btn-secondary me-1'])
-            . html_writer::link($hideurl, get_string('hideresource', 'local_oerexchange'), ['class' => 'btn btn-sm btn-outline-danger']);
+        $resolveurl = new moodle_url('/local/oerexchange/moderate.php', [
+            'reportid' => $rep->id, 'reportaction' => 'resolve', 'sesskey' => $sesskey,
+        ]);
+        $dismissurl = new moodle_url('/local/oerexchange/moderate.php', [
+            'reportid' => $rep->id, 'reportaction' => 'dismiss', 'sesskey' => $sesskey,
+        ]);
+        $hideurl = new moodle_url('/local/oerexchange/moderate.php', [
+            'hideid' => $rep->resourceid, 'sesskey' => $sesskey,
+        ]);
+        $actions = html_writer::link(
+            $resolveurl,
+            get_string('resolvereport', 'local_oerexchange'),
+            ['class' => 'btn btn-sm btn-success me-1']
+        )
+            . html_writer::link(
+                $dismissurl,
+                get_string('dismissreport', 'local_oerexchange'),
+                ['class' => 'btn btn-sm btn-secondary me-1']
+            )
+            . html_writer::link(
+                $hideurl,
+                get_string('hideresource', 'local_oerexchange'),
+                ['class' => 'btn btn-sm btn-outline-danger']
+            );
         $table->data[] = [
             $resource ? html_writer::link($resurl, s($resource->title)) : '(deleted)',
             get_string('reporttype_' . $rep->type, 'local_oerexchange'),

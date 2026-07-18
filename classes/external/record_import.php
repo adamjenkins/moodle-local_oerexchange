@@ -22,8 +22,6 @@ use core_external\external_single_structure;
 use core_external\external_value;
 use local_oerexchange\local\site_manager;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * local_oerexchange_record_import external function. Authenticated with the
  * calling site's own service-account token — the importing teacher may or
@@ -35,17 +33,26 @@ defined('MOODLE_INTERNAL') || die();
  */
 class record_import extends external_api {
     /**
+     * Describes the parameters this function accepts.
+     *
      * @return external_function_parameters
      */
     public static function execute_parameters(): external_function_parameters {
         return new external_function_parameters([
             'resourceid' => new external_value(PARAM_INT, 'Resource id'),
             'versionid' => new external_value(PARAM_INT, 'Version id that was imported'),
-            'userid' => new external_value(PARAM_INT, 'Exchange-local userid of the importer, or 0 if unlinked', VALUE_DEFAULT, 0),
+            'userid' => new external_value(
+                PARAM_INT,
+                'Exchange-local userid of the importer, or 0 if unlinked',
+                VALUE_DEFAULT,
+                0
+            ),
         ]);
     }
 
     /**
+     * Records that a client site imported a resource version, bumps its import count, and notifies the creator.
+     *
      * @param int $resourceid
      * @param int $versionid
      * @param int $userid
@@ -89,6 +96,8 @@ class record_import extends external_api {
     }
 
     /**
+     * Builds the "your resource was imported" notification message.
+     *
      * @param \stdClass $creator
      * @param \stdClass $resource
      * @return \core\message\message
@@ -111,6 +120,8 @@ class record_import extends external_api {
     }
 
     /**
+     * Describes the structure of execute()'s return value.
+     *
      * @return external_single_structure
      */
     public static function execute_returns(): external_single_structure {

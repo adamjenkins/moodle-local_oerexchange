@@ -92,20 +92,36 @@ if (optional_param('doadd', 0, PARAM_INT) && confirm_sesskey()) {
 echo $OUTPUT->header();
 
 echo $OUTPUT->heading(get_string('allowlistadd', 'local_oerexchange'), 3);
-echo html_writer::start_tag('form', ['method' => 'post', 'action' => new moodle_url('/local/oerexchange/manage_allowlist.php'), 'enctype' => 'multipart/form-data']);
+echo html_writer::start_tag('form', [
+    'method' => 'post',
+    'action' => new moodle_url('/local/oerexchange/manage_allowlist.php'),
+    'enctype' => 'multipart/form-data',
+]);
 echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'doadd', 'value' => 1]);
 echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
 echo html_writer::tag('label', get_string('allowlistplugintype', 'local_oerexchange'));
-echo html_writer::empty_tag('input', ['type' => 'text', 'name' => 'plugintype', 'class' => 'form-control mb-2', 'placeholder' => 'mod', 'required' => 'required']);
+echo html_writer::empty_tag('input', [
+    'type' => 'text', 'name' => 'plugintype', 'class' => 'form-control mb-2',
+    'placeholder' => 'mod', 'required' => 'required',
+]);
 echo html_writer::tag('label', get_string('allowlistpluginname', 'local_oerexchange'));
-echo html_writer::empty_tag('input', ['type' => 'text', 'name' => 'pluginname', 'class' => 'form-control mb-2', 'required' => 'required']);
+echo html_writer::empty_tag('input', [
+    'type' => 'text', 'name' => 'pluginname', 'class' => 'form-control mb-2', 'required' => 'required',
+]);
 echo html_writer::tag('label', get_string('allowlistbranch', 'local_oerexchange'));
-echo html_writer::empty_tag('input', ['type' => 'text', 'name' => 'moodlebranch', 'class' => 'form-control mb-2', 'placeholder' => '5.2', 'required' => 'required']);
+echo html_writer::empty_tag('input', [
+    'type' => 'text', 'name' => 'moodlebranch', 'class' => 'form-control mb-2',
+    'placeholder' => '5.2', 'required' => 'required',
+]);
 echo html_writer::tag('label', get_string('allowlistsourceurl', 'local_oerexchange'));
-echo html_writer::empty_tag('input', ['type' => 'url', 'name' => 'sourceurl', 'class' => 'form-control mb-2', 'required' => 'required']);
+echo html_writer::empty_tag('input', [
+    'type' => 'url', 'name' => 'sourceurl', 'class' => 'form-control mb-2', 'required' => 'required',
+]);
 echo html_writer::tag('label', get_string('allowlistupload', 'local_oerexchange'));
 echo html_writer::empty_tag('input', ['type' => 'file', 'name' => 'zipfile', 'class' => 'form-control mb-2', 'accept' => '.zip']);
-echo html_writer::empty_tag('input', ['type' => 'submit', 'value' => get_string('allowlistadd', 'local_oerexchange'), 'class' => 'btn btn-primary']);
+echo html_writer::empty_tag('input', [
+    'type' => 'submit', 'value' => get_string('allowlistadd', 'local_oerexchange'), 'class' => 'btn btn-primary',
+]);
 echo html_writer::end_tag('form');
 
 $entries = $DB->get_records('local_oerexchange_pluginallowlist', null, 'moodlebranch, plugintype, pluginname');
@@ -126,7 +142,13 @@ if (empty($entries)) {
         $label = $e->status === 'active'
             ? get_string('allowlistdisable', 'local_oerexchange')
             : get_string('allowlistenable', 'local_oerexchange');
-        $table->data[] = [s($e->plugintype), s($e->pluginname), s($e->moodlebranch), s($e->status), html_writer::link($toggleurl, $label, ['class' => 'btn btn-sm btn-outline-secondary'])];
+        $table->data[] = [
+            s($e->plugintype),
+            s($e->pluginname),
+            s($e->moodlebranch),
+            s($e->status),
+            html_writer::link($toggleurl, $label, ['class' => 'btn btn-sm btn-outline-secondary']),
+        ];
     }
     echo html_writer::table($table);
 }

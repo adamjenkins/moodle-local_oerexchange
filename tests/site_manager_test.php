@@ -18,8 +18,6 @@ namespace local_oerexchange;
 
 use local_oerexchange\local\site_manager;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Tests for site_manager — the core of the site-registration identity model
  * (a real WS token minted against a dedicated, suspendable service account,

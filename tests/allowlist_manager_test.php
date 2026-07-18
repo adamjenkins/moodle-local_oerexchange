@@ -18,8 +18,6 @@ namespace local_oerexchange;
 
 use local_oerexchange\local\allowlist_manager;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Tests for allowlist_manager::is_valid_branch() — found on the third MDL
  * Shield audit pass (2026-07-18): manage_allowlist.php used to read the
@@ -35,7 +33,6 @@ defined('MOODLE_INTERNAL') || die();
  * @covers     \local_oerexchange\local\allowlist_manager
  */
 final class allowlist_manager_test extends \basic_testcase {
-
     public function test_accepts_real_branch_labels(): void {
         foreach (['5.0', '5.2', '4.4', '4.5', '5.10', '10.0'] as $branch) {
             $this->assertTrue(allowlist_manager::is_valid_branch($branch), $branch);
@@ -43,7 +40,7 @@ final class allowlist_manager_test extends \basic_testcase {
     }
 
     public function test_rejects_dotless_or_malformed_values(): void {
-        // "52" is exactly what PARAM_ALPHANUMEXT used to silently turn "5.2"
+        // The value "52" is exactly what PARAM_ALPHANUMEXT used to silently turn "5.2"
         // into — the bug this class exists to prevent from ever reaching storage.
         foreach (['52', '5', '5.', '.2', '5.2.1', 'MOODLE_502_STABLE', '', '5.2x', '<script>'] as $branch) {
             $this->assertFalse(allowlist_manager::is_valid_branch($branch), $branch);

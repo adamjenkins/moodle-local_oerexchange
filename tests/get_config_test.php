@@ -16,8 +16,6 @@
 
 namespace local_oerexchange\external;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Tests for local_oerexchange_get_config. Added on the fourth MDL Shield
  * audit pass (2026-07-19) — of the 5 external functions, only record_import

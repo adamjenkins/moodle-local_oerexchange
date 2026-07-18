@@ -22,8 +22,6 @@ use core_external\external_single_structure;
 use core_external\external_value;
 use local_oerexchange\local\resource_manager;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * local_oerexchange_publish_resource external function. Authenticated with
  * the teacher's personally-linked token (from the account-linking handshake)
@@ -35,6 +33,8 @@ defined('MOODLE_INTERNAL') || die();
  */
 class publish_resource extends external_api {
     /**
+     * Describes the parameters this function accepts.
+     *
      * @return external_function_parameters
      */
     public static function execute_parameters(): external_function_parameters {
@@ -48,12 +48,19 @@ class publish_resource extends external_api {
             'tags' => new external_value(PARAM_TEXT, 'Comma-separated tags', VALUE_DEFAULT, ''),
             'licenseshortname' => new external_value(PARAM_TEXT, 'License shortname (core license_manager)'),
             'activitytype' => new external_value(PARAM_TEXT, 'Activity modname, if type=activity', VALUE_DEFAULT, ''),
-            'resourceid' => new external_value(PARAM_INT, 'Existing resource id to add a version to, or 0 for new', VALUE_DEFAULT, 0),
+            'resourceid' => new external_value(
+                PARAM_INT,
+                'Existing resource id to add a version to, or 0 for new',
+                VALUE_DEFAULT,
+                0
+            ),
             'forkedfromid' => new external_value(PARAM_INT, 'Attribution: source resource id, or 0', VALUE_DEFAULT, 0),
         ]);
     }
 
     /**
+     * Publishes a draft-area backup as a new resource, or as a new version of an existing one the caller owns.
+     *
      * @param int $siteid
      * @param int $draftitemid
      * @param string $type
@@ -120,6 +127,8 @@ class publish_resource extends external_api {
     }
 
     /**
+     * Describes the structure of execute()'s return value.
+     *
      * @return external_single_structure
      */
     public static function execute_returns(): external_single_structure {

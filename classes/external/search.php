@@ -22,8 +22,6 @@ use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * local_oerexchange_search external function.
  *
@@ -33,6 +31,8 @@ defined('MOODLE_INTERNAL') || die();
  */
 class search extends external_api {
     /**
+     * Describes the parameters this function accepts.
+     *
      * @return external_function_parameters
      */
     public static function execute_parameters(): external_function_parameters {
@@ -47,6 +47,8 @@ class search extends external_api {
     }
 
     /**
+     * Searches published resources by free text, type, license, and language, paginated.
+     *
      * @param string $query
      * @param string $type
      * @param string $license
@@ -132,6 +134,8 @@ class search extends external_api {
     }
 
     /**
+     * Describes the structure of execute()'s return value.
+     *
      * @return external_single_structure
      */
     public static function execute_returns(): external_single_structure {

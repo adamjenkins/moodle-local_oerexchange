@@ -18,8 +18,6 @@ namespace local_oerexchange;
 
 use local_oerexchange\local\sandbox\playground;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Tests for the Moodle Playground sandbox integration (branch mapping,
  * blueprint building — pure functions, no HTTP/orchestrator).

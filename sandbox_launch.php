@@ -26,7 +26,9 @@
 use local_oerexchange\local\download_signer;
 use local_oerexchange\local\sandbox\playground;
 
-require(__DIR__ . '/../../config.php');
+// Intentionally public - the sandbox trial is a stateless, anonymous,
+// client-side session with no Moodle account of its own.
+require(__DIR__ . '/../../config.php'); // phpcs:ignore moodle.Files.RequireLogin.Missing
 
 $id = required_param('id', PARAM_INT);
 
@@ -43,7 +45,14 @@ if (empty($sandboxbaseurl)) {
 
 $resource = $DB->get_record('local_oerexchange_resources', ['id' => $id, 'status' => 'published'], '*', MUST_EXIST);
 
-$latest = $DB->get_records('local_oerexchange_versions', ['resourceid' => $resource->id, 'status' => 'ready'], 'versionnumber DESC', '*', 0, 1);
+$latest = $DB->get_records(
+    'local_oerexchange_versions',
+    ['resourceid' => $resource->id, 'status' => 'ready'],
+    'versionnumber DESC',
+    '*',
+    0,
+    1
+);
 if (!$latest) {
     throw new moodle_exception('tryitunavailable', 'local_oerexchange');
 }

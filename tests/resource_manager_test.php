@@ -18,8 +18,6 @@ namespace local_oerexchange;
 
 use local_oerexchange\local\resource_manager;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Tests for resource_manager: the download visibility gate (MDL Shield audit
  * finding 1a, 2026-07-18) and the maxbackupbytes enforcement (finding 2).
@@ -108,6 +106,8 @@ final class resource_manager_test extends \advanced_testcase {
     }
 
     /**
+     * Creates a draft-area file with the given contents, for use as a fake upload in tests.
+     *
      * @param int $userid
      * @param string $contents
      * @return int the new draftitemid

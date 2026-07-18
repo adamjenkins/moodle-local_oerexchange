@@ -16,8 +16,6 @@
 
 namespace local_oerexchange\external;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Tests for local_oerexchange_record_import — specifically the
  * versionid-belongs-to-resourceid cross-validation added for MDL Shield
@@ -93,7 +91,7 @@ final class record_import_test extends \advanced_testcase {
         [$siteuser, $resourceid1, , $resourceid2, $versionid2] = $this->setup_fixtures();
         $this->setUser($siteuser);
 
-        // versionid2 belongs to resourceid2, not resourceid1 — must be rejected.
+        // Version 2 belongs to resource 2, not resource 1 — must be rejected.
         $this->expectException(\moodle_exception::class);
         record_import::execute($resourceid1, $versionid2);
     }
@@ -108,7 +106,7 @@ final class record_import_test extends \advanced_testcase {
         try {
             record_import::execute($resourceid1, $versionid2);
         } catch (\moodle_exception $e) {
-            // Expected.
+            $this->assertInstanceOf(\moodle_exception::class, $e);
         }
 
         $this->assertEquals(0, $DB->get_field('local_oerexchange_resources', 'importcount', ['id' => $resourceid1]));

@@ -28,7 +28,9 @@
 use local_oerexchange\local\download_signer;
 use local_oerexchange\local\resource_manager;
 
-require(__DIR__ . '/../../config.php');
+// Access control here is conditional (signed URL, anonymousdownload
+// setting, or require_login() below), not absent - see the docblock above.
+require(__DIR__ . '/../../config.php'); // phpcs:ignore moodle.Files.RequireLogin.Missing
 
 $versionid = optional_param('v', 0, PARAM_INT) ?: required_param('id', PARAM_INT);
 $exp = optional_param('exp', 0, PARAM_INT);

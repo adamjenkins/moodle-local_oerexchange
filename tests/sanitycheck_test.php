@@ -16,8 +16,6 @@
 
 namespace local_oerexchange\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Negative-case tests for sanitycheck — mbz_parser_test.php already covers
  * the positive case (a real users=false backup passes); this covers the
@@ -33,8 +31,10 @@ defined('MOODLE_INTERNAL') || die();
  */
 final class sanitycheck_test extends \advanced_testcase {
     /**
-     * @param string $userstsxmlcontent contents of users.xml inside the zip, or
-     *                                  null to omit the file entirely
+     * Builds a minimal fixture backup zip, with or without a users.xml entry.
+     *
+     * @param string|null $usersxmlcontent contents of users.xml inside the zip, or
+     *                                null to omit the file entirely
      * @return string path to the built zip
      */
     protected function build_zip(?string $usersxmlcontent): string {

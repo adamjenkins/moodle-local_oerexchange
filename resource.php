@@ -23,7 +23,9 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-require(__DIR__ . '/../../config.php');
+// Viewing is intentionally public; require_login() is only called below,
+// inside the report/review submission branches.
+require(__DIR__ . '/../../config.php'); // phpcs:ignore moodle.Files.RequireLogin.Missing
 
 $id = required_param('id', PARAM_INT);
 $action = optional_param('action', '', PARAM_ALPHA);
@@ -91,7 +93,14 @@ if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser())
 }
 
 $version = null;
-$latest = $DB->get_records('local_oerexchange_versions', ['resourceid' => $resource->id, 'status' => 'ready'], 'versionnumber DESC', '*', 0, 1);
+$latest = $DB->get_records(
+    'local_oerexchange_versions',
+    ['resourceid' => $resource->id, 'status' => 'ready'],
+    'versionnumber DESC',
+    '*',
+    0,
+    1
+);
 if ($latest) {
     $version = reset($latest);
 }
@@ -105,16 +114,27 @@ echo $OUTPUT->header();
 
 echo html_writer::tag('p', get_string('licenselabel', 'local_oerexchange', s($resource->licenseshortname)));
 if ($resource->courseformat) {
-    echo html_writer::tag('p', get_string('courseformatlabel', 'local_oerexchange', s($resource->courseformat)), ['class' => 'small text-muted']);
+    echo html_writer::tag(
+        'p',
+        get_string('courseformatlabel', 'local_oerexchange', s($resource->courseformat)),
+        ['class' => 'small text-muted']
+    );
 }
 if ($version && $version->moodleversion) {
-    echo html_writer::tag('p', get_string('moodleversionlabel', 'local_oerexchange', s($version->moodleversion)), ['class' => 'small text-muted']);
+    echo html_writer::tag(
+        'p',
+        get_string('moodleversionlabel', 'local_oerexchange', s($version->moodleversion)),
+        ['class' => 'small text-muted']
+    );
 }
 if ($resource->forkedfromid) {
     $parent = $DB->get_record('local_oerexchange_resources', ['id' => $resource->forkedfromid]);
     if ($parent) {
         $purl = new moodle_url('/local/oerexchange/resource.php', ['id' => $parent->id]);
-        echo html_writer::tag('p', get_string('attributionchain', 'local_oerexchange', html_writer::link($purl, s($parent->title))));
+        echo html_writer::tag(
+            'p',
+            get_string('attributionchain', 'local_oerexchange', html_writer::link($purl, s($parent->title)))
+        );
     }
 }
 
@@ -124,7 +144,11 @@ echo html_writer::tag('div', format_text($resource->summary ?? '', FORMAT_PLAIN)
 echo html_writer::start_tag('div', ['class' => 'mb-3']);
 if ($sandboxenabled && $version) {
     $tryurl = new moodle_url('/local/oerexchange/sandbox_launch.php', ['id' => $resource->id]);
-    echo html_writer::link($tryurl, get_string('tryit', 'local_oerexchange'), ['class' => 'btn btn-success me-2', 'target' => '_blank']);
+    echo html_writer::link(
+        $tryurl,
+        get_string('tryit', 'local_oerexchange'),
+        ['class' => 'btn btn-success me-2', 'target' => '_blank']
+    );
     echo html_writer::tag('div', get_string('tryitloadinghint', 'local_oerexchange'), ['class' => 'small text-muted d-inline']);
 }
 if ($version) {
@@ -189,18 +213,31 @@ if ($structure && !empty($structure['sections'])) {
 
 // Reviews.
 echo $OUTPUT->heading(get_string('reviewsheading', 'local_oerexchange'), 4);
-$reviews = $DB->get_records('local_oerexchange_reviews', ['resourceid' => $resource->id, 'status' => 'visible'], 'timecreated DESC');
+$reviews = $DB->get_records(
+    'local_oerexchange_reviews',
+    ['resourceid' => $resource->id, 'status' => 'visible'],
+    'timecreated DESC'
+);
 foreach ($reviews as $rv) {
     echo html_writer::start_tag('div', ['class' => 'card mb-2']);
     echo html_writer::start_tag('div', ['class' => 'card-body']);
     if ($rv->contexttext) {
-        echo html_writer::tag('p', '<strong>' . get_string('reviewcontext', 'local_oerexchange') . '</strong> ' . s($rv->contexttext));
+        echo html_writer::tag(
+            'p',
+            '<strong>' . get_string('reviewcontext', 'local_oerexchange') . '</strong> ' . s($rv->contexttext)
+        );
     }
     if ($rv->adaptationtext) {
-        echo html_writer::tag('p', '<strong>' . get_string('reviewadaptation', 'local_oerexchange') . '</strong> ' . s($rv->adaptationtext));
+        echo html_writer::tag(
+            'p',
+            '<strong>' . get_string('reviewadaptation', 'local_oerexchange') . '</strong> ' . s($rv->adaptationtext)
+        );
     }
     if ($rv->outcometext) {
-        echo html_writer::tag('p', '<strong>' . get_string('reviewoutcome', 'local_oerexchange') . '</strong> ' . s($rv->outcometext));
+        echo html_writer::tag(
+            'p',
+            '<strong>' . get_string('reviewoutcome', 'local_oerexchange') . '</strong> ' . s($rv->outcometext)
+        );
     }
     echo html_writer::end_tag('div');
     echo html_writer::end_tag('div');
@@ -208,7 +245,10 @@ foreach ($reviews as $rv) {
 
 if (isloggedin() && !isguestuser()) {
     echo $OUTPUT->heading(get_string('addreview', 'local_oerexchange'), 5);
-    echo html_writer::start_tag('form', ['method' => 'post', 'action' => new moodle_url('/local/oerexchange/resource.php', ['id' => $id])]);
+    echo html_writer::start_tag('form', [
+        'method' => 'post',
+        'action' => new moodle_url('/local/oerexchange/resource.php', ['id' => $id]),
+    ]);
     echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'review']);
     echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
     echo html_writer::tag('label', get_string('reviewcontext', 'local_oerexchange'));
@@ -217,11 +257,18 @@ if (isloggedin() && !isguestuser()) {
     echo html_writer::tag('textarea', '', ['name' => 'reviewadaptation', 'class' => 'form-control mb-2', 'required' => 'required']);
     echo html_writer::tag('label', get_string('reviewoutcome', 'local_oerexchange'));
     echo html_writer::tag('textarea', '', ['name' => 'reviewoutcome', 'class' => 'form-control mb-2']);
-    echo html_writer::empty_tag('input', ['type' => 'submit', 'value' => get_string('reviewsubmit', 'local_oerexchange'), 'class' => 'btn btn-primary']);
+    echo html_writer::empty_tag('input', [
+        'type' => 'submit',
+        'value' => get_string('reviewsubmit', 'local_oerexchange'),
+        'class' => 'btn btn-primary',
+    ]);
     echo html_writer::end_tag('form');
 
     echo $OUTPUT->heading(get_string('report', 'local_oerexchange'), 5);
-    echo html_writer::start_tag('form', ['method' => 'post', 'action' => new moodle_url('/local/oerexchange/resource.php', ['id' => $id])]);
+    echo html_writer::start_tag('form', [
+        'method' => 'post',
+        'action' => new moodle_url('/local/oerexchange/resource.php', ['id' => $id]),
+    ]);
     echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'report']);
     echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
     echo html_writer::select([
@@ -231,7 +278,11 @@ if (isloggedin() && !isguestuser()) {
         'other' => get_string('reporttype_other', 'local_oerexchange'),
     ], 'reporttype', '', false, ['class' => 'form-select mb-2']);
     echo html_writer::tag('textarea', '', ['name' => 'reportdetails', 'class' => 'form-control mb-2']);
-    echo html_writer::empty_tag('input', ['type' => 'submit', 'value' => get_string('reportsubmit', 'local_oerexchange'), 'class' => 'btn btn-outline-danger']);
+    echo html_writer::empty_tag('input', [
+        'type' => 'submit',
+        'value' => get_string('reportsubmit', 'local_oerexchange'),
+        'class' => 'btn btn-outline-danger',
+    ]);
     echo html_writer::end_tag('form');
 }
 

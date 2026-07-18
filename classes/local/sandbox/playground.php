@@ -16,8 +16,6 @@
 
 namespace local_oerexchange\local\sandbox;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Moodle Playground sandbox integration (DESIGN.md §4, option B): branch
  * mapper + blueprint builder + launch-URL builder. Pure functions — no HTTP
@@ -95,7 +93,7 @@ class playground {
         $steps[] = ['step' => 'login', 'username' => 'admin'];
 
         foreach ($allowedplugininstalls as $plugin) {
-            // pluginType/pluginName must be explicit: Moodle Playground only
+            // The pluginType/pluginName must be explicit: Moodle Playground only
             // auto-detects them from a GitHub-style archive URL matching
             // /<repo>/archive/... (moodle-{type}_{name} naming) - our
             // allowlist_file.php?id=N URLs never match that, so omitting

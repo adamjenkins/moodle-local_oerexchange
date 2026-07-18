@@ -23,8 +23,6 @@ use core_external\external_single_structure;
 use core_external\external_value;
 use local_oerexchange\local\download_signer;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * local_oerexchange_get_resource external function.
  *
@@ -34,6 +32,8 @@ defined('MOODLE_INTERNAL') || die();
  */
 class get_resource extends external_api {
     /**
+     * Describes the parameters this function accepts.
+     *
      * @return external_function_parameters
      */
     public static function execute_parameters(): external_function_parameters {
@@ -43,6 +43,8 @@ class get_resource extends external_api {
     }
 
     /**
+     * Returns a published resource's full detail, including a signed download URL for its latest ready version.
+     *
      * @param int $resourceid
      * @return array
      */
@@ -122,6 +124,8 @@ class get_resource extends external_api {
     }
 
     /**
+     * Describes the structure of execute()'s return value.
+     *
      * @return external_single_structure
      */
     public static function execute_returns(): external_single_structure {

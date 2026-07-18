@@ -53,6 +53,13 @@ if ($revokeid && confirm_sesskey()) {
 
 echo $OUTPUT->header();
 
+/**
+ * Renders one status group's table of registered sites.
+ *
+ * @param array $sites
+ * @param bool $showapprove
+ * @param bool $showrevoke
+ */
 function oerexchange_render_site_table(array $sites, bool $showapprove, bool $showrevoke): void {
     global $OUTPUT;
     if (empty($sites)) {
@@ -71,11 +78,19 @@ function oerexchange_render_site_table(array $sites, bool $showapprove, bool $sh
         $actions = '';
         if ($showapprove) {
             $url = new moodle_url('/local/oerexchange/manage_sites.php', ['approveid' => $site->id, 'sesskey' => $sesskey]);
-            $actions .= html_writer::link($url, get_string('siteapprove', 'local_oerexchange'), ['class' => 'btn btn-sm btn-success']);
+            $actions .= html_writer::link(
+                $url,
+                get_string('siteapprove', 'local_oerexchange'),
+                ['class' => 'btn btn-sm btn-success']
+            );
         }
         if ($showrevoke) {
             $url = new moodle_url('/local/oerexchange/manage_sites.php', ['revokeid' => $site->id, 'sesskey' => $sesskey]);
-            $actions .= html_writer::link($url, get_string('siterevoke', 'local_oerexchange'), ['class' => 'btn btn-sm btn-outline-danger']);
+            $actions .= html_writer::link(
+                $url,
+                get_string('siterevoke', 'local_oerexchange'),
+                ['class' => 'btn btn-sm btn-outline-danger']
+            );
         }
         $table->data[] = [s($site->name), s($site->url), s($site->contact), $actions];
     }

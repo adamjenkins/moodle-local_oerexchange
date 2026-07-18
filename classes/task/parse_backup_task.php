@@ -20,8 +20,6 @@ use local_oerexchange\local\parser\mbz_parser;
 use local_oerexchange\local\resource_manager;
 use local_oerexchange\local\sanitycheck;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Adhoc task: parse an uploaded backup into a structure preview + required
  * plugins, and verify it contains no user data. Runs after publish_resource.

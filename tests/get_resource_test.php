@@ -16,8 +16,6 @@
 
 namespace local_oerexchange\external;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Tests for local_oerexchange_get_resource. Added on the fourth MDL Shield
  * audit pass (2026-07-19) — no WS-layer coverage existed for this function

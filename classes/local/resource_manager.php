@@ -18,8 +18,6 @@ namespace local_oerexchange\local;
 
 use local_oerexchange\task\parse_backup_task;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Publish an uploaded backup (already landed in the teacher's Exchange-account
  * draft area via webservice/upload.php) as a new resource or a new version of

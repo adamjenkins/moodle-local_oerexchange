@@ -19,8 +19,6 @@ namespace local_oerexchange\privacy;
 use core_privacy\local\request\approved_contextlist;
 use core_privacy\local\request\writer;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Privacy provider tests. Added for MDL Shield audit finding 6 (2026-07-18):
  * local_oerexchange_linkcodes carried a userid + WS token but was absent

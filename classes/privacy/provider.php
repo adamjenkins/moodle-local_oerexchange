@@ -23,8 +23,6 @@ use core_privacy\local\request\contextlist;
 use core_privacy\local\request\userlist;
 use core_privacy\local\request\writer;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Privacy provider for local_oerexchange. All data lives under the system
  * context — this plugin has no course/module context of its own.
@@ -33,7 +31,10 @@ defined('MOODLE_INTERNAL') || die();
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class provider implements \core_privacy\local\metadata\provider, \core_privacy\local\request\core_userlist_provider, \core_privacy\local\request\plugin\provider {
+class provider implements
+    \core_privacy\local\metadata\provider,
+    \core_privacy\local\request\core_userlist_provider,
+    \core_privacy\local\request\plugin\provider {
     #[\Override]
     public static function get_metadata(collection $collection): collection {
         $collection->add_database_table('local_oerexchange_reviews', [
@@ -103,7 +104,14 @@ class provider implements \core_privacy\local\metadata\provider, \core_privacy\l
             return;
         }
 
-        foreach (['local_oerexchange_reviews', 'local_oerexchange_reports', 'local_oerexchange_imports', 'local_oerexchange_trials', 'local_oerexchange_linkcodes'] as $table) {
+        $tables = [
+            'local_oerexchange_reviews',
+            'local_oerexchange_reports',
+            'local_oerexchange_imports',
+            'local_oerexchange_trials',
+            'local_oerexchange_linkcodes',
+        ];
+        foreach ($tables as $table) {
             $userids = $DB->get_fieldset_select($table, 'DISTINCT userid', 'userid IS NOT NULL');
             foreach ($userids as $uid) {
                 $userlist->add_user($uid);
@@ -190,6 +198,8 @@ class provider implements \core_privacy\local\metadata\provider, \core_privacy\l
     }
 
     /**
+     * Deletes or anonymizes all of this plugin's data for a single user.
+     *
      * @param int $userid
      */
     protected static function delete_for_userid(int $userid): void {

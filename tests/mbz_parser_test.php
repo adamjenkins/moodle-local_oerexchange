@@ -19,8 +19,6 @@ namespace local_oerexchange;
 use local_oerexchange\local\parser\mbz_parser;
 use local_oerexchange\local\sanitycheck;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Tests for mbz_parser and sanitycheck against a real backup fixture
  * (course + forum + label, users=false).
@@ -33,6 +31,8 @@ defined('MOODLE_INTERNAL') || die();
  */
 final class mbz_parser_test extends \advanced_testcase {
     /**
+     * Returns the path to this test's fixture .mbz file.
+     *
      * @return string
      */
     protected function fixture_path(): string {

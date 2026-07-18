@@ -16,8 +16,6 @@
 
 namespace local_oerexchange\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Validation for the sandbox plugin allowlist admin form. Split out mainly
  * for the moodlebranch check: PARAM_ALPHANUMEXT (letters, digits, _- only —
@@ -32,7 +30,6 @@ defined('MOODLE_INTERNAL') || die();
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class allowlist_manager {
-
     /**
      * A Moodle branch label as used throughout this plugin: "5.0", "5.2",
      * "5.10" — major.minor, digits and one dot, nothing else.

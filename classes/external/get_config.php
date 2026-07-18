@@ -21,8 +21,6 @@ use core_external\external_function_parameters;
 use core_external\external_single_structure;
 use core_external\external_value;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * local_oerexchange_get_config external function — advertised Exchange
  * limits/capabilities, also usable by a client as a lightweight
@@ -34,6 +32,8 @@ defined('MOODLE_INTERNAL') || die();
  */
 class get_config extends external_api {
     /**
+     * Describes the (empty) parameters this function accepts.
+     *
      * @return external_function_parameters
      */
     public static function execute_parameters(): external_function_parameters {
@@ -41,6 +41,8 @@ class get_config extends external_api {
     }
 
     /**
+     * Returns the Exchange's advertised limits/capabilities.
+     *
      * @return array
      */
     public static function execute(): array {
@@ -62,6 +64,8 @@ class get_config extends external_api {
     }
 
     /**
+     * Describes the structure of execute()'s return value.
+     *
      * @return external_single_structure
      */
     public static function execute_returns(): external_single_structure {

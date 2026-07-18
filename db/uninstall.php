@@ -22,8 +22,6 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Purge stored files under this plugin's own component — core's DB-table
  * cleanup on uninstall does not know about our system-context filearea

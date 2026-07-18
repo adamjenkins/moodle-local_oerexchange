@@ -22,7 +22,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-require(__DIR__ . '/../../config.php');
+require(__DIR__ . '/../../config.php'); // phpcs:ignore moodle.Files.RequireLogin.Missing -- see docblock above.
 
 $query = optional_param('q', '', PARAM_TEXT);
 $type = optional_param('type', '', PARAM_ALPHA);
@@ -97,20 +97,36 @@ sort($distinctlanguages);
 
 echo $OUTPUT->header();
 
-echo html_writer::start_tag('form', ['method' => 'get', 'action' => new moodle_url('/local/oerexchange/index.php'), 'class' => 'oerexchange-searchform mb-3']);
+echo html_writer::start_tag('form', [
+    'method' => 'get',
+    'action' => new moodle_url('/local/oerexchange/index.php'),
+    'class' => 'oerexchange-searchform mb-3',
+]);
 echo html_writer::empty_tag('input', [
     'type' => 'text', 'name' => 'q', 'value' => $query,
     'placeholder' => get_string('searchplaceholder', 'local_oerexchange'), 'class' => 'form-control d-inline w-auto',
 ]);
-echo html_writer::tag('label', get_string('filterbytype', 'local_oerexchange'), ['for' => 'oerexchange-filter-type', 'class' => 'ms-2 me-1']);
+echo html_writer::tag(
+    'label',
+    get_string('filterbytype', 'local_oerexchange'),
+    ['for' => 'oerexchange-filter-type', 'class' => 'ms-2 me-1']
+);
 echo html_writer::select(
-    ['' => '', 'course' => get_string('typecourse', 'local_oerexchange'), 'activity' => get_string('typeactivity', 'local_oerexchange')],
+    [
+        '' => '',
+        'course' => get_string('typecourse', 'local_oerexchange'),
+        'activity' => get_string('typeactivity', 'local_oerexchange'),
+    ],
     'type',
     $type,
     false,
     ['id' => 'oerexchange-filter-type', 'class' => 'form-select d-inline w-auto']
 );
-echo html_writer::tag('label', get_string('filterlicense', 'local_oerexchange'), ['for' => 'oerexchange-filter-license', 'class' => 'ms-2 me-1']);
+echo html_writer::tag(
+    'label',
+    get_string('filterlicense', 'local_oerexchange'),
+    ['for' => 'oerexchange-filter-license', 'class' => 'ms-2 me-1']
+);
 echo html_writer::select(
     array_merge(['' => ''], array_combine($distinctlicenses, $distinctlicenses)),
     'license',
@@ -118,7 +134,11 @@ echo html_writer::select(
     false,
     ['id' => 'oerexchange-filter-license', 'class' => 'form-select d-inline w-auto']
 );
-echo html_writer::tag('label', get_string('filterlanguage', 'local_oerexchange'), ['for' => 'oerexchange-filter-language', 'class' => 'ms-2 me-1']);
+echo html_writer::tag(
+    'label',
+    get_string('filterlanguage', 'local_oerexchange'),
+    ['for' => 'oerexchange-filter-language', 'class' => 'ms-2 me-1']
+);
 echo html_writer::select(
     array_merge(['' => ''], array_combine($distinctlanguages, $distinctlanguages)),
     'language',
@@ -127,7 +147,11 @@ echo html_writer::select(
     ['id' => 'oerexchange-filter-language', 'class' => 'form-select d-inline w-auto']
 );
 echo ' ';
-echo html_writer::empty_tag('input', ['type' => 'submit', 'value' => get_string('searchbutton', 'local_oerexchange'), 'class' => 'btn btn-primary ms-2']);
+echo html_writer::empty_tag('input', [
+    'type' => 'submit',
+    'value' => get_string('searchbutton', 'local_oerexchange'),
+    'class' => 'btn btn-primary ms-2',
+]);
 echo html_writer::end_tag('form');
 
 if (empty($resources)) {
@@ -161,7 +185,9 @@ if (empty($resources)) {
     }
     echo html_writer::end_tag('div');
 
-    $baseurl = new moodle_url('/local/oerexchange/index.php', ['q' => $query, 'type' => $type, 'license' => $license, 'language' => $language]);
+    $baseurl = new moodle_url('/local/oerexchange/index.php', [
+        'q' => $query, 'type' => $type, 'license' => $license, 'language' => $language,
+    ]);
     echo $OUTPUT->paging_bar($total, $page, $perpage, $baseurl);
 }
 

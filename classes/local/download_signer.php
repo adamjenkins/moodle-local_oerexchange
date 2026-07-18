@@ -16,8 +16,6 @@
 
 namespace local_oerexchange\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * HMAC-signed, short-lived, unauthenticated download URLs for .mbz files —
  * used both for WS clients (returned by get_resource/publish_resource) and
@@ -66,6 +64,8 @@ class download_signer {
     }
 
     /**
+     * Computes the HMAC signature for a version id + expiry pair.
+     *
      * @param int $versionid
      * @param int $expires
      * @return string

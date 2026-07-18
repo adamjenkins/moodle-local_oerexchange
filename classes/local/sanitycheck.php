@@ -16,8 +16,6 @@
 
 namespace local_oerexchange\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Server-side verification that an uploaded backup contains no user data.
  *
@@ -36,10 +34,10 @@ class sanitycheck {
      * Verify a backup file contains no user data.
      *
      * @param string $filepath absolute path to the .mbz file
-     * @param \stdClass $info the object returned by mbz_parser::parse()'s underlying
-     *                        backup_general_helper::get_backup_information_from_mbz() call
-     *                        (callers that already have the raw $info can pass it; otherwise
-     *                        null and this re-parses it).
+     * @param \stdClass|null $rawinfo the object returned by mbz_parser::parse()'s underlying
+     *                           backup_general_helper::get_backup_information_from_mbz() call
+     *                           (callers that already have the raw info can pass it; otherwise
+     *                           null and this re-parses it).
      * @return bool true if the backup is clean
      */
     public static function passes(string $filepath, ?\stdClass $rawinfo = null): bool {

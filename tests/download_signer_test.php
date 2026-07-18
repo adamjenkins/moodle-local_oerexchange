@@ -18,8 +18,6 @@ namespace local_oerexchange;
 
 use local_oerexchange\local\download_signer;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Tests for download_signer — the HMAC gate that download.php's signed path
  * relies on entirely (an unsigned request falls through to

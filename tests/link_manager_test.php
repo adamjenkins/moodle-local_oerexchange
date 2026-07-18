@@ -18,8 +18,6 @@ namespace local_oerexchange;
 
 use local_oerexchange\local\link_manager;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Tests for link_manager — the account-linking one-time-code handshake.
  * Previously entirely untested by automation; added on the second MDL
@@ -107,7 +105,7 @@ final class link_manager_test extends \advanced_testcase {
         try {
             link_manager::consume($code);
         } catch (\moodle_exception $e) {
-            // Expected.
+            $this->assertInstanceOf(\moodle_exception::class, $e);
         }
 
         $record = $DB->get_record('local_oerexchange_linkcodes', ['code' => $code]);
