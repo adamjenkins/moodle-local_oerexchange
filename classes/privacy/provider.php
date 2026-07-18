@@ -67,6 +67,12 @@ class provider implements \core_privacy\local\metadata\provider, \core_privacy\l
             'timecreated' => 'privacy:metadata:local_oerexchange_trials:timecreated',
         ], 'privacy:metadata:local_oerexchange_trials');
 
+        $collection->add_database_table('local_oerexchange_linkcodes', [
+            'userid' => 'privacy:metadata:local_oerexchange_linkcodes:userid',
+            'token' => 'privacy:metadata:local_oerexchange_linkcodes:token',
+            'timecreated' => 'privacy:metadata:local_oerexchange_linkcodes:timecreated',
+        ], 'privacy:metadata:local_oerexchange_linkcodes');
+
         return $collection;
     }
 
@@ -79,7 +85,8 @@ class provider implements \core_privacy\local\metadata\provider, \core_privacy\l
             || $DB->record_exists('local_oerexchange_reports', ['userid' => $userid])
             || $DB->record_exists('local_oerexchange_resources', ['creatorid' => $userid])
             || $DB->record_exists('local_oerexchange_imports', ['userid' => $userid])
-            || $DB->record_exists('local_oerexchange_trials', ['userid' => $userid]);
+            || $DB->record_exists('local_oerexchange_trials', ['userid' => $userid])
+            || $DB->record_exists('local_oerexchange_linkcodes', ['userid' => $userid]);
 
         if ($hasdata) {
             $contextlist->add_system_context();
@@ -96,7 +103,7 @@ class provider implements \core_privacy\local\metadata\provider, \core_privacy\l
             return;
         }
 
-        foreach (['local_oerexchange_reviews', 'local_oerexchange_reports', 'local_oerexchange_imports', 'local_oerexchange_trials'] as $table) {
+        foreach (['local_oerexchange_reviews', 'local_oerexchange_reports', 'local_oerexchange_imports', 'local_oerexchange_trials', 'local_oerexchange_linkcodes'] as $table) {
             $userids = $DB->get_fieldset_select($table, 'DISTINCT userid', 'userid IS NOT NULL');
             foreach ($userids as $uid) {
                 $userlist->add_user($uid);
@@ -122,6 +129,7 @@ class provider implements \core_privacy\local\metadata\provider, \core_privacy\l
         $resources = $DB->get_records('local_oerexchange_resources', ['creatorid' => $userid]);
         $imports = $DB->get_records('local_oerexchange_imports', ['userid' => $userid]);
         $trials = $DB->get_records('local_oerexchange_trials', ['userid' => $userid]);
+        $linkcodes = $DB->get_records('local_oerexchange_linkcodes', ['userid' => $userid]);
 
         $data = (object) [
             'reviews' => array_values(array_map(fn($r) => [
@@ -145,6 +153,12 @@ class provider implements \core_privacy\local\metadata\provider, \core_privacy\l
                 'resourceid' => $r->resourceid,
                 'timecreated' => \core_privacy\local\request\transform::datetime($r->timecreated),
             ], $trials)),
+            // Deliberately excludes the raw 'token' field — it is a live WS
+            // credential, not something to write into a downloadable export.
+            'linkcodes' => array_values(array_map(fn($r) => [
+                'status' => $r->status,
+                'timecreated' => \core_privacy\local\request\transform::datetime($r->timecreated),
+            ], $linkcodes)),
         ];
 
         writer::with_context(\context_system::instance())->export_data(
@@ -185,6 +199,7 @@ class provider implements \core_privacy\local\metadata\provider, \core_privacy\l
         $DB->delete_records('local_oerexchange_reports', ['userid' => $userid]);
         $DB->delete_records('local_oerexchange_imports', ['userid' => $userid]);
         $DB->delete_records('local_oerexchange_trials', ['userid' => $userid]);
+        $DB->delete_records('local_oerexchange_linkcodes', ['userid' => $userid]);
         // Shared resources are third-party content other sites may already have
         // imported — detach personal identity rather than deleting the catalogue
         // entry (creatorid 0 = "no attributable owner", mirrors core's own

@@ -40,6 +40,14 @@ if (!$signed) {
 }
 
 $version = $DB->get_record('local_oerexchange_versions', ['id' => $versionid], '*', MUST_EXIST);
+
+if (!$signed) {
+    $resource = $DB->get_record('local_oerexchange_resources', ['id' => $version->resourceid], '*', MUST_EXIST);
+    if (!resource_manager::can_download_unsigned($version, $resource)) {
+        throw new moodle_exception('error_notfound', 'local_oerexchange');
+    }
+}
+
 $file = resource_manager::get_version_file($versionid);
 if (!$file) {
     throw new moodle_exception('error_nofile', 'local_oerexchange');

@@ -60,6 +60,11 @@ class resource_manager {
         }
         $draftfile = reset($draftfiles);
 
+        $maxbytes = (int) get_config('local_oerexchange', 'maxbackupbytes') ?: (500 * 1024 * 1024);
+        if ($draftfile->get_filesize() > $maxbytes) {
+            throw new \moodle_exception('error_backuptoolarge', 'local_oerexchange');
+        }
+
         $now = time();
 
         if ($resourceid === null) {
@@ -132,5 +137,23 @@ class resource_manager {
         $fs = get_file_storage();
         $files = $fs->get_area_files($context->id, 'local_oerexchange', 'resource', $versionid, 'id', false);
         return $files ? reset($files) : null;
+    }
+
+    /**
+     * Whether a version's file may be downloaded by a plain logged-in session
+     * (i.e. without a valid signed URL). Signed downloads bypass this check
+     * entirely (they carry their own short-lived authorization). This is the
+     * same visibility rule resource.php applies: published + ready, or the
+     * viewer can moderate.
+     *
+     * @param \stdClass $version
+     * @param \stdClass $resource
+     * @return bool
+     */
+    public static function can_download_unsigned(\stdClass $version, \stdClass $resource): bool {
+        if ($resource->status === 'published' && $version->status === 'ready') {
+            return true;
+        }
+        return has_capability('local/oerexchange:moderate', \context_system::instance());
     }
 }

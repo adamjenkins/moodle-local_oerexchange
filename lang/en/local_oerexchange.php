@@ -52,6 +52,10 @@ $string['privacy:metadata:local_oerexchange_imports:timecreated'] = 'The time of
 $string['privacy:metadata:local_oerexchange_trials'] = 'A record that a user launched a sandbox trial for a resource.';
 $string['privacy:metadata:local_oerexchange_trials:userid'] = 'The user who launched the trial.';
 $string['privacy:metadata:local_oerexchange_trials:timecreated'] = 'The time the trial was launched.';
+$string['privacy:metadata:local_oerexchange_linkcodes'] = 'A one-time code minted during the account-linking handshake, and the web service token it carries.';
+$string['privacy:metadata:local_oerexchange_linkcodes:userid'] = 'The user the linking token belongs to.';
+$string['privacy:metadata:local_oerexchange_linkcodes:token'] = 'The web service token minted for the linked client site, cleared once consumed.';
+$string['privacy:metadata:local_oerexchange_linkcodes:timecreated'] = 'The time the link code was issued.';
 
 // Pages.
 $string['catalogtitle'] = 'Browse OER catalogue';
@@ -176,6 +180,7 @@ $string['error_linkcodeexpired'] = 'This link code has expired.';
 $string['error_linkcodeused'] = 'This link code has already been used.';
 $string['error_notfound'] = 'Not found.';
 $string['error_nofile'] = 'No backup file was found in the draft area.';
+$string['error_backuptoolarge'] = 'This backup exceeds the maximum accepted size.';
 $string['error_sanitycheckfailed'] = 'This backup appears to contain user data and cannot be published. Re-export it with user data excluded.';
 $string['error_invalidresourcetype'] = 'Invalid resource type.';
 $string['error_notyourresource'] = 'You did not share this resource.';

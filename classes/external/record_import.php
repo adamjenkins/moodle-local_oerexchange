@@ -66,6 +66,9 @@ class record_import extends external_api {
 
         $resource = $DB->get_record('local_oerexchange_resources', ['id' => $params['resourceid']], '*', MUST_EXIST);
         $version = $DB->get_record('local_oerexchange_versions', ['id' => $params['versionid']], '*', MUST_EXIST);
+        if ((int) $version->resourceid !== (int) $resource->id) {
+            throw new \moodle_exception('error_notfound', 'local_oerexchange');
+        }
 
         $DB->insert_record('local_oerexchange_imports', (object) [
             'resourceid' => $resource->id,
