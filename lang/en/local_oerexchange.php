@@ -184,6 +184,7 @@ $string['error_backuptoolarge'] = 'This backup exceeds the maximum accepted size
 $string['error_sanitycheckfailed'] = 'This backup appears to contain user data and cannot be published. Re-export it with user data excluded.';
 $string['error_invalidresourcetype'] = 'Invalid resource type.';
 $string['error_notyourresource'] = 'You did not share this resource.';
+$string['error_invalidbranch'] = 'Moodle branch must be a plain major.minor version, e.g. 5.2.';
 
 // Connect / linking.
 $string['connectintro'] = 'Sign in or create an Exchange account to link it with your Moodle site.';

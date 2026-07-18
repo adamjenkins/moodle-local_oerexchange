@@ -23,6 +23,8 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+use local_oerexchange\local\allowlist_manager;
+
 require(__DIR__ . '/../../config.php');
 require_login();
 
@@ -47,8 +49,12 @@ if ($toggleid && confirm_sesskey()) {
 if (optional_param('doadd', 0, PARAM_INT) && confirm_sesskey()) {
     $plugintype = required_param('plugintype', PARAM_ALPHA);
     $pluginname = required_param('pluginname', PARAM_ALPHANUMEXT);
-    $moodlebranch = required_param('moodlebranch', PARAM_ALPHANUMEXT);
+    $moodlebranch = required_param('moodlebranch', PARAM_TEXT);
     $sourceurl = required_param('sourceurl', PARAM_URL);
+
+    if (!allowlist_manager::is_valid_branch($moodlebranch)) {
+        throw new moodle_exception('error_invalidbranch', 'local_oerexchange');
+    }
 
     $now = time();
     $id = $DB->insert_record('local_oerexchange_pluginallowlist', (object) [
