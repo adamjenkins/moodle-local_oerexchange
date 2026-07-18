@@ -84,7 +84,13 @@ class record_import extends external_api {
             'userid' => $params['userid'] ?: null,
             'timecreated' => time(),
         ]);
-        $DB->set_field('local_oerexchange_resources', 'importcount', $resource->importcount + 1, ['id' => $resource->id]);
+        // Atomic increment — a read-modify-write ($resource->importcount + 1) loses
+        // updates when several client sites record imports of the same resource
+        // concurrently, exactly the high-fan-in case an Exchange is built for.
+        $DB->execute(
+            'UPDATE {local_oerexchange_resources} SET importcount = importcount + 1 WHERE id = ?',
+            [$resource->id]
+        );
 
         // Notify the creator, if they still have a valid Exchange account.
         $creator = $DB->get_record('user', ['id' => $resource->creatorid, 'deleted' => 0]);

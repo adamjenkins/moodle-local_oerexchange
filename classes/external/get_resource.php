@@ -97,7 +97,12 @@ class get_resource extends external_api {
         $downloadurl = '';
         if ($version) {
             $downloadurl = download_signer::sign_url($version->id)->out(false);
-            $DB->set_field('local_oerexchange_resources', 'downloadcount', $resource->downloadcount + 1, ['id' => $resource->id]);
+            // Atomic increment — a read-modify-write ($resource->downloadcount + 1)
+            // loses updates under concurrent get_resource calls for the same resource.
+            $DB->execute(
+                'UPDATE {local_oerexchange_resources} SET downloadcount = downloadcount + 1 WHERE id = ?',
+                [$resource->id]
+            );
         }
 
         return [
