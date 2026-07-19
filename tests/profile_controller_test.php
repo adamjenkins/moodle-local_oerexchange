@@ -76,6 +76,20 @@ final class profile_controller_test extends route_testcase {
         // into the real <head> via the Hooks API. A second, <body>-placed
         // copy here would just conflict with the <head> one.
         $this->assertStringNotContainsString('property="og:title"', $body);
+
+        // Page URL and the share button's data-share-url must both be the
+        // real, resolvable URL — /u/{slug} alone 404s in production because
+        // the #[route] attribute's path is component-relative (see this
+        // controller's class docblock); only /local_oerexchange/u/{slug} is
+        // the actual compiled route pattern
+        // (abstract_route_loader.php:112).
+        global $PAGE;
+        $this->assertSame('/moodle/local_oerexchange/u/janedoe', $PAGE->url->get_path());
+        $this->assertStringContainsString(
+            'data-share-url="https://www.example.com/moodle/local_oerexchange/u/janedoe"',
+            $body
+        );
+        $this->assertStringNotContainsString('data-share-url="https://www.example.com/moodle/u/janedoe"', $body);
     }
 
     public function test_visible_profile_shows_metrics_badges_and_message_link(): void {

@@ -25,9 +25,20 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * Public educator-profile page, GET /u/{slug}. Viewing is intentionally
- * public (no requirelogin) — matches this plugin's existing pattern of
- * public catalogue browsing (resource.php:26-27, index.php docblock).
+ * Public educator-profile page. Viewing is intentionally public (no
+ * requirelogin) — matches this plugin's existing pattern of public
+ * catalogue browsing (resource.php:26-27, index.php docblock).
+ *
+ * The #[route(path: '/u/{slug}')] attribute below is relative to this
+ * plugin's component path, NOT the real, resolvable URL. Moodle's router
+ * only strips the component prefix for `core` components
+ * (core\router\util::normalise_component_path()); for a `local_oerexchange`
+ * route it is left in place, so the real, working request path is
+ * /local_oerexchange/u/{slug} (confirmed against
+ * lib/classes/router/abstract_route_loader.php:112, which compiles every
+ * standard route's pattern as "/{$componentpath}{$path}"). A bare /u/{slug}
+ * 404s. Anything this controller generates for external use (its own
+ * $PAGE->url, the share-button link) must use the real path — see view().
  *
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -82,7 +93,23 @@ class profile_controller {
         ], 'timeshared DESC');
 
         $fullname = fullname($user);
-        $profileurl = new \moodle_url('/u/' . $slug);
+        // The #[route] attribute's path ('/u/{slug}') is component-relative,
+        // not the real request path — see the class docblock. Build the
+        // real, working URL directly with the component prefix so $PAGE->url,
+        // the og:url tag (hook_callbacks::build_og_meta_html(), which must
+        // stay consistent with this), and the share button all point
+        // somewhere that actually resolves. Deliberately not
+        // moodle_url::routed_path(), which conditionally prepends '/r.php/'
+        // based on $CFG->routerconfigured — verified (2026-07-19, live
+        // request logging) to read as falsy here specifically during a
+        // routed request's second, full moodle_bootstrap_middleware-driven
+        // lib/setup.php pass, even though config.php sets it true and a
+        // plain (non-routed) script sees true; a bare component-prefixed
+        // path already resolves correctly either way under this site's
+        // standard Moodle nginx recipe (try_files ... /r.php$is_args$args
+        // as the catch-all), so there's no need to route link generation
+        // through that inconsistent flag.
+        $profileurl = new \moodle_url('/local_oerexchange/u/' . $slug);
 
         $PAGE->set_url($profileurl);
         $PAGE->set_context(\context_system::instance());

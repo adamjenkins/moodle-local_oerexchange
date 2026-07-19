@@ -64,7 +64,12 @@ final class hook_callbacks_test extends \advanced_testcase {
             'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true,
         ]);
 
-        $PAGE->set_url(new \moodle_url('/u/janedoe'));
+        // The real request path a client hits (component-prefixed — see
+        // profile_controller's class docblock; a bare '/u/janedoe' 404s in
+        // production) is what the router sets on $PAGE->url before the
+        // controller runs, and what the controller's own corrected
+        // $PAGE->set_url() call reproduces.
+        $PAGE->set_url(new \moodle_url('/local_oerexchange/u/janedoe'));
 
         $hook = $this->make_hook();
         hook_callbacks::before_standard_head_html_generation($hook);
@@ -76,8 +81,46 @@ final class hook_callbacks_test extends \advanced_testcase {
         $this->assertStringContainsString('A biology teacher.', $html);
         $this->assertStringContainsString('property="og:image"', $html);
         $this->assertStringContainsString('property="og:url"', $html);
-        $this->assertStringContainsString('/u/janedoe', $html);
+        // The real, resolvable URL, not the bare '/u/{slug}' the #[route]
+        // attribute declares (component-relative only — see
+        // profile_controller's class docblock).
+        $this->assertStringContainsString('content="https://www.example.com/moodle/local_oerexchange/u/janedoe"', $html);
+        $this->assertStringNotContainsString('content="https://www.example.com/moodle/u/janedoe"', $html);
         $this->assertStringContainsString('property="og:type" content="profile"', $html);
+    }
+
+    /**
+     * The path gate (get_profile_slug_from_current_url()) matches on the
+     * *end* of the path, not the whole thing, specifically so it tolerates
+     * both the real, component-prefixed production path and a bare
+     * '/u/{slug}' — see that method's docblock. Confirm the bare form still
+     * gates correctly (even though it does not correspond to a resolvable
+     * production URL, some other code path or future site config could
+     * still present it), so a future change to the regex's anchoring can't
+     * silently break this tolerance.
+     */
+    public function test_visible_profile_page_adds_og_tags_for_bare_u_path_too(): void {
+        $this->resetAfterTest();
+        global $PAGE;
+
+        $user = $this->getDataGenerator()->create_user(['firstname' => 'Jane', 'lastname' => 'Doe']);
+        profile_manager::get_or_create_for_user((int) $user->id);
+        profile_manager::save((int) $user->id, [
+            'slug' => 'janedoe', 'bio' => 'A biology teacher.', 'expertise' => [],
+            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true,
+        ]);
+
+        $PAGE->set_url(new \moodle_url('/u/janedoe'));
+
+        $hook = $this->make_hook();
+        hook_callbacks::before_standard_head_html_generation($hook);
+
+        $html = $hook->get_output();
+        $this->assertStringContainsString('property="og:title"', $html);
+        // The gate matched (og:title present), but the *emitted* og:url is
+        // always the real path built by build_og_meta_html(), never an echo
+        // of whatever $PAGE->url happened to be.
+        $this->assertStringContainsString('content="https://www.example.com/moodle/local_oerexchange/u/janedoe"', $html);
     }
 
     public function test_hidden_profile_page_adds_nothing(): void {

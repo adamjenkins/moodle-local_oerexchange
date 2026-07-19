@@ -93,6 +93,18 @@ class hook_callbacks {
         // $PAGE->url->get_path() check. The slug charset matches
         // path_profileslug (param::ALPHANUMEXT) and
         // profile_manager::is_valid_slug().
+        //
+        // This same start-unanchored match is *also* why this gate needed
+        // no change when profile_controller::view()'s $PAGE->set_url() was
+        // corrected from the non-resolving '/u/{slug}' to the real request
+        // path '/local_oerexchange/u/{slug}' (component prefix required —
+        // see that controller's class docblock): by the time this hook
+        // fires (during $OUTPUT->header(), after the controller's own
+        // set_url() call has already run), $PAGE->url->get_path() ends in
+        // '/u/{slug}' either way, so this regex matches both forms
+        // identically. Verified via the covering tests in
+        // hook_callbacks_test.php, which pass a real
+        // '/local_oerexchange/u/{slug}' $PAGE->url.
         if (!preg_match('#/u/([A-Za-z0-9_-]{1,100})/?$#', $path, $matches)) {
             return null;
         }
@@ -114,7 +126,13 @@ class hook_callbacks {
         global $PAGE;
 
         $fullname = fullname($user);
-        $profileurl = new \moodle_url('/u/' . $profile->slug);
+        // Must match profile_controller::view()'s $profileurl construction
+        // (including its choice of plain moodle_url over
+        // moodle_url::routed_path() — see that method's comment) — the
+        // #[route] attribute's declared path ('/u/{slug}') is
+        // component-relative, not the real, resolvable URL (see that
+        // class's docblock); a shared/pasted og:url must actually resolve.
+        $profileurl = new \moodle_url('/local_oerexchange/u/' . $profile->slug);
         $ogdescription = $profile->bio !== ''
             ? shorten_text(strip_tags($profile->bio), 200)
             : get_string('profilenobio', 'local_oerexchange');
