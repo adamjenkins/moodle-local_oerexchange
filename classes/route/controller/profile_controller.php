@@ -1,0 +1,244 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+namespace local_oerexchange\route\controller;
+
+use core\router\require_login;
+use core\router\route;
+use local_oerexchange\local\badge_manager;
+use local_oerexchange\local\profile_manager;
+use local_oerexchange\router\parameters\path_profileslug;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+
+/**
+ * Public educator-profile page, GET /u/{slug}. Viewing is intentionally
+ * public (no requirelogin) — matches this plugin's existing pattern of
+ * public catalogue browsing (resource.php:26-27, index.php docblock).
+ *
+ * @package    local_oerexchange
+ * @copyright  2026 Adam Jenkins <adam@wisecat.net>
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+class profile_controller {
+    use \core\router\route_controller;
+
+    /**
+     * Render the public profile page for a slug, or a 404 when the slug
+     * doesn't resolve or the profile is hidden. Those two cases are
+     * deliberately indistinguishable (design doc: "no distinction leaked") —
+     * both take the same page_not_found() path with no differing message.
+     *
+     * @param ServerRequestInterface $request
+     * @param ResponseInterface $response
+     * @param string $slug
+     * @return ResponseInterface
+     */
+    #[route(
+        path: '/u/{slug}',
+        method: 'GET',
+        pathtypes: [
+            new path_profileslug(),
+        ],
+        requirelogin: new require_login(requirelogin: false),
+    )]
+    public function view(
+        ServerRequestInterface $request,
+        ResponseInterface $response,
+        string $slug,
+    ): ResponseInterface {
+        global $DB, $OUTPUT, $PAGE;
+
+        $profile = profile_manager::get_by_slug($slug);
+        if (!$profile || !$profile->visible) {
+            return $this->page_not_found($request, $response);
+        }
+
+        $user = $DB->get_record('user', ['id' => $profile->userid, 'deleted' => 0]);
+        if (!$user) {
+            // A profile row can outlive its user record only in the narrow
+            // window of an in-flight account deletion; treat it the same as
+            // "no such profile" rather than exposing that timing detail.
+            return $this->page_not_found($request, $response);
+        }
+
+        $metrics = profile_manager::get_metrics($profile->userid);
+        $badges = badge_manager::get_badges_for_user($profile->userid);
+        $resources = $DB->get_records('local_oerexchange_resources', [
+            'creatorid' => $profile->userid, 'status' => 'published',
+        ], 'timeshared DESC');
+
+        $fullname = fullname($user);
+        $profileurl = new \moodle_url('/u/' . $slug);
+
+        $PAGE->set_url($profileurl);
+        $PAGE->set_context(\context_system::instance());
+        $PAGE->set_pagelayout('standard');
+        $PAGE->set_title($fullname);
+        $PAGE->set_heading($fullname);
+
+        $out = $OUTPUT->header();
+
+        // Open Graph tags for rich link previews when the profile is shared
+        // (design doc, "Pages & flows"). No moodle_page::add_meta() (or any
+        // equivalent) exists in this Moodle version to inject into <head> —
+        // verified: grep -n "function add_meta" lib/pagelib.php,
+        // lib/classes/output/requirements/page_requirements_manager.php, and
+        // moodle_page's own class all come back empty; the only genuine
+        // Moodle head-injection surface is the
+        // \core\hook\output\before_standard_head_html_generation Hooks API
+        // (lib/classes/output/core_renderer.php:190-195), which needs a
+        // db/hooks.php registration — a new, site-wide-affecting mechanism
+        // out of scope for this task's declared file list. $OUTPUT->header()
+        // has already rendered and closed <head> by the time it returns
+        // (core_renderer::header() renders the full layout up to the main
+        // content token in one pass), so these tags are emitted into <body>
+        // immediately after it — non-conformant per strict HTML5 (meta
+        // without itemprop is head-only) but read correctly by common
+        // lenient OG consumers (Slack, Twitter/X unfurl bots); strict
+        // parsers (e.g. Facebook's) may not pick them up here. A follow-up
+        // task using the Hooks API is the fix for full compliance.
+        $ogdescription = $profile->bio !== ''
+            ? shorten_text(strip_tags($profile->bio), 200)
+            : get_string('profilenobio', 'local_oerexchange');
+        $userpicture = new \user_picture($user);
+        $userpicture->size = 200;
+        $out .= \html_writer::empty_tag('meta', ['property' => 'og:title', 'content' => $fullname]);
+        $out .= \html_writer::empty_tag('meta', ['property' => 'og:description', 'content' => $ogdescription]);
+        $out .= \html_writer::empty_tag('meta', ['property' => 'og:image', 'content' => $userpicture->get_url($PAGE)->out(false)]);
+        $out .= \html_writer::empty_tag('meta', ['property' => 'og:url', 'content' => $profileurl->out(false)]);
+        $out .= \html_writer::empty_tag('meta', ['property' => 'og:type', 'content' => 'profile']);
+
+        $out .= \html_writer::tag('div', $OUTPUT->user_picture($user, ['size' => 100, 'link' => false]), ['class' => 'mb-2']);
+        $out .= \html_writer::tag('h2', s($fullname));
+        $out .= \html_writer::tag('p', $profile->bio !== ''
+            ? format_text($profile->bio, FORMAT_PLAIN)
+            : get_string('profilenobio', 'local_oerexchange'));
+
+        $expertise = json_decode($profile->expertise ?: '[]', true) ?: [];
+        if ($expertise) {
+            $out .= \html_writer::start_tag('div', ['class' => 'mb-2']);
+            foreach ($expertise as $tag) {
+                $out .= \html_writer::tag('span', s($tag), ['class' => 'badge bg-secondary me-1']);
+            }
+            $out .= \html_writer::end_tag('div');
+        }
+
+        if ($badges) {
+            $out .= \html_writer::start_tag('div', ['class' => 'mb-2']);
+            foreach ($badges as $badgekey) {
+                $out .= \html_writer::tag('span', get_string('badge_' . $badgekey, 'local_oerexchange'), [
+                    'class' => 'badge bg-success me-1',
+                ]);
+            }
+            $out .= \html_writer::end_tag('div');
+        }
+
+        $links = [];
+        foreach (['orcidurl' => 'ORCID', 'linkedinurl' => 'LinkedIn', 'researchmapurl' => 'ResearchMap'] as $field => $label) {
+            // Saving a profile does not itself restrict these to a safe
+            // scheme (Task 2's profile_manager::save()); re-validate here
+            // rather than trust stored data for something rendered as a
+            // clickable href — clean_param() returns '' for anything that
+            // isn't a well-formed http(s)/etc URL, ruling out a stored
+            // javascript: URI.
+            $url = clean_param($profile->{$field} ?? '', PARAM_URL);
+            if ($url !== '') {
+                $links[] = \html_writer::link($url, $label, ['class' => 'me-2']);
+            }
+        }
+        if ($links) {
+            $out .= \html_writer::tag('div', implode(' ', $links), ['class' => 'mb-2']);
+        }
+
+        $out .= \html_writer::tag('div', implode(' · ', array_filter([
+            $metrics['membersince']
+                ? get_string(
+                    'profilemembersince',
+                    'local_oerexchange',
+                    userdate($metrics['membersince'], get_string('strftimedatemonthabbr', 'langconfig'))
+                )
+                : null,
+            get_string('profileresourcecount', 'local_oerexchange', $metrics['resourcecount']),
+            get_string('profiledownloadtotal', 'local_oerexchange', $metrics['downloadtotal']),
+            $metrics['avgrating'] !== null
+                ? get_string('profileavgrating', 'local_oerexchange', round($metrics['avgrating'], 1))
+                : null,
+        ])), ['class' => 'small text-muted mb-3']);
+
+        $out .= \html_writer::link(
+            new \moodle_url('/message/index.php', ['id' => $profile->userid]),
+            get_string('profilemessage', 'local_oerexchange'),
+            ['class' => 'btn btn-outline-secondary me-2']
+        );
+        // Minimal share affordance (design doc: "copy-link + native Web Share
+        // API where the browser supports it — no per-network buttons").
+        $out .= \html_writer::tag('button', get_string('profileshare', 'local_oerexchange'), [
+            'type' => 'button',
+            'class' => 'btn btn-outline-secondary me-2',
+            'id' => 'oerexchange-profile-share',
+            'data-share-url' => $profileurl->out(false),
+            'data-share-title' => $fullname,
+        ]);
+        $PAGE->requires->js_init_code(
+            "(function() {
+                var btn = document.getElementById('oerexchange-profile-share');
+                if (!btn) { return; }
+                btn.addEventListener('click', function() {
+                    var url = btn.getAttribute('data-share-url');
+                    var title = btn.getAttribute('data-share-title');
+                    if (navigator.share) {
+                        navigator.share({title: title, url: url}).catch(function() {});
+                    } else if (navigator.clipboard) {
+                        navigator.clipboard.writeText(url).catch(function() {});
+                    }
+                });
+            })();"
+        );
+
+        $out .= $OUTPUT->heading(get_string('profileresourcesheading', 'local_oerexchange'), 4);
+        if (empty($resources)) {
+            $out .= \html_writer::tag('p', get_string('profilenoresources', 'local_oerexchange'));
+        } else {
+            $out .= \html_writer::start_tag('div', ['class' => 'row row-cols-1 row-cols-md-3 g-3']);
+            foreach ($resources as $r) {
+                $rurl = new \moodle_url('/local/oerexchange/resource.php', ['id' => $r->id]);
+                $out .= \html_writer::start_tag('div', ['class' => 'col']);
+                $out .= \html_writer::start_tag('div', ['class' => 'card h-100']);
+                $out .= \html_writer::start_tag('div', ['class' => 'card-body']);
+                $typestring = $r->type === 'activity'
+                    ? get_string('typeactivity', 'local_oerexchange')
+                    : get_string('typecourse', 'local_oerexchange');
+                $out .= \html_writer::tag('span', $typestring, ['class' => 'badge bg-secondary mb-1']);
+                $out .= \html_writer::tag('h5', \html_writer::link($rurl, s($r->title)), ['class' => 'card-title']);
+                $out .= \html_writer::tag(
+                    'div',
+                    get_string('downloadcountlabel', 'local_oerexchange', $r->downloadcount),
+                    ['class' => 'small text-muted']
+                );
+                $out .= \html_writer::end_tag('div');
+                $out .= \html_writer::end_tag('div');
+                $out .= \html_writer::end_tag('div');
+            }
+            $out .= \html_writer::end_tag('div');
+        }
+
+        $out .= $OUTPUT->footer();
+
+        $response->getBody()->write($out);
+        return $response;
+    }
+}
