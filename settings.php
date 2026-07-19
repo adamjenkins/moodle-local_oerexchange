@@ -84,6 +84,36 @@ if ($hassiteconfig) {
         0
     ));
 
+    $settings->add(new admin_setting_heading(
+        'local_oerexchange/badgesheading',
+        get_string('settings_badgesheading', 'local_oerexchange'),
+        get_string('settings_badgesheading_desc', 'local_oerexchange')
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_oerexchange/badge_trustedcontributor_minresources',
+        get_string('settings_badge_minresources', 'local_oerexchange'),
+        get_string('settings_badge_minresources_desc', 'local_oerexchange'),
+        10,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_oerexchange/badge_trustedcontributor_mindownloads',
+        get_string('settings_badge_mindownloads', 'local_oerexchange'),
+        get_string('settings_badge_mindownloads_desc', 'local_oerexchange'),
+        500,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_oerexchange/badge_trustedcontributor_minrating',
+        get_string('settings_badge_minrating', 'local_oerexchange'),
+        get_string('settings_badge_minrating_desc', 'local_oerexchange'),
+        4.0,
+        PARAM_FLOAT
+    ));
+
     $ADMIN->add('local_oerexchange_category', new admin_externalpage(
         'local_oerexchange_managesites',
         get_string('managesitestitle', 'local_oerexchange'),
