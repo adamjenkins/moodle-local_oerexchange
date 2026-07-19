@@ -140,7 +140,11 @@ class provider implements
                 $userlist->add_user($uid);
             }
         }
-        $creators = $DB->get_fieldset_select('local_oerexchange_resources', 'DISTINCT creatorid', '1=1');
+        // Creatorid = 0 marks a tombstoned/anonymized resource
+        // (profile_manager::delete_creator_resource()) — it is not a real
+        // user id and must not appear in the userlist (final whole-branch
+        // review finding 6).
+        $creators = $DB->get_fieldset_select('local_oerexchange_resources', 'DISTINCT creatorid', 'creatorid <> 0');
         foreach ($creators as $uid) {
             $userlist->add_user($uid);
         }

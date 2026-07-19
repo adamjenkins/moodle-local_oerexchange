@@ -140,6 +140,45 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
         $this->assertContains((int) $user->id, $userlist->get_userids());
     }
 
+    /**
+     * FINDING 6 (final whole-branch review): get_users_in_context()'s
+     * creatorid lookup used '1=1', which pulls in creatorid = 0 —
+     * profile_manager::delete_creator_resource()'s tombstone marker, not a
+     * real user id — as a phantom entry in the returned userlist.
+     */
+    public function test_get_users_in_context_excludes_tombstoned_creatorid_zero(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $siteid = $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'S', 'url' => 'https://x', 'contact' => 'x@x.com', 'serviceuserid' => null,
+            'status' => 'active', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+        $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => '', 'summary' => '', 'language' => '', 'tags' => '',
+            'licenseshortname' => 'cc-4.0', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => 0, 'siteid' => $siteid, 'status' => 'deleted',
+            'downloadcount' => 0, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => time(), 'timemodified' => time(),
+        ]);
+
+        $creator = $this->getDataGenerator()->create_user();
+        $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'Real', 'summary' => '', 'language' => '', 'tags' => '',
+            'licenseshortname' => 'cc-4.0', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => $creator->id, 'siteid' => $siteid, 'status' => 'published',
+            'downloadcount' => 0, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => time(), 'timemodified' => time(),
+        ]);
+
+        $userlist = new userlist(\context_system::instance(), 'local_oerexchange');
+        provider::get_users_in_context($userlist);
+
+        $userids = $userlist->get_userids();
+        $this->assertNotContains(0, $userids, 'creatorid=0 (tombstone) must never appear in the userlist');
+        $this->assertContains((int) $creator->id, $userids);
+    }
+
     public function test_get_users_in_context_includes_badge_owner(): void {
         global $DB;
         $this->resetAfterTest();

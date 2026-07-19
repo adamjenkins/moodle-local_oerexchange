@@ -129,9 +129,11 @@ if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser())
     redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
 } else if ($action === 'editthumbnail' && confirm_sesskey() && isloggedin() && !isguestuser()) {
     require_login();
-    $isowner = (int) $resource->creatorid === (int) $USER->id;
-    $ismoderator = has_capability('local/oerexchange:moderate', context_system::instance());
-    if (!$isowner && !$ismoderator) {
+    // Shared with the display gate below (local_oerexchange\local\resource_manager::
+    // user_can_edit_resource() docblock) — final whole-branch review finding 5:
+    // this used to be a second, slightly-differently-guarded copy of the same
+    // ownership/moderator check.
+    if (!\local_oerexchange\local\resource_manager::user_can_edit_resource($resource, (int) $USER->id)) {
         throw new moodle_exception('error_notyourresource', 'local_oerexchange');
     }
     $draftitemid = file_get_submitted_draft_itemid('thumbnail');
@@ -302,7 +304,8 @@ if ($coverfiles) {
 }
 
 // Thumbnail-replacement upload, shown only to the resource's creator or a
-// moderator (same gate as the editthumbnail action handler above) — anyone
+// moderator (same gate as the editthumbnail action handler above, now the
+// exact same shared helper — final whole-branch review finding 5) — anyone
 // else sees no form and posting the action directly is rejected there too,
 // so this is a UI convenience, not the actual access-control boundary.
 // Gated on isloggedin() && !isguestuser() first (matching the
@@ -310,12 +313,9 @@ if ($coverfiles) {
 // visitor's $USER->id (0) would spuriously equal a tombstoned resource's
 // creatorid (also 0 - see the "Created by" comment above), showing this
 // upload form to a guest.
-$isowner = isloggedin() && !isguestuser()
-    && $resource->creatorid
-    && (int) $resource->creatorid === (int) $USER->id;
-$ismoderator = isloggedin() && !isguestuser()
-    && has_capability('local/oerexchange:moderate', context_system::instance());
-if ($isowner || $ismoderator) {
+$cancontrolthumbnail = isloggedin() && !isguestuser()
+    && \local_oerexchange\local\resource_manager::user_can_edit_resource($resource, (int) $USER->id);
+if ($cancontrolthumbnail) {
     $draftitemid = file_get_submitted_draft_itemid('thumbnail');
     file_prepare_draft_area(
         $draftitemid,

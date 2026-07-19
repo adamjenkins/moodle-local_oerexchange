@@ -195,4 +195,32 @@ class resource_manager {
         }
         return has_capability('local/oerexchange:moderate', \context_system::instance());
     }
+
+    /**
+     * Whether $userid may edit a resource's own metadata (currently: its
+     * cover-image thumbnail) — the resource's creator, or anyone holding
+     * local/oerexchange:moderate. Shared by resource.php's editthumbnail
+     * action handler and its display gate (final whole-branch review finding
+     * 5: those two previously duplicated this check with subtly different
+     * guards).
+     *
+     * $userid must be truthy AND match $resource->creatorid for the owner
+     * branch — a tombstoned/anonymized resource has creatorid = 0
+     * (profile_manager::delete_creator_resource()), and 0 must never match
+     * as "owner" no matter what $userid is passed. In practice this method
+     * is only ever called with a real, logged-in, non-guest user's id (both
+     * call sites in resource.php gate on isloggedin() && !isguestuser()
+     * before calling it), so $userid is never 0 itself — this guard exists
+     * for defence in depth, not because a 0 caller is expected.
+     *
+     * @param \stdClass $resource a row from local_oerexchange_resources
+     * @param int $userid
+     * @return bool
+     */
+    public static function user_can_edit_resource(\stdClass $resource, int $userid): bool {
+        if ($userid && (int) $resource->creatorid === $userid) {
+            return true;
+        }
+        return has_capability('local/oerexchange:moderate', \context_system::instance(), $userid);
+    }
 }
