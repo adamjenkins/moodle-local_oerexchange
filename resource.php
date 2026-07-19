@@ -50,6 +50,21 @@ $PAGE->set_pagelayout('standard');
 $PAGE->set_title($resource->title);
 $PAGE->set_heading($resource->title);
 
+if ($resource->status === 'deleted') {
+    // A dedicated, friendly tombstone — NOT the generic error_notfound
+    // exception below, and NOT gated behind the moderator capability (a
+    // deleted resource's tombstone is meant to be visible to anyone who
+    // follows an old link, per design: "sever the link, don't break it").
+    // This is a deliberate improvement over how 'removed'/'hidden' render
+    // today — those two are unchanged and still fall through to the
+    // exception below for non-moderators.
+    echo $OUTPUT->header();
+    echo $OUTPUT->heading(get_string('resourcedeletedheading', 'local_oerexchange'));
+    echo html_writer::tag('p', get_string('resourcedeletedbody', 'local_oerexchange'));
+    echo $OUTPUT->footer();
+    exit;
+}
+
 if ($resource->status !== 'published' && !has_capability('local/oerexchange:moderate', context_system::instance())) {
     throw new moodle_exception('error_notfound', 'local_oerexchange');
 }
