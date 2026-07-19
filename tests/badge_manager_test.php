@@ -107,4 +107,43 @@ final class badge_manager_test extends \advanced_testcase {
             'v1 never auto-revokes (design doc: a stale badge is a smaller UX problem than a visible demotion)'
         );
     }
+
+    public function test_exactly_at_threshold_awards_badge(): void {
+        $this->resetAfterTest();
+        set_config('badge_trustedcontributor_minresources', 2, 'local_oerexchange');
+        set_config('badge_trustedcontributor_mindownloads', 100, 'local_oerexchange');
+        $user = $this->getDataGenerator()->create_user();
+        $this->seed_resource((int) $user->id, 50);
+        $this->seed_resource((int) $user->id, 50);
+
+        $awarded = badge_manager::evaluate_and_award((int) $user->id);
+        $this->assertSame(
+            [badge_manager::BADGE_TRUSTED_CONTRIBUTOR],
+            $awarded,
+            'a metric exactly equal to its minimum threshold qualifies (inclusive boundary)'
+        );
+    }
+
+    public function test_one_download_below_threshold_does_not_award(): void {
+        $this->resetAfterTest();
+        set_config('badge_trustedcontributor_minresources', 2, 'local_oerexchange');
+        set_config('badge_trustedcontributor_mindownloads', 100, 'local_oerexchange');
+        $user = $this->getDataGenerator()->create_user();
+        $this->seed_resource((int) $user->id, 50);
+        $this->seed_resource((int) $user->id, 49);
+
+        $awarded = badge_manager::evaluate_and_award((int) $user->id);
+        $this->assertSame([], $awarded, 'one download below the minimum must not qualify');
+    }
+
+    public function test_one_resource_below_threshold_does_not_award(): void {
+        $this->resetAfterTest();
+        set_config('badge_trustedcontributor_minresources', 2, 'local_oerexchange');
+        set_config('badge_trustedcontributor_mindownloads', 10, 'local_oerexchange');
+        $user = $this->getDataGenerator()->create_user();
+        $this->seed_resource((int) $user->id, 500);
+
+        $awarded = badge_manager::evaluate_and_award((int) $user->id);
+        $this->assertSame([], $awarded, 'one published resource below the minimum must not qualify');
+    }
 }
