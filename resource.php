@@ -26,6 +26,18 @@
 // Viewing is intentionally public; require_login() is only called below,
 // inside the report/review submission branches.
 require(__DIR__ . '/../../config.php'); // phpcs:ignore moodle.Files.RequireLogin.Missing
+// Filelib.php's free functions (file_get_submitted_draft_itemid(),
+// file_prepare_draft_area(), file_save_draft_area_files() below) are NOT
+// pulled in by setup.php's default require chain in this Moodle version —
+// confirmed live 2026-07-19: function_exists('file_save_draft_area_files')
+// is false immediately after a bare config.php bootstrap, and calling it
+// unguarded intermittently fatals with "Call to undefined function"
+// depending on whether some unrelated code path on a given request happened
+// to load filelib.php as a side effect (e.g. formslib.php does, if a
+// moodleform is instantiated elsewhere first). Every core script that
+// calls these functions directly (not via a moodleform) requires this file
+// explicitly — e.g. repository/draftfiles_ajax.php, blog/locallib.php.
+require_once($CFG->libdir . '/filelib.php');
 
 $id = required_param('id', PARAM_INT);
 $action = optional_param('action', '', PARAM_ALPHA);
@@ -99,6 +111,78 @@ if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser())
         message_send($message);
     }
     \core\notification::success(get_string('reviewsubmitted', 'local_oerexchange'));
+    redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
+} else if ($action === 'editthumbnail' && confirm_sesskey() && isloggedin() && !isguestuser()) {
+    require_login();
+    $isowner = (int) $resource->creatorid === (int) $USER->id;
+    $ismoderator = has_capability('local/oerexchange:moderate', context_system::instance());
+    if (!$isowner && !$ismoderator) {
+        throw new moodle_exception('error_notyourresource', 'local_oerexchange');
+    }
+    $draftitemid = file_get_submitted_draft_itemid('thumbnail');
+    $fs = get_file_storage();
+    $usercontext = context_user::instance($USER->id);
+    // The upload form below (deliberately, see its comment) uses a plain
+    // <input type="file">, not Moodle's JS filepicker widget — the
+    // filepicker is what normally AJAX-uploads into the draft area named by
+    // file_get_submitted_draft_itemid() before this handler even runs.
+    // Without it, the draft area is empty and file_save_draft_area_files()
+    // below would silently no-op. Move the plain $_FILES upload into that
+    // same draft item ourselves first, replicating what the filepicker's
+    // AJAX endpoint (repository/draftfiles_ajax.php) does.
+    if (
+        !empty($_FILES['thumbnailfile']['tmp_name'])
+        && $_FILES['thumbnailfile']['error'] === UPLOAD_ERR_OK
+        && is_uploaded_file($_FILES['thumbnailfile']['tmp_name'])
+    ) {
+        // Discard whatever this draft item already held (e.g. a stale draft
+        // left over from an earlier abandoned edit) before adding the file
+        // just submitted, so the draft area holds exactly one file.
+        $fs->delete_area_files($usercontext->id, 'user', 'draft', $draftitemid);
+        $filename = clean_param($_FILES['thumbnailfile']['name'], PARAM_FILE);
+        if ($filename === '') {
+            $filename = 'thumbnail';
+        }
+        $fs->create_file_from_pathname([
+            'contextid' => $usercontext->id,
+            'component' => 'user',
+            'filearea' => 'draft',
+            'itemid' => $draftitemid,
+            'filepath' => '/',
+            'filename' => $filename,
+        ], $_FILES['thumbnailfile']['tmp_name']);
+    }
+    $draftfiles = $fs->get_area_files($usercontext->id, 'user', 'draft', $draftitemid, 'id', false);
+    if (empty($draftfiles)) {
+        throw new moodle_exception('error_thumbnailnofile', 'local_oerexchange');
+    }
+    $draftfile = reset($draftfiles);
+    // A plain <input type="file"> (see the upload form below) offers no
+    // client-side type filtering that can be trusted, and this filearea is
+    // served inline via local_oerexchange_pluginfile() (lib.php, Task 9) —
+    // an arbitrary uploaded file (e.g. .html/.svg) rendered inline from the
+    // Moodle origin would be a stored-XSS vector. Reject anything that
+    // isn't an image before it ever reaches the permanent 'coverimage'
+    // filearea, rather than trusting the draft-area file's extension alone.
+    if (strpos((string) $draftfile->get_mimetype(), 'image/') !== 0) {
+        throw new moodle_exception('error_thumbnailnotanimage', 'local_oerexchange');
+    }
+    // No admin setting for this (out of this task's scope); mirrors
+    // resource_manager::publish()'s maxbackupbytes pattern with a flat
+    // default sized for a thumbnail rather than a course backup.
+    $maxthumbnailbytes = 5 * 1024 * 1024;
+    if ($draftfile->get_filesize() > $maxthumbnailbytes) {
+        throw new moodle_exception('error_thumbnailtoolarge', 'local_oerexchange');
+    }
+    file_save_draft_area_files(
+        $draftitemid,
+        context_system::instance()->id,
+        'local_oerexchange',
+        'coverimage',
+        $resource->id,
+        ['subdirs' => 0, 'maxfiles' => 1, 'maxbytes' => $maxthumbnailbytes]
+    );
+    \core\notification::success(get_string('thumbnailuploaded', 'local_oerexchange'));
     redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
 }
 
@@ -200,6 +284,51 @@ if ($coverfiles) {
         'alt' => get_string('thumbnailalt', 'local_oerexchange', s($resource->title)),
         'class' => 'img-fluid mb-3', 'style' => 'max-height:200px;',
     ]);
+}
+
+// Thumbnail-replacement upload, shown only to the resource's creator or a
+// moderator (same gate as the editthumbnail action handler above) — anyone
+// else sees no form and posting the action directly is rejected there too,
+// so this is a UI convenience, not the actual access-control boundary.
+// Gated on isloggedin() && !isguestuser() first (matching the
+// review/report forms elsewhere on this page): without it, an anonymous
+// visitor's $USER->id (0) would spuriously equal a tombstoned resource's
+// creatorid (also 0 - see the "Created by" comment above), showing this
+// upload form to a guest.
+$isowner = isloggedin() && !isguestuser()
+    && $resource->creatorid
+    && (int) $resource->creatorid === (int) $USER->id;
+$ismoderator = isloggedin() && !isguestuser()
+    && has_capability('local/oerexchange:moderate', context_system::instance());
+if ($isowner || $ismoderator) {
+    $draftitemid = file_get_submitted_draft_itemid('thumbnail');
+    file_prepare_draft_area(
+        $draftitemid,
+        context_system::instance()->id,
+        'local_oerexchange',
+        'coverimage',
+        $resource->id,
+        ['subdirs' => 0, 'maxfiles' => 1]
+    );
+    echo html_writer::start_tag('form', [
+        'method' => 'post',
+        'action' => new moodle_url('/local/oerexchange/resource.php', ['id' => $id]),
+        'enctype' => 'multipart/form-data',
+        'class' => 'mb-3',
+    ]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'editthumbnail']);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'thumbnail', 'value' => $draftitemid]);
+    echo html_writer::tag('label', get_string('thumbnailupload', 'local_oerexchange'));
+    echo html_writer::empty_tag('input', [
+        'type' => 'file', 'name' => 'thumbnailfile', 'class' => 'form-control mb-2', 'accept' => 'image/*',
+    ]);
+    echo html_writer::empty_tag('input', [
+        'type' => 'submit',
+        'value' => get_string('editthumbnail', 'local_oerexchange'),
+        'class' => 'btn btn-outline-secondary btn-sm',
+    ]);
+    echo html_writer::end_tag('form');
 }
 
 // Work out each required plugin's real trial status up front (used by both
