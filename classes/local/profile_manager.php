@@ -82,6 +82,17 @@ class profile_manager {
     }
 
     /**
+     * Fetch a profile by its owning user id.
+     *
+     * @param int $userid
+     * @return \stdClass|null
+     */
+    public static function get_by_userid(int $userid): ?\stdClass {
+        global $DB;
+        return $DB->get_record('local_oerexchange_profiles', ['userid' => $userid]) ?: null;
+    }
+
+    /**
      * Slugs are used in a URL path segment — restrict to a safe, readable charset.
      *
      * @param string $slug

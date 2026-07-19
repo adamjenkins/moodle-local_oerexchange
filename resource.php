@@ -122,6 +122,26 @@ $sandboxenabled = (bool) get_config('local_oerexchange', 'sandboxenabled') && ge
 
 echo $OUTPUT->header();
 
+// Created-by attribution. $resource->creatorid is 0 for a
+// tombstoned/anonymized resource, so the guard below correctly renders no
+// line in that case: there's no attributable owner. The name itself always
+// shows for any other creator (whether or not they've ever touched the
+// profile system — get_by_userid() is a read-only lookup and deliberately
+// never calls get_or_create_for_user(), so viewing this page must never
+// silently create a profile row); it only becomes a link to their profile
+// page when they have a profile row AND it is visible.
+$creatoruser = $resource->creatorid
+    ? $DB->get_record('user', ['id' => $resource->creatorid, 'deleted' => 0])
+    : null;
+if (!empty($creatoruser)) {
+    $creatorprofile = \local_oerexchange\local\profile_manager::get_by_userid((int) $resource->creatorid);
+    $creatorname = fullname($creatoruser);
+    $creatorlabel = ($creatorprofile && $creatorprofile->visible)
+        ? html_writer::link(\moodle_url::routed_path('/local_oerexchange/u/' . $creatorprofile->slug), s($creatorname))
+        : s($creatorname);
+    echo html_writer::tag('p', get_string('createdby', 'local_oerexchange', $creatorlabel));
+}
+
 echo html_writer::tag('p', get_string('licenselabel', 'local_oerexchange', s($resource->licenseshortname)));
 if ($resource->courseformat) {
     echo html_writer::tag(
@@ -149,6 +169,38 @@ if ($resource->forkedfromid) {
 }
 
 echo html_writer::tag('div', format_text($resource->summary ?? '', FORMAT_PLAIN), ['class' => 'mb-3']);
+
+// Cover-image thumbnail, extracted from a course backup's overviewfiles by
+// parse_backup_task (Task 8) and stored under component=local_oerexchange,
+// filearea=coverimage, itemid=resourceid, context_system::instance() —
+// every activity-type resource, and a course backup with no course image,
+// simply has no file here, so no thumbnail renders; that is a reasonable
+// default, not an error state.
+$fs = get_file_storage();
+$coverfiles = $fs->get_area_files(
+    \context_system::instance()->id,
+    'local_oerexchange',
+    'coverimage',
+    $resource->id,
+    'id',
+    false
+);
+if ($coverfiles) {
+    $coverfile = reset($coverfiles);
+    $coverurl = \moodle_url::make_pluginfile_url(
+        $coverfile->get_contextid(),
+        'local_oerexchange',
+        'coverimage',
+        $resource->id,
+        '/',
+        $coverfile->get_filename()
+    );
+    echo html_writer::empty_tag('img', [
+        'src' => $coverurl->out(false),
+        'alt' => get_string('thumbnailalt', 'local_oerexchange', s($resource->title)),
+        'class' => 'img-fluid mb-3', 'style' => 'max-height:200px;',
+    ]);
+}
 
 // Work out each required plugin's real trial status up front (used by both
 // the Try it warning below and the Required plugins list further down), in
@@ -265,8 +317,20 @@ if ($structure && !empty($structure['sections'])) {
     echo html_writer::tag('p', get_string('nocatalogresources', 'local_oerexchange'), ['class' => 'text-muted']);
 }
 
-// Reviews.
-echo $OUTPUT->heading(get_string('reviewsheading', 'local_oerexchange'), 4);
+// Reviews. Collapsed by default; the heading is a click-to-expand toggle,
+// per the design doc's "Reviews/report UX" decision — Boost's Bootstrap 5
+// bundle is already loaded on every Moodle page, so plain
+// data-bs-toggle/data-bs-target attributes need no new JS dependency.
+echo html_writer::tag(
+    'h4',
+    html_writer::link(
+        '#oerexchange-reviews-collapse',
+        get_string('reviewsheading', 'local_oerexchange'),
+        ['class' => 'text-decoration-none', 'data-bs-toggle' => 'collapse', 'role' => 'button',
+            'aria-expanded' => 'false', 'aria-controls' => 'oerexchange-reviews-collapse']
+    )
+);
+echo html_writer::start_tag('div', ['class' => 'collapse', 'id' => 'oerexchange-reviews-collapse']);
 $reviews = $DB->get_records(
     'local_oerexchange_reviews',
     ['resourceid' => $resource->id, 'status' => 'visible'],
@@ -317,8 +381,21 @@ if (isloggedin() && !isguestuser()) {
         'class' => 'btn btn-primary',
     ]);
     echo html_writer::end_tag('form');
+}
+echo html_writer::end_tag('div'); // End #oerexchange-reviews-collapse.
 
-    echo $OUTPUT->heading(get_string('report', 'local_oerexchange'), 5);
+// Report. Same collapsed-by-default pattern, distinct target id.
+if (isloggedin() && !isguestuser()) {
+    echo html_writer::tag(
+        'h5',
+        html_writer::link(
+            '#oerexchange-report-collapse',
+            get_string('report', 'local_oerexchange'),
+            ['class' => 'text-decoration-none', 'data-bs-toggle' => 'collapse', 'role' => 'button',
+                'aria-expanded' => 'false', 'aria-controls' => 'oerexchange-report-collapse']
+        )
+    );
+    echo html_writer::start_tag('div', ['class' => 'collapse', 'id' => 'oerexchange-report-collapse']);
     echo html_writer::start_tag('form', [
         'method' => 'post',
         'action' => new moodle_url('/local/oerexchange/resource.php', ['id' => $id]),
@@ -338,6 +415,7 @@ if (isloggedin() && !isguestuser()) {
         'class' => 'btn btn-outline-danger',
     ]);
     echo html_writer::end_tag('form');
+    echo html_writer::end_tag('div'); // End #oerexchange-report-collapse.
 }
 
 echo $OUTPUT->footer();

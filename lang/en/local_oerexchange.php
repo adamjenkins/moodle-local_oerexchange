@@ -46,6 +46,7 @@ $string['connectintro'] = 'Sign in or create an Exchange account to link it with
 $string['connectsuccess'] = 'Your account is linked. You can close this window.';
 $string['connecttitle'] = 'Link your Exchange account';
 $string['courseformatlabel'] = 'Course format: {$a}';
+$string['createdby'] = 'Created by {$a}';
 $string['dismissreport'] = 'Dismiss';
 $string['download'] = 'Download';
 $string['downloadcountlabel'] = '{$a} downloads';

@@ -57,6 +57,24 @@ final class profile_manager_test extends \advanced_testcase {
         $this->assertNull(profile_manager::get_by_slug('nosuchslug'));
     }
 
+    public function test_get_by_userid_returns_null_when_missing(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $this->assertNull(profile_manager::get_by_userid((int) $user->id));
+    }
+
+    public function test_get_by_userid_returns_the_matching_profile(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $created = profile_manager::get_or_create_for_user((int) $user->id);
+
+        $found = profile_manager::get_by_userid((int) $user->id);
+
+        $this->assertNotNull($found);
+        $this->assertSame($created->id, $found->id);
+        $this->assertSame($created->slug, $found->slug);
+    }
+
     public function test_is_valid_slug_rejects_bad_input(): void {
         $this->resetAfterTest();
         $this->assertTrue(profile_manager::is_valid_slug('jane-doe_2'));
