@@ -136,6 +136,32 @@ final class badge_manager_test extends \advanced_testcase {
         $this->assertSame([], $awarded, 'one download below the minimum must not qualify');
     }
 
+    public function test_unset_config_falls_back_to_class_constant_defaults(): void {
+        $this->resetAfterTest();
+        // Deliberately no set_config() calls for any of the three threshold
+        // settings: this exercises the get_config() === false path (a fresh
+        // upgrade with admin_apply_default_settings() never run) that the
+        // config_int()/config_float() fallback constants exist to cover.
+        // resourcecount = 9 (one below DEFAULT_MINRESOURCES = 10) and
+        // downloadtotal = 499 (one below DEFAULT_MINDOWNLOADS = 500): if the
+        // fallback ever silently drifted to 0 (or to some other value), this
+        // user would wrongly qualify.
+        $user = $this->getDataGenerator()->create_user();
+        for ($i = 0; $i < 8; $i++) {
+            $this->seed_resource((int) $user->id, 0);
+        }
+        $this->seed_resource((int) $user->id, 499);
+
+        $awarded = badge_manager::evaluate_and_award((int) $user->id);
+        $this->assertSame(
+            [],
+            $awarded,
+            'a user below the DEFAULT_MINRESOURCES/DEFAULT_MINDOWNLOADS fallback thresholds ' .
+            'must not qualify when config is entirely unset'
+        );
+        $this->assertSame([], badge_manager::get_badges_for_user((int) $user->id));
+    }
+
     public function test_one_resource_below_threshold_does_not_award(): void {
         $this->resetAfterTest();
         set_config('badge_trustedcontributor_minresources', 2, 'local_oerexchange');

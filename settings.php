@@ -94,7 +94,7 @@ if ($hassiteconfig) {
         'local_oerexchange/badge_trustedcontributor_minresources',
         get_string('settings_badge_minresources', 'local_oerexchange'),
         get_string('settings_badge_minresources_desc', 'local_oerexchange'),
-        10,
+        \local_oerexchange\local\badge_manager::DEFAULT_MINRESOURCES,
         PARAM_INT
     ));
 
@@ -102,7 +102,7 @@ if ($hassiteconfig) {
         'local_oerexchange/badge_trustedcontributor_mindownloads',
         get_string('settings_badge_mindownloads', 'local_oerexchange'),
         get_string('settings_badge_mindownloads_desc', 'local_oerexchange'),
-        500,
+        \local_oerexchange\local\badge_manager::DEFAULT_MINDOWNLOADS,
         PARAM_INT
     ));
 
@@ -110,7 +110,7 @@ if ($hassiteconfig) {
         'local_oerexchange/badge_trustedcontributor_minrating',
         get_string('settings_badge_minrating', 'local_oerexchange'),
         get_string('settings_badge_minrating_desc', 'local_oerexchange'),
-        4.0,
+        \local_oerexchange\local\badge_manager::DEFAULT_MINRATING,
         PARAM_FLOAT
     ));
 

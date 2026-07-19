@@ -28,6 +28,15 @@ class badge_manager {
     /** @var string */
     public const BADGE_TRUSTED_CONTRIBUTOR = 'trusted_contributor';
 
+    /** @var int default for badge_trustedcontributor_minresources, shared with settings.php */
+    public const DEFAULT_MINRESOURCES = 10;
+
+    /** @var int default for badge_trustedcontributor_mindownloads, shared with settings.php */
+    public const DEFAULT_MINDOWNLOADS = 500;
+
+    /** @var float default for badge_trustedcontributor_minrating, shared with settings.php */
+    public const DEFAULT_MINRATING = 4.0;
+
     /**
      * Evaluate all badge rules for a user and award any newly-qualified ones.
      *
@@ -84,11 +93,12 @@ class badge_manager {
         // this plugin was upgraded without a version bump and no admin has
         // yet opened and saved the settings page (admin_apply_default_settings()
         // never ran for these new keys). Fall back explicitly to the same
-        // defaults declared in settings.php so an unconfigured install can't
-        // silently treat every threshold as 0 and over-award the badge.
-        $minresources = self::config_int('badge_trustedcontributor_minresources', 10);
-        $mindownloads = self::config_int('badge_trustedcontributor_mindownloads', 500);
-        $minrating = self::config_float('badge_trustedcontributor_minrating', 4.0);
+        // defaults declared in settings.php (which references these same
+        // constants as its $defaultsetting args) so an unconfigured install
+        // can't silently treat every threshold as 0 and over-award the badge.
+        $minresources = self::config_int('badge_trustedcontributor_minresources', self::DEFAULT_MINRESOURCES);
+        $mindownloads = self::config_int('badge_trustedcontributor_mindownloads', self::DEFAULT_MINDOWNLOADS);
+        $minrating = self::config_float('badge_trustedcontributor_minrating', self::DEFAULT_MINRATING);
 
         if ($metrics['resourcecount'] < $minresources) {
             return false;
