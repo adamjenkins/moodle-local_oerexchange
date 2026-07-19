@@ -177,6 +177,7 @@ $string['siterevoke'] = 'Revoke';
 $string['sitestatus'] = 'Status';
 $string['siteurl'] = 'Site URL';
 $string['structurepreview'] = 'Structure preview';
+$string['task_computebadges'] = 'Compute educator badges';
 $string['tryit'] = 'Try it';
 $string['tryitloadinghint'] = 'Loads a full Moodle in your browser — first visit takes a moment.';
 $string['tryitpluginwarning'] = 'This resource needs a plugin that may not fully work in the in-browser trial. Download is recommended for full functionality.';
