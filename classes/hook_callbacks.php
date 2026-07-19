@@ -126,13 +126,20 @@ class hook_callbacks {
         global $PAGE;
 
         $fullname = fullname($user);
-        // Must match profile_controller::view()'s $profileurl construction
-        // (including its choice of plain moodle_url over
-        // moodle_url::routed_path() — see that method's comment) — the
-        // #[route] attribute's declared path ('/u/{slug}') is
-        // component-relative, not the real, resolvable URL (see that
-        // class's docblock); a shared/pasted og:url must actually resolve.
-        $profileurl = new \moodle_url('/local_oerexchange/u/' . $profile->slug);
+        // Must match profile_controller::view()'s $profileurl construction,
+        // including its use of moodle_url::routed_path() rather than a
+        // plain moodle_url() — see that method's comment and
+        // dev-docs/harness/discoveries/
+        // 2026-07-19-routerconfigured-inconsistent-during-routed-requests.md
+        // for why: routed_path() is the portable core factory that always
+        // resolves (lib/classes/url.php:673), whereas a plain moodle_url()
+        // only happens to work on this dev VM's specific nginx catch-all
+        // and would silently 404 on a real production site with
+        // routerconfigured genuinely false. The #[route] attribute's
+        // declared path ('/u/{slug}') is component-relative, not the real,
+        // resolvable URL (see that class's docblock); a shared/pasted
+        // og:url must actually resolve.
+        $profileurl = \moodle_url::routed_path('/local_oerexchange/u/' . $profile->slug);
         $ogdescription = $profile->bio !== ''
             ? shorten_text(strip_tags($profile->bio), 200)
             : get_string('profilenobio', 'local_oerexchange');

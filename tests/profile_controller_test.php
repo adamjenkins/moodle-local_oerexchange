@@ -83,6 +83,18 @@ final class profile_controller_test extends route_testcase {
         // controller's class docblock); only /local_oerexchange/u/{slug} is
         // the actual compiled route pattern
         // (abstract_route_loader.php:112).
+        //
+        // The controller builds this via moodle_url::routed_path(), which
+        // prepends '/r.php/' unless $CFG->routerconfigured is truthy. No
+        // '/r.php/' prefix is expected below because PHPUnit's bootstrap
+        // (lib/phpunit/bootstrap.php) carries routerconfigured through from
+        // the real config.php unchanged — verified empirically (2026-07-19)
+        // to read '1' under this test suite, unlike the falsy value seen
+        // during an actual routed HTTP request on this dev VM (see
+        // dev-docs/harness/discoveries/
+        // 2026-07-19-routerconfigured-inconsistent-during-routed-requests.md).
+        // If this assertion ever starts failing with a '/r.php/'-prefixed
+        // URL, re-verify that value rather than assuming a regression.
         global $PAGE;
         $this->assertSame('/moodle/local_oerexchange/u/janedoe', $PAGE->url->get_path());
         $this->assertStringContainsString(

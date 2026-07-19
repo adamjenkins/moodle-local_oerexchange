@@ -98,18 +98,26 @@ class profile_controller {
         // real, working URL directly with the component prefix so $PAGE->url,
         // the og:url tag (hook_callbacks::build_og_meta_html(), which must
         // stay consistent with this), and the share button all point
-        // somewhere that actually resolves. Deliberately not
-        // moodle_url::routed_path(), which conditionally prepends '/r.php/'
-        // based on $CFG->routerconfigured — verified (2026-07-19, live
-        // request logging) to read as falsy here specifically during a
-        // routed request's second, full moodle_bootstrap_middleware-driven
-        // lib/setup.php pass, even though config.php sets it true and a
-        // plain (non-routed) script sees true; a bare component-prefixed
-        // path already resolves correctly either way under this site's
-        // standard Moodle nginx recipe (try_files ... /r.php$is_args$args
-        // as the catch-all), so there's no need to route link generation
-        // through that inconsistent flag.
-        $profileurl = new \moodle_url('/local_oerexchange/u/' . $slug);
+        // somewhere that actually resolves.
+        //
+        // Use moodle_url::routed_path() (lib/classes/url.php:673; also used
+        // by admin/swaggerui.php), the documented core factory for a
+        // self-referencing routed-controller URL — NOT a plain
+        // `new moodle_url(...)`. routed_path() always produces a working
+        // link: it prepends '/r.php/' whenever $CFG->routerconfigured isn't
+        // confirmed true, and leaves the clean form otherwise. A plain
+        // moodle_url() only happens to resolve on this dev VM because of a
+        // site-specific nginx catch-all rule; on a real production site
+        // where routerconfigured is genuinely false, it would silently
+        // 404. On THIS VM specifically, a documented environment bug makes
+        // routerconfigured read false during a routed request's controller
+        // execution even though config.php sets it true (see
+        // dev-docs/harness/discoveries/
+        // 2026-07-19-routerconfigured-inconsistent-during-routed-requests.md)
+        // — so this link may render with a '/r.php/' prefix here. That is
+        // expected and cosmetic, not a plugin defect; do not "simplify"
+        // this back to a plain moodle_url().
+        $profileurl = \moodle_url::routed_path('/local_oerexchange/u/' . $slug);
 
         $PAGE->set_url($profileurl);
         $PAGE->set_context(\context_system::instance());

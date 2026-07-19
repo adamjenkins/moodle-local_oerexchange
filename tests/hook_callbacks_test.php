@@ -83,7 +83,14 @@ final class hook_callbacks_test extends \advanced_testcase {
         $this->assertStringContainsString('property="og:url"', $html);
         // The real, resolvable URL, not the bare '/u/{slug}' the #[route]
         // attribute declares (component-relative only — see
-        // profile_controller's class docblock).
+        // profile_controller's class docblock). build_og_meta_html() builds
+        // this via moodle_url::routed_path(); no '/r.php/' prefix is
+        // expected here because PHPUnit's bootstrap carries
+        // $CFG->routerconfigured through from config.php unchanged (reads
+        // truthy under this test suite) — see profile_controller_test.php's
+        // matching comment and
+        // dev-docs/harness/discoveries/
+        // 2026-07-19-routerconfigured-inconsistent-during-routed-requests.md.
         $this->assertStringContainsString('content="https://www.example.com/moodle/local_oerexchange/u/janedoe"', $html);
         $this->assertStringNotContainsString('content="https://www.example.com/moodle/u/janedoe"', $html);
         $this->assertStringContainsString('property="og:type" content="profile"', $html);
