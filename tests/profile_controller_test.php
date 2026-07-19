@@ -70,6 +70,12 @@ final class profile_controller_test extends route_testcase {
         $body = (string) $response->getBody();
         $this->assertStringContainsString('A biology teacher.', $body);
         $this->assertStringContainsString('Jane Doe', $body);
+        // Open Graph tags are no longer emitted by the controller itself —
+        // \local_oerexchange\hook_callbacks::before_standard_head_html_generation()
+        // (covered by tests/hook_callbacks_test.php) now owns placing them
+        // into the real <head> via the Hooks API. A second, <body>-placed
+        // copy here would just conflict with the <head> one.
+        $this->assertStringNotContainsString('property="og:title"', $body);
     }
 
     public function test_visible_profile_shows_metrics_badges_and_message_link(): void {

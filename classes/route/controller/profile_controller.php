@@ -92,37 +92,18 @@ class profile_controller {
 
         $out = $OUTPUT->header();
 
-        // Open Graph tags for rich link previews when the profile is shared
-        // (design doc, "Pages & flows"). No moodle_page::add_meta() (or any
-        // equivalent) exists in this Moodle version to inject into <head> —
-        // verified: grep -n "function add_meta" lib/pagelib.php,
-        // lib/classes/output/requirements/page_requirements_manager.php, and
-        // moodle_page's own class all come back empty; the only genuine
-        // Moodle head-injection surface is the
-        // \core\hook\output\before_standard_head_html_generation Hooks API
-        // (lib/classes/output/core_renderer.php:190-195), which needs a
-        // db/hooks.php registration — a new, site-wide-affecting mechanism
-        // out of scope for this task's declared file list. $OUTPUT->header()
-        // has already rendered and closed <head> by the time it returns
-        // (core_renderer::header() renders the full layout up to the main
-        // content token in one pass), so these tags are emitted into <body>
-        // immediately after it — non-conformant per strict HTML5 (meta
-        // without itemprop is head-only) but read correctly by common
-        // lenient OG consumers (Slack, Twitter/X unfurl bots); strict
-        // parsers (e.g. Facebook's) may not pick them up here. A follow-up
-        // task using the Hooks API is the fix for full compliance.
-        $ogdescription = $profile->bio !== ''
-            ? shorten_text(strip_tags($profile->bio), 200)
-            : get_string('profilenobio', 'local_oerexchange');
-        $userpicture = new \user_picture($user);
-        $userpicture->size = 200;
-        $out .= \html_writer::empty_tag('meta', ['property' => 'og:title', 'content' => $fullname]);
-        $out .= \html_writer::empty_tag('meta', ['property' => 'og:description', 'content' => $ogdescription]);
-        $out .= \html_writer::empty_tag('meta', ['property' => 'og:image', 'content' => $userpicture->get_url($PAGE)->out(false)]);
-        $out .= \html_writer::empty_tag('meta', ['property' => 'og:url', 'content' => $profileurl->out(false)]);
-        $out .= \html_writer::empty_tag('meta', ['property' => 'og:type', 'content' => 'profile']);
-
+        // Open Graph tags for rich link previews (design doc, "Pages &
+        // flows") are emitted into the real <head> by
+        // \local_oerexchange\hook_callbacks::before_standard_head_html_generation()
+        // (db/hooks.php), a listener on the genuine Moodle <head>-injection
+        // surface, \core\hook\output\before_standard_head_html_generation
+        // (lib/classes/hook/output/before_standard_head_html_generation.php).
+        // $OUTPUT->header() has already rendered and closed <head> by the
+        // time it returns to this controller, so this method must not (and
+        // no longer does) emit its own copy here — a second, <body>-placed
+        // set of og:* tags would just conflict with the <head> ones.
         $out .= \html_writer::tag('div', $OUTPUT->user_picture($user, ['size' => 100, 'link' => false]), ['class' => 'mb-2']);
+        $out .= \html_writer::tag('p', get_string('profileheading', 'local_oerexchange'), ['class' => 'text-muted small mb-1']);
         $out .= \html_writer::tag('h2', s($fullname));
         $out .= \html_writer::tag('p', $profile->bio !== ''
             ? format_text($profile->bio, FORMAT_PLAIN)
