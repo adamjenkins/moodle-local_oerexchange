@@ -90,10 +90,10 @@ class profile_edit_controller {
         }
 
         if ($request->getMethod() === 'POST') {
-            return $this->save($response, $profile);
+            return $this->save($response, $profile, $slug);
         }
 
-        return $this->render_form($response, $profile, $slug);
+        return $this->render_form($response, $slug, self::values_from_profile($profile));
     }
 
     /**
@@ -130,13 +130,31 @@ class profile_edit_controller {
      * introducing a new pattern, just extending the existing one into a
      * routed controller.
      *
+     * profile_manager::save()'s validation (error_invalidslug/error_slugtaken)
+     * is caught here, not left to bubble into Slim's generic error page: on
+     * failure this re-renders the same form the GET branch produces, with
+     * the error message shown and every field pre-filled from the values
+     * just submitted in THIS request (not the stale, pre-save $profile row)
+     * — otherwise the user's whole form (bio, expertise, portfolio links,
+     * not just the bad slug) would be silently lost, forcing a re-type from
+     * scratch (Task 7 review finding).
+     *
+     * Only \moodle_exception is caught, deliberately no wider: a genuine
+     * unexpected failure (e.g. a DB connection error) must still surface as
+     * a real error, not be swallowed and misrepresented as a validation
+     * message.
+     *
      * @param ResponseInterface $response
      * @param \stdClass $profile the profile row being edited (pre-save)
+     * @param string $slug the slug the request arrived on (used for the
+     *        form's action URL if the save fails and the form is
+     *        re-rendered; see render_form()'s $slug param)
      * @return ResponseInterface
      */
     protected function save(
         ResponseInterface $response,
         \stdClass $profile,
+        string $slug,
     ): ResponseInterface {
         global $USER;
 
@@ -153,8 +171,7 @@ class profile_edit_controller {
             'trim',
             explode(',', $expertiseraw)
         ), fn (string $tag): bool => $tag !== ''));
-
-        profile_manager::save((int) $USER->id, [
+        $submitted = (object) [
             'slug' => $newslug,
             'bio' => $bio,
             'expertise' => $expertise,
@@ -162,7 +179,13 @@ class profile_edit_controller {
             'linkedinurl' => optional_param('linkedinurl', '', PARAM_URL),
             'researchmapurl' => optional_param('researchmapurl', '', PARAM_URL),
             'visible' => (bool) optional_param('visible', 0, PARAM_BOOL),
-        ]);
+        ];
+
+        try {
+            profile_manager::save((int) $USER->id, (array) $submitted);
+        } catch (\moodle_exception $e) {
+            return $this->render_form($response, $slug, $submitted, $e->getMessage());
+        }
 
         // See this class's docblock: the real, resolvable URL needs the
         // component prefix and moodle_url::routed_path(), not a plain
@@ -173,20 +196,51 @@ class profile_edit_controller {
     }
 
     /**
-     * Render the GET branch: the edit form pre-filled with the profile's
-     * current values.
+     * Build the field values render_form() needs from a stored profile row
+     * (the GET branch's "prefill with current values" case) — the
+     * counterpart to the plain \stdClass render_form() also accepts
+     * directly from save()'s just-submitted, not-yet-persisted values on a
+     * failed save.
+     *
+     * @param \stdClass $profile
+     * @return \stdClass slug, bio, expertise (array), orcidurl, linkedinurl, researchmapurl, visible (bool)
+     */
+    protected static function values_from_profile(\stdClass $profile): \stdClass {
+        return (object) [
+            'slug' => $profile->slug,
+            'bio' => $profile->bio,
+            'expertise' => json_decode($profile->expertise ?: '[]', true) ?: [],
+            'orcidurl' => $profile->orcidurl,
+            'linkedinurl' => $profile->linkedinurl,
+            'researchmapurl' => $profile->researchmapurl,
+            'visible' => (bool) $profile->visible,
+        ];
+    }
+
+    /**
+     * Render the edit form pre-filled with $values — either the profile's
+     * current stored values (GET branch, via values_from_profile()) or the
+     * values just submitted in a POST that failed profile_manager::save()'s
+     * validation (save()'s \moodle_exception catch), so a rejected save
+     * never loses what the user typed.
      *
      * @param ResponseInterface $response
-     * @param \stdClass $profile
      * @param string $slug the slug the request arrived on (used for the
-     *        form's own action URL; may differ from $profile->slug only in
-     *        the impossible case where it wouldn't have resolved above)
+     *        form's own action URL; on a failed save this is deliberately
+     *        the URL's original slug, not $values->slug, since the request
+     *        stays on the same edit URL)
+     * @param \stdClass $values slug, bio, expertise (array), orcidurl,
+     *        linkedinurl, researchmapurl, visible (bool) — see
+     *        values_from_profile()
+     * @param string|null $error a caught save() validation message to show
+     *        above the form, or null for the plain GET render
      * @return ResponseInterface
      */
     protected function render_form(
         ResponseInterface $response,
-        \stdClass $profile,
         string $slug,
+        \stdClass $values,
+        ?string $error = null,
     ): ResponseInterface {
         global $OUTPUT, $PAGE;
 
@@ -201,9 +255,10 @@ class profile_edit_controller {
         $PAGE->set_title(get_string('profileedittitle', 'local_oerexchange'));
         $PAGE->set_heading(get_string('profileedittitle', 'local_oerexchange'));
 
-        $expertise = json_decode($profile->expertise ?: '[]', true) ?: [];
-
         $out = $OUTPUT->header();
+        if ($error !== null) {
+            $out .= \html_writer::tag('div', s($error), ['class' => 'alert alert-danger']);
+        }
         $out .= \html_writer::start_tag('form', [
             'method' => 'post',
             'action' => $editurl,
@@ -217,13 +272,13 @@ class profile_edit_controller {
         ]);
         $out .= \html_writer::empty_tag('input', [
             'type' => 'text', 'name' => 'slug', 'id' => 'oerexchange-profile-slug',
-            'value' => s($profile->slug), 'class' => 'form-control mb-2',
+            'value' => s($values->slug), 'class' => 'form-control mb-2',
         ]);
 
         $out .= \html_writer::tag('label', get_string('profileeditbio', 'local_oerexchange'), [
             'for' => 'oerexchange-profile-bio',
         ]);
-        $out .= \html_writer::tag('textarea', s($profile->bio), [
+        $out .= \html_writer::tag('textarea', s($values->bio), [
             'name' => 'bio', 'id' => 'oerexchange-profile-bio', 'class' => 'form-control mb-2',
         ]);
 
@@ -232,7 +287,7 @@ class profile_edit_controller {
         ]);
         $out .= \html_writer::empty_tag('input', [
             'type' => 'text', 'name' => 'expertise', 'id' => 'oerexchange-profile-expertise',
-            'value' => s(implode(', ', $expertise)), 'class' => 'form-control mb-2',
+            'value' => s(implode(', ', $values->expertise)), 'class' => 'form-control mb-2',
         ]);
 
         $out .= \html_writer::tag('label', get_string('profileeditorcid', 'local_oerexchange'), [
@@ -240,7 +295,7 @@ class profile_edit_controller {
         ]);
         $out .= \html_writer::empty_tag('input', [
             'type' => 'url', 'name' => 'orcidurl', 'id' => 'oerexchange-profile-orcid',
-            'value' => s($profile->orcidurl), 'class' => 'form-control mb-2',
+            'value' => s($values->orcidurl), 'class' => 'form-control mb-2',
         ]);
 
         $out .= \html_writer::tag('label', get_string('profileeditlinkedin', 'local_oerexchange'), [
@@ -248,7 +303,7 @@ class profile_edit_controller {
         ]);
         $out .= \html_writer::empty_tag('input', [
             'type' => 'url', 'name' => 'linkedinurl', 'id' => 'oerexchange-profile-linkedin',
-            'value' => s($profile->linkedinurl), 'class' => 'form-control mb-2',
+            'value' => s($values->linkedinurl), 'class' => 'form-control mb-2',
         ]);
 
         $out .= \html_writer::tag('label', get_string('profileeditresearchmap', 'local_oerexchange'), [
@@ -256,14 +311,14 @@ class profile_edit_controller {
         ]);
         $out .= \html_writer::empty_tag('input', [
             'type' => 'url', 'name' => 'researchmapurl', 'id' => 'oerexchange-profile-researchmap',
-            'value' => s($profile->researchmapurl), 'class' => 'form-control mb-2',
+            'value' => s($values->researchmapurl), 'class' => 'form-control mb-2',
         ]);
 
         $out .= \html_writer::start_tag('div', ['class' => 'form-check mb-3']);
         $out .= \html_writer::empty_tag('input', array_merge([
             'type' => 'checkbox', 'name' => 'visible', 'value' => '1', 'class' => 'form-check-input',
             'id' => 'oerexchange-profile-visible',
-        ], $profile->visible ? ['checked' => 'checked'] : []));
+        ], $values->visible ? ['checked' => 'checked'] : []));
         $out .= \html_writer::tag(
             'label',
             get_string('profileeditvisible', 'local_oerexchange'),

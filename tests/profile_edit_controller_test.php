@@ -221,7 +221,21 @@ final class profile_edit_controller_test extends route_testcase {
         ];
         $response = $this->process_request('POST', 'u/' . $profile->slug . '/edit', route_loader_interface::ROUTE_GROUP_PAGE);
 
-        $this->assertNotContains($response->getStatusCode(), [200, 302, 303]);
+        // The require_sesskey() call throws a plain \moodle_exception('invalidsesskey')
+        // *before* this controller's save()/profile_manager::save() try/catch
+        // even starts (Task 7's fix only wraps the profile_manager::save()
+        // call, deliberately not require_sesskey() — a bad sesskey is a CSRF
+        // rejection, not a form-validation error to redisplay). That
+        // exception is not a response_aware_exception, so it falls through
+        // to Slim's default ErrorHandler::determineStatusCode(), which
+        // returns 500 for any non-HttpException (vendor/slim/slim/Slim/
+        // Handlers/ErrorHandler.php:148-159) — matching this file's own
+        // class docblock ("a plain \moodle_exception ... renders as a
+        // normal 500 response"). Verified empirically 2026-07-19 with a
+        // disposable probe test asserting on the real status code (not
+        // committed): 500, not 403 — confirming 500 here rather than the
+        // 403 originally assumed for this assertion.
+        $this->assertSame(500, $response->getStatusCode());
         $unchanged = profile_manager::get_by_slug($profile->slug);
         $this->assertSame('', $unchanged->bio);
     }
@@ -230,7 +244,10 @@ final class profile_edit_controller_test extends route_testcase {
         // Not re-testing profile_manager::save()'s validation logic itself
         // (profile_manager_test.php's job) — just confirming this
         // controller's own error path surfaces it rather than silently
-        // swallowing or mis-saving it.
+        // swallowing or mis-saving it, and (Task 7 review finding) that the
+        // form is redisplayed with the error and the user's just-submitted
+        // values, not bounced to Slim's generic error page with everything
+        // typed lost.
         $this->resetAfterTest();
         $user = $this->getDataGenerator()->create_user();
         $profile = profile_manager::get_or_create_for_user((int) $user->id);
@@ -240,12 +257,23 @@ final class profile_edit_controller_test extends route_testcase {
 
         $_POST = [
             'slug' => 'not a valid slug!',
-            'bio' => 'irrelevant',
+            'bio' => 'This bio must survive the failed save.',
+            'expertise' => 'biology, chemistry',
             'sesskey' => sesskey(),
         ];
         $response = $this->process_request('POST', 'u/' . $profile->slug . '/edit', route_loader_interface::ROUTE_GROUP_PAGE);
 
-        $this->assertNotContains($response->getStatusCode(), [200, 302, 303]);
+        // The fix's whole point: a validation failure re-renders the form
+        // (200), not a redirect and not Slim's generic error page.
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+        $this->assertStringContainsString(get_string('error_invalidslug', 'local_oerexchange'), $body);
+        // The just-submitted values must be shown back, not the stale
+        // pre-save $profile row (which has empty bio/expertise).
+        $this->assertStringContainsString('This bio must survive the failed save.', $body);
+        $this->assertStringContainsString('biology, chemistry', $body);
+        $this->assertStringContainsString('value="not a valid slug!"', $body);
+
         $unchanged = profile_manager::get_by_slug($profile->slug);
         $this->assertNotNull($unchanged);
         $this->assertSame('', $unchanged->bio);
