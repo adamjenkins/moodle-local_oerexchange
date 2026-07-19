@@ -103,4 +103,97 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
 
         $this->assertEquals(0, $DB->count_records('local_oerexchange_linkcodes', ['userid' => $user->id]));
     }
+
+    public function test_delete_for_userid_fully_deletes_new_profile_and_badge_data(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+
+        \local_oerexchange\local\profile_manager::get_or_create_for_user((int) $user->id);
+        \local_oerexchange\local\profile_manager::save((int) $user->id, [
+            'slug' => 'deleteme', 'bio' => 'bio', 'expertise' => [], 'orcidurl' => '',
+            'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true,
+        ]);
+        $DB->insert_record('local_oerexchange_badges', (object) [
+            'userid' => $user->id, 'badgekey' => 'trusted_contributor', 'timeawarded' => time(),
+        ]);
+
+        \local_oerexchange\privacy\provider::delete_data_for_user(
+            new approved_contextlist($user, 'local_oerexchange', [\context_system::instance()->id])
+        );
+
+        $this->assertFalse($DB->record_exists('local_oerexchange_profiles', ['userid' => $user->id]));
+        $this->assertFalse($DB->record_exists('local_oerexchange_badges', ['userid' => $user->id]));
+    }
+
+    public function test_delete_for_userid_tombstones_the_creators_resources_not_just_anonymizes(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $reviewer = $this->getDataGenerator()->create_user();
+
+        $siteid = $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'S', 'url' => 'https://x', 'contact' => 'x@x.com', 'serviceuserid' => null,
+            'status' => 'active', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+        $resourceid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'Secret course', 'summary' => 'Secret summary',
+            'language' => '', 'tags' => 'tag1,tag2', 'licenseshortname' => 'cc-4.0',
+            'activitytype' => null, 'courseformat' => null, 'creatorid' => $user->id,
+            'siteid' => $siteid, 'status' => 'published', 'downloadcount' => 3, 'importcount' => 1,
+            'forkedfromid' => null, 'timeshared' => time(), 'timemodified' => time(),
+        ]);
+        $versionid = $DB->insert_record('local_oerexchange_versions', (object) [
+            'resourceid' => $resourceid, 'versionnumber' => 1, 'itemid' => $resourceid,
+            'filename' => 'x.mbz', 'filesize' => 10, 'moodleversion' => '5.2', 'backupversion' => '5.2',
+            'structurejson' => '{}', 'requiredplugins' => '[]', 'status' => 'ready',
+            'parseerror' => null, 'timecreated' => time(),
+        ]);
+        // A review from someone OTHER than the deleting user — the design's
+        // explicit decision (2026-07-19) is that it's deleted too, since it
+        // describes courseware that will no longer exist.
+        $DB->insert_record('local_oerexchange_reviews', (object) [
+            'resourceid' => $resourceid, 'userid' => $reviewer->id, 'contexttext' => 'ctx',
+            'adaptationtext' => 'adapt', 'outcometext' => 'outcome', 'rating' => 5,
+            'status' => 'visible', 'timecreated' => time(),
+        ]);
+        $importerid = $DB->insert_record('local_oerexchange_imports', (object) [
+            'resourceid' => $resourceid, 'versionid' => $versionid, 'siteid' => $siteid,
+            'userid' => null, 'timecreated' => time(),
+        ]);
+
+        \local_oerexchange\privacy\provider::delete_data_for_user(
+            new approved_contextlist($user, 'local_oerexchange', [\context_system::instance()->id])
+        );
+
+        $resource = $DB->get_record('local_oerexchange_resources', ['id' => $resourceid], '*', MUST_EXIST);
+        $this->assertSame('deleted', $resource->status, 'row survives as a tombstone, not deleted outright');
+        $this->assertSame(0, (int) $resource->creatorid);
+        $this->assertSame('', (string) $resource->title, 'descriptive metadata is scrubbed');
+        $this->assertSame('', (string) $resource->summary);
+        $this->assertSame('', (string) $resource->tags);
+
+        $this->assertFalse(
+            $DB->record_exists('local_oerexchange_versions', ['resourceid' => $resourceid]),
+            'version rows (structure/required-plugins metadata) are deleted'
+        );
+        $this->assertFalse(
+            $DB->record_exists('local_oerexchange_reviews', ['resourceid' => $resourceid]),
+            'reviews on the deleted resource are gone, even the reviewer\'s own (design decision 2026-07-19)'
+        );
+        $this->assertTrue(
+            $DB->record_exists('local_oerexchange_imports', ['id' => $importerid]),
+            'other sites\' import history for this resourceid is left untouched'
+        );
+
+        $files = get_file_storage()->get_area_files(
+            \context_system::instance()->id,
+            'local_oerexchange',
+            'resource',
+            $versionid,
+            'id',
+            false
+        );
+        $this->assertEmpty($files, 'the resource\'s files are actually deleted, not just detached');
+    }
 }

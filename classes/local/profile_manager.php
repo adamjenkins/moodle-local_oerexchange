@@ -198,6 +198,55 @@ class profile_manager {
     }
 
     /**
+     * Tombstone a single resource as part of a GDPR full-deletion request:
+     * delete its files/versions/reviews/reports, scrub descriptive metadata,
+     * keep the row (stable id, status = 'deleted', creatorid = 0) so existing
+     * links to it (e.g. a client site's "View on Exchange" button) resolve to
+     * a graceful message instead of breaking. See
+     * dev-docs/oer-platform/EDUCATOR-PROFILES-DESIGN.md "Privacy / GDPR".
+     *
+     * @param \stdClass $resource a row from local_oerexchange_resources
+     */
+    public static function delete_creator_resource(\stdClass $resource): void {
+        global $DB;
+
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            $fs = get_file_storage();
+            $context = \context_system::instance();
+
+            $versionids = $DB->get_fieldset_select(
+                'local_oerexchange_versions',
+                'id',
+                'resourceid = ?',
+                [$resource->id]
+            );
+            foreach ($versionids as $versionid) {
+                $fs->delete_area_files($context->id, 'local_oerexchange', 'resource', $versionid);
+            }
+            $fs->delete_area_files($context->id, 'local_oerexchange', 'coverimage', $resource->id);
+
+            $DB->delete_records('local_oerexchange_versions', ['resourceid' => $resource->id]);
+            $DB->delete_records('local_oerexchange_reviews', ['resourceid' => $resource->id]);
+            $DB->delete_records('local_oerexchange_reports', ['resourceid' => $resource->id]);
+
+            $DB->update_record('local_oerexchange_resources', (object) [
+                'id' => $resource->id,
+                'title' => '',
+                'summary' => '',
+                'tags' => '',
+                'status' => 'deleted',
+                'creatorid' => 0,
+                'timemodified' => time(),
+            ]);
+
+            $transaction->allow_commit();
+        } catch (\Throwable $e) {
+            $transaction->rollback($e);
+        }
+    }
+
+    /**
      * Generate a unique slug seeded from the user's username, falling back to
      * userN / userN-2 / userN-3 ... on collision.
      *

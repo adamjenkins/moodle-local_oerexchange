@@ -74,6 +74,21 @@ class provider implements
             'timecreated' => 'privacy:metadata:local_oerexchange_linkcodes:timecreated',
         ], 'privacy:metadata:local_oerexchange_linkcodes');
 
+        $collection->add_database_table('local_oerexchange_profiles', [
+            'userid' => 'privacy:metadata:local_oerexchange_profiles:userid',
+            'bio' => 'privacy:metadata:local_oerexchange_profiles:bio',
+            'orcidurl' => 'privacy:metadata:local_oerexchange_profiles:orcidurl',
+            'linkedinurl' => 'privacy:metadata:local_oerexchange_profiles:linkedinurl',
+            'researchmapurl' => 'privacy:metadata:local_oerexchange_profiles:researchmapurl',
+            'timecreated' => 'privacy:metadata:local_oerexchange_profiles:timecreated',
+        ], 'privacy:metadata:local_oerexchange_profiles');
+
+        $collection->add_database_table('local_oerexchange_badges', [
+            'userid' => 'privacy:metadata:local_oerexchange_badges:userid',
+            'badgekey' => 'privacy:metadata:local_oerexchange_badges:badgekey',
+            'timeawarded' => 'privacy:metadata:local_oerexchange_badges:timeawarded',
+        ], 'privacy:metadata:local_oerexchange_badges');
+
         return $collection;
     }
 
@@ -87,7 +102,9 @@ class provider implements
             || $DB->record_exists('local_oerexchange_resources', ['creatorid' => $userid])
             || $DB->record_exists('local_oerexchange_imports', ['userid' => $userid])
             || $DB->record_exists('local_oerexchange_trials', ['userid' => $userid])
-            || $DB->record_exists('local_oerexchange_linkcodes', ['userid' => $userid]);
+            || $DB->record_exists('local_oerexchange_linkcodes', ['userid' => $userid])
+            || $DB->record_exists('local_oerexchange_profiles', ['userid' => $userid])
+            || $DB->record_exists('local_oerexchange_badges', ['userid' => $userid]);
 
         if ($hasdata) {
             $contextlist->add_system_context();
@@ -110,6 +127,8 @@ class provider implements
             'local_oerexchange_imports',
             'local_oerexchange_trials',
             'local_oerexchange_linkcodes',
+            'local_oerexchange_profiles',
+            'local_oerexchange_badges',
         ];
         foreach ($tables as $table) {
             $userids = $DB->get_fieldset_select($table, 'DISTINCT userid', 'userid IS NOT NULL');
@@ -138,6 +157,8 @@ class provider implements
         $imports = $DB->get_records('local_oerexchange_imports', ['userid' => $userid]);
         $trials = $DB->get_records('local_oerexchange_trials', ['userid' => $userid]);
         $linkcodes = $DB->get_records('local_oerexchange_linkcodes', ['userid' => $userid]);
+        $profiles = $DB->get_records('local_oerexchange_profiles', ['userid' => $userid]);
+        $badges = $DB->get_records('local_oerexchange_badges', ['userid' => $userid]);
 
         $data = (object) [
             'reviews' => array_values(array_map(fn($r) => [
@@ -167,6 +188,15 @@ class provider implements
                 'status' => $r->status,
                 'timecreated' => \core_privacy\local\request\transform::datetime($r->timecreated),
             ], $linkcodes)),
+            'profile' => array_values(array_map(fn($r) => [
+                'slug' => $r->slug, 'bio' => $r->bio, 'orcidurl' => $r->orcidurl,
+                'linkedinurl' => $r->linkedinurl, 'researchmapurl' => $r->researchmapurl,
+                'timecreated' => \core_privacy\local\request\transform::datetime($r->timecreated),
+            ], $profiles)),
+            'badges' => array_values(array_map(fn($r) => [
+                'badgekey' => $r->badgekey,
+                'timeawarded' => \core_privacy\local\request\transform::datetime($r->timeawarded),
+            ], $badges)),
         ];
 
         writer::with_context(\context_system::instance())->export_data(
@@ -198,22 +228,37 @@ class provider implements
     }
 
     /**
-     * Deletes or anonymizes all of this plugin's data for a single user.
+     * Deletes all of this plugin's data for a single user. Resources the user
+     * created are tombstoned (files/versions/reviews/reports deleted,
+     * descriptive metadata scrubbed, row kept as status = 'deleted' so
+     * existing links to it don't break — see profile_manager::delete_creator_resource()).
      *
      * @param int $userid
      */
     protected static function delete_for_userid(int $userid): void {
         global $DB;
 
+        $DB->delete_records('local_oerexchange_profiles', ['userid' => $userid]);
+        $DB->delete_records('local_oerexchange_badges', ['userid' => $userid]);
+
+        $ownresources = $DB->get_records('local_oerexchange_resources', ['creatorid' => $userid]);
+        foreach ($ownresources as $resource) {
+            \local_oerexchange\local\profile_manager::delete_creator_resource($resource);
+        }
+
+        // These four are unrelated to resource ownership — a departing user's
+        // OWN activity elsewhere (reviews they wrote on other people's still-
+        // live resources, reports they filed, imports/trials they made,
+        // pending link codes) is deleted regardless of whose resource it
+        // touches. This is unchanged from the plugin's original behavior.
+        // No double-deletion risk with the loop above: delete_creator_resource()
+        // filters by resourceid (the user's own resources), these filter by
+        // userid (reviews/reports the user themself authored, possibly on
+        // someone else's resource) — non-overlapping row sets.
         $DB->delete_records('local_oerexchange_reviews', ['userid' => $userid]);
         $DB->delete_records('local_oerexchange_reports', ['userid' => $userid]);
         $DB->delete_records('local_oerexchange_imports', ['userid' => $userid]);
         $DB->delete_records('local_oerexchange_trials', ['userid' => $userid]);
         $DB->delete_records('local_oerexchange_linkcodes', ['userid' => $userid]);
-        // Shared resources are third-party content other sites may already have
-        // imported — detach personal identity rather than deleting the catalogue
-        // entry (creatorid 0 = "no attributable owner", mirrors core's own
-        // deleted-user convention elsewhere).
-        $DB->set_field('local_oerexchange_resources', 'creatorid', 0, ['creatorid' => $userid]);
     }
 }
