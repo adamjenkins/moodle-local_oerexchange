@@ -17,6 +17,7 @@
 namespace local_oerexchange\privacy;
 
 use core_privacy\local\request\approved_contextlist;
+use core_privacy\local\request\userlist;
 use core_privacy\local\request\writer;
 
 /**
@@ -104,6 +105,98 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
         $this->assertEquals(0, $DB->count_records('local_oerexchange_linkcodes', ['userid' => $user->id]));
     }
 
+    public function test_get_contexts_for_userid_finds_user_via_profile_only(): void {
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        \local_oerexchange\local\profile_manager::get_or_create_for_user((int) $user->id);
+
+        $contextlist = provider::get_contexts_for_userid($user->id);
+        $this->assertNotEmpty($contextlist->get_contextids());
+    }
+
+    public function test_get_contexts_for_userid_finds_user_via_badge_only(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $DB->insert_record('local_oerexchange_badges', (object) [
+            'userid' => $user->id, 'badgekey' => 'trusted_contributor', 'timeawarded' => time(),
+        ]);
+
+        $contextlist = provider::get_contexts_for_userid($user->id);
+        $this->assertNotEmpty($contextlist->get_contextids());
+    }
+
+    public function test_get_users_in_context_includes_profile_owner(): void {
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        \local_oerexchange\local\profile_manager::get_or_create_for_user((int) $user->id);
+
+        $userlist = new userlist(\context_system::instance(), 'local_oerexchange');
+        provider::get_users_in_context($userlist);
+
+        $this->assertContains((int) $user->id, $userlist->get_userids());
+    }
+
+    public function test_get_users_in_context_includes_badge_owner(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $DB->insert_record('local_oerexchange_badges', (object) [
+            'userid' => $user->id, 'badgekey' => 'trusted_contributor', 'timeawarded' => time(),
+        ]);
+
+        $userlist = new userlist(\context_system::instance(), 'local_oerexchange');
+        provider::get_users_in_context($userlist);
+
+        $this->assertContains((int) $user->id, $userlist->get_userids());
+    }
+
+    public function test_export_includes_profile_data(): void {
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        \local_oerexchange\local\profile_manager::get_or_create_for_user((int) $user->id);
+        \local_oerexchange\local\profile_manager::save((int) $user->id, [
+            'slug' => 'exportme', 'bio' => 'my bio', 'expertise' => ['maths', 'physics'],
+            'orcidurl' => 'https://orcid.org/0000', 'linkedinurl' => '', 'researchmapurl' => '',
+            'visible' => true,
+        ]);
+
+        $this->setUser($user);
+        writer::reset();
+        $approvedlist = new approved_contextlist($user, 'local_oerexchange', [\context_system::instance()->id]);
+        provider::export_user_data($approvedlist);
+
+        $data = writer::with_context(\context_system::instance())->get_data([get_string('pluginname', 'local_oerexchange')]);
+        $this->assertNotEmpty($data->profile);
+        $this->assertSame('exportme', $data->profile[0]['slug']);
+        $this->assertSame('my bio', $data->profile[0]['bio']);
+        $this->assertStringContainsString('maths', $data->profile[0]['expertise']);
+    }
+
+    public function test_export_includes_badge_data(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $DB->insert_record('local_oerexchange_badges', (object) [
+            'userid' => $user->id, 'badgekey' => 'trusted_contributor', 'timeawarded' => time(),
+        ]);
+
+        $this->setUser($user);
+        writer::reset();
+        $approvedlist = new approved_contextlist($user, 'local_oerexchange', [\context_system::instance()->id]);
+        provider::export_user_data($approvedlist);
+
+        $data = writer::with_context(\context_system::instance())->get_data([get_string('pluginname', 'local_oerexchange')]);
+        $this->assertNotEmpty($data->badges);
+        $this->assertSame('trusted_contributor', $data->badges[0]['badgekey']);
+    }
+
     public function test_delete_for_userid_fully_deletes_new_profile_and_badge_data(): void {
         global $DB;
         $this->resetAfterTest();
@@ -161,6 +254,24 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
             'resourceid' => $resourceid, 'versionid' => $versionid, 'siteid' => $siteid,
             'userid' => null, 'timecreated' => time(),
         ]);
+        $reportid = $DB->insert_record('local_oerexchange_reports', (object) [
+            'resourceid' => $resourceid, 'userid' => $reviewer->id, 'type' => 'copyright',
+            'details' => 'This is not mine', 'status' => 'open', 'resolvernote' => null,
+            'timecreated' => time(), 'timeresolved' => null,
+        ]);
+
+        // Cover-image file, same File API convention as parse_backup_task.php
+        // / resource.php: component=local_oerexchange, filearea=coverimage,
+        // itemid=resourceid, context_system::instance().
+        $fs = get_file_storage();
+        $fs->create_file_from_string([
+            'contextid' => \context_system::instance()->id,
+            'component' => 'local_oerexchange',
+            'filearea' => 'coverimage',
+            'itemid' => $resourceid,
+            'filepath' => '/',
+            'filename' => 'cover.png',
+        ], 'fake-image-bytes');
 
         \local_oerexchange\privacy\provider::delete_data_for_user(
             new approved_contextlist($user, 'local_oerexchange', [\context_system::instance()->id])
@@ -185,6 +296,10 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
             $DB->record_exists('local_oerexchange_imports', ['id' => $importerid]),
             'other sites\' import history for this resourceid is left untouched'
         );
+        $this->assertFalse(
+            $DB->record_exists('local_oerexchange_reports', ['id' => $reportid]),
+            'moderation reports on the deleted resource are gone'
+        );
 
         $files = get_file_storage()->get_area_files(
             \context_system::instance()->id,
@@ -195,5 +310,85 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
             false
         );
         $this->assertEmpty($files, 'the resource\'s files are actually deleted, not just detached');
+
+        $coverfiles = get_file_storage()->get_area_files(
+            \context_system::instance()->id,
+            'local_oerexchange',
+            'coverimage',
+            $resourceid,
+            'id',
+            false
+        );
+        $this->assertEmpty($coverfiles, 'the resource\'s cover image is actually deleted, not just detached');
+    }
+
+    public function test_delete_for_userid_leaves_other_users_resources_untouched_and_tombstones_non_published_status(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $otheruser = $this->getDataGenerator()->create_user();
+
+        $siteid = $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'S', 'url' => 'https://x', 'contact' => 'x@x.com', 'serviceuserid' => null,
+            'status' => 'active', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+
+        // Another user's resource — must be completely untouched by the
+        // deleting user's request.
+        $otherresourceid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'Other user\'s course', 'summary' => 'Other summary',
+            'language' => '', 'tags' => 'tag', 'licenseshortname' => 'cc-4.0',
+            'activitytype' => null, 'courseformat' => null, 'creatorid' => $otheruser->id,
+            'siteid' => $siteid, 'status' => 'published', 'downloadcount' => 1, 'importcount' => 0,
+            'forkedfromid' => null, 'timeshared' => time(), 'timemodified' => time(),
+        ]);
+        $otherversionid = $DB->insert_record('local_oerexchange_versions', (object) [
+            'resourceid' => $otherresourceid, 'versionnumber' => 1, 'itemid' => $otherresourceid,
+            'filename' => 'other.mbz', 'filesize' => 5, 'moodleversion' => '5.2', 'backupversion' => '5.2',
+            'structurejson' => '{}', 'requiredplugins' => '[]', 'status' => 'ready',
+            'parseerror' => null, 'timecreated' => time(),
+        ]);
+        get_file_storage()->create_file_from_string([
+            'contextid' => \context_system::instance()->id,
+            'component' => 'local_oerexchange',
+            'filearea' => 'resource',
+            'itemid' => $otherversionid,
+            'filepath' => '/',
+            'filename' => 'other.mbz',
+        ], 'other-file-bytes');
+
+        // The deleting user's OWN resource, but not in 'published' status —
+        // must still be caught and tombstoned; the code has no status filter,
+        // this proves it.
+        $hiddenresourceid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'Hidden course', 'summary' => 'Hidden summary',
+            'language' => '', 'tags' => 'tag', 'licenseshortname' => 'cc-4.0',
+            'activitytype' => null, 'courseformat' => null, 'creatorid' => $user->id,
+            'siteid' => $siteid, 'status' => 'hidden', 'downloadcount' => 0, 'importcount' => 0,
+            'forkedfromid' => null, 'timeshared' => time(), 'timemodified' => time(),
+        ]);
+
+        \local_oerexchange\privacy\provider::delete_data_for_user(
+            new approved_contextlist($user, 'local_oerexchange', [\context_system::instance()->id])
+        );
+
+        $otherresource = $DB->get_record('local_oerexchange_resources', ['id' => $otherresourceid], '*', MUST_EXIST);
+        $this->assertSame('published', $otherresource->status, 'another user\'s resource status is untouched');
+        $this->assertSame((int) $otheruser->id, (int) $otherresource->creatorid, 'another user\'s resource creatorid is untouched');
+        $this->assertSame('Other user\'s course', $otherresource->title, 'another user\'s resource metadata is untouched');
+        $otherfiles = get_file_storage()->get_area_files(
+            \context_system::instance()->id,
+            'local_oerexchange',
+            'resource',
+            $otherversionid,
+            'id',
+            false
+        );
+        $this->assertNotEmpty($otherfiles, 'another user\'s resource file is untouched');
+
+        $hiddenresource = $DB->get_record('local_oerexchange_resources', ['id' => $hiddenresourceid], '*', MUST_EXIST);
+        $this->assertSame('deleted', $hiddenresource->status, 'a hidden-status resource of the deleting user is still tombstoned');
+        $this->assertSame(0, (int) $hiddenresource->creatorid);
+        $this->assertSame('', (string) $hiddenresource->title);
     }
 }
