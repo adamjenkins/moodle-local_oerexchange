@@ -162,20 +162,24 @@ final class badge_manager_test extends \advanced_testcase {
         // upgrade with admin_apply_default_settings() never run) that the
         // config_int()/config_float() fallback constants exist to cover.
         //
-        // resourcecount = 9 (one below DEFAULT_MINRESOURCES = 10) is deliberately
-        // the *only* thing this case isolates: qualifies_for_trusted_contributor()
-        // checks resourcecount first and returns false immediately on failure, so
-        // downloadtotal (499, also one below DEFAULT_MINDOWNLOADS = 500) is never
-        // even compared here. A regression in DEFAULT_MINDOWNLOADS or
-        // DEFAULT_MINRATING alone would NOT be caught by this test — see
+        // resourcecount = 9 (one below DEFAULT_MINRESOURCES = 10) is
+        // deliberately the *only failing* check here: downloadtotal is raised
+        // to 500, clearing its own DEFAULT_MINDOWNLOADS = 500 threshold, so
+        // qualifies_for_trusted_contributor() cannot pass this case for the
+        // wrong reason — if DEFAULT_MINRESOURCES ever regressed to a value
+        // <= 9, the resourcecount check alone would no longer block
+        // qualification, and this test would fail because downloadtotal no
+        // longer blocks it either. This mirrors
         // test_unset_mindownloads_fallback_blocks_qualification() and
         // test_unset_minrating_fallback_blocks_qualification() below, which
-        // isolate those two respectively.
+        // isolate DEFAULT_MINDOWNLOADS and DEFAULT_MINRATING respectively by
+        // the same technique: clear every other threshold so only the one
+        // under test can be the blocker.
         $user = $this->getDataGenerator()->create_user();
         for ($i = 0; $i < 8; $i++) {
             $this->seed_resource((int) $user->id, 0);
         }
-        $this->seed_resource((int) $user->id, 499);
+        $this->seed_resource((int) $user->id, 500);
 
         $awarded = badge_manager::evaluate_and_award((int) $user->id);
         $this->assertSame(
