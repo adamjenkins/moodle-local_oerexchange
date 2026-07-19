@@ -64,6 +64,7 @@ $string['error_notfound'] = 'Not found.';
 $string['error_notyourprofile'] = 'You cannot edit another educator\'s profile.';
 $string['error_notyourresource'] = 'You did not share this resource.';
 $string['error_sanitycheckfailed'] = 'This backup appears to contain user data and cannot be published. Re-export it with user data excluded.';
+$string['error_sesskeyexpired'] = 'Your session expired before this could be saved. Please review your changes and submit again.';
 $string['error_sitenotactive'] = 'This site is not active on the Exchange.';
 $string['error_sitenotlinked'] = 'You have not linked your account through this site.';
 $string['error_slugtaken'] = 'That profile URL is already taken. Please choose another.';

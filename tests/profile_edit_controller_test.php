@@ -221,23 +221,21 @@ final class profile_edit_controller_test extends route_testcase {
         ];
         $response = $this->process_request('POST', 'u/' . $profile->slug . '/edit', route_loader_interface::ROUTE_GROUP_PAGE);
 
-        // The require_sesskey() call throws a plain \moodle_exception('invalidsesskey')
-        // *before* this controller's save()/profile_manager::save() try/catch
-        // even starts (Task 7's fix only wraps the profile_manager::save()
-        // call, deliberately not require_sesskey() — a bad sesskey is a CSRF
-        // rejection, not a form-validation error to redisplay). That
-        // exception is not a response_aware_exception, so it falls through
-        // to Slim's default ErrorHandler::determineStatusCode(), which
-        // returns 500 for any non-HttpException (vendor/slim/slim/Slim/
-        // Handlers/ErrorHandler.php:148-159) — matching this file's own
-        // class docblock ("a plain \moodle_exception ... renders as a
-        // normal 500 response"). Verified empirically 2026-07-19 with a
-        // disposable probe test asserting on the real status code (not
-        // committed): 500, not 403 — confirming 500 here rather than the
-        // 403 originally assumed for this assertion.
-        $this->assertSame(500, $response->getStatusCode());
+        // FINDING 2 (final whole-branch review): before this fix,
+        // require_sesskey() ran before this controller's try/catch scope, so
+        // its plain \moodle_exception('invalidsesskey') fell through to
+        // Slim's generic error page as a raw 500. It is now caught the same
+        // way profile_manager::save()'s validation errors are: a normal 200
+        // page, the form redisplayed with a clear "session expired" message,
+        // and the just-submitted bio preserved (not the stale, empty
+        // pre-save $profile row) so nothing the user typed is lost.
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+        $this->assertStringContainsString(get_string('error_sesskeyexpired', 'local_oerexchange'), $body);
+        $this->assertStringContainsString('Should not be saved', $body);
+
         $unchanged = profile_manager::get_by_slug($profile->slug);
-        $this->assertSame('', $unchanged->bio);
+        $this->assertSame('', $unchanged->bio, 'the bad-sesskey submission must not have been persisted');
     }
 
     public function test_invalid_slug_on_save_surfaces_error(): void {

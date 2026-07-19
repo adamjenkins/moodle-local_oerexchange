@@ -139,10 +139,23 @@ class profile_edit_controller {
      * not just the bad slug) would be silently lost, forcing a re-type from
      * scratch (Task 7 review finding).
      *
-     * Only \moodle_exception is caught, deliberately no wider: a genuine
-     * unexpected failure (e.g. a DB connection error) must still surface as
-     * a real error, not be swallowed and misrepresented as a validation
-     * message.
+     * Only \moodle_exception is caught (both around require_sesskey() and
+     * around profile_manager::save(), see below), deliberately no wider: a
+     * genuine unexpected failure (e.g. a DB connection error) must still
+     * surface as a real error, not be swallowed and misrepresented as a
+     * validation message.
+     *
+     * require_sesskey() (used, rather than confirm_sesskey(), so a missing
+     * OR wrong sesskey both land here) is deliberately called AFTER
+     * $submitted is built, not before: reading POST values via
+     * optional_param() has no side effects, so a stale/bad sesskey can still
+     * redisplay the form pre-filled with what the user just typed — the same
+     * "never lose what was typed" guarantee Task 7's fix already gives the
+     * profile_manager::save() validation-error path just below. Before this
+     * fix (final whole-branch review finding 2), require_sesskey() ran first
+     * and its \moodle_exception('invalidsesskey') was never caught, so it
+     * fell through to Slim's generic error page as a raw 500 instead of a
+     * normal 200 page with a clear message.
      *
      * @param ResponseInterface $response
      * @param \stdClass $profile the profile row being edited (pre-save)
@@ -157,8 +170,6 @@ class profile_edit_controller {
         string $slug,
     ): ResponseInterface {
         global $USER;
-
-        require_sesskey();
 
         // PARAM_RAW_TRIMMED, not PARAM_ALPHANUMEXT: an out-of-charset slug
         // must reach profile_manager::save()'s own is_valid_slug() check
@@ -180,6 +191,17 @@ class profile_edit_controller {
             'researchmapurl' => optional_param('researchmapurl', '', PARAM_URL),
             'visible' => (bool) optional_param('visible', 0, PARAM_BOOL),
         ];
+
+        try {
+            require_sesskey();
+        } catch (\moodle_exception $e) {
+            return $this->render_form(
+                $response,
+                $slug,
+                $submitted,
+                get_string('error_sesskeyexpired', 'local_oerexchange')
+            );
+        }
 
         try {
             profile_manager::save((int) $USER->id, (array) $submitted);
