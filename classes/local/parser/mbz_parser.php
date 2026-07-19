@@ -89,6 +89,73 @@ class mbz_parser {
     }
 
     /**
+     * Extract the course's cover image — the file stored via the File API as
+     * component 'course', filearea 'overviewfiles' (the "course image" shown
+     * on course cards; see course_overviewfiles_options() in core) — from an
+     * .mbz backup.
+     *
+     * get_backup_information_from_mbz() (used by parse()) only ever extracts
+     * moodle_backup.xml and carries no file information, so this reads the
+     * backup's own files.xml manifest directly to locate the content-addressed
+     * file, then extracts just that one file from the archive.
+     *
+     * @param string $filepath absolute path to the .mbz file
+     * @param string $outputdir writable directory to extract into (the caller
+     *                          owns cleanup of this directory)
+     * @return string|null absolute path to the extracted image (original
+     *                     filename preserved), or null if the backup has no
+     *                     course overview image
+     */
+    public static function extract_cover_image(string $filepath, string $outputdir): ?string {
+        $packer = get_file_packer('application/vnd.moodle.backup');
+
+        $manifestdir = $outputdir . '/coverimage_manifest';
+        check_dir_exists($manifestdir);
+        $packer->extract_to_pathname($filepath, $manifestdir, ['files.xml']);
+
+        $manifestpath = $manifestdir . '/files.xml';
+        if (!is_readable($manifestpath)) {
+            return null;
+        }
+
+        $xml = simplexml_load_file($manifestpath);
+        if ($xml === false) {
+            return null;
+        }
+
+        foreach ($xml->file as $filenode) {
+            if ((string) $filenode->component !== 'course' || (string) $filenode->filearea !== 'overviewfiles') {
+                continue;
+            }
+
+            $filename = (string) $filenode->filename;
+            $contenthash = (string) $filenode->contenthash;
+            if ($filename === '.' || $filename === '' || $contenthash === '') {
+                // A "." filename is files.xml's directory-placeholder entry, not a real file.
+                continue;
+            }
+
+            $archivepath = 'files/' . substr($contenthash, 0, 2) . '/' . $contenthash;
+            $contentdir = $outputdir . '/coverimage_content';
+            check_dir_exists($contentdir);
+            $packer->extract_to_pathname($filepath, $contentdir, [$archivepath]);
+
+            $extracted = $contentdir . '/' . $archivepath;
+            if (!is_readable($extracted)) {
+                continue;
+            }
+
+            $target = $contentdir . '/' . clean_param($filename, PARAM_FILE);
+            if ($target !== $extracted && @rename($extracted, $target)) {
+                return $target;
+            }
+            return $extracted;
+        }
+
+        return null;
+    }
+
+    /**
      * Compare the backup's activity modnames + course format against Moodle's
      * shipped standard-plugins list for this site's Moodle version, to find
      * non-core components the backup depends on.

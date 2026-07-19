@@ -78,10 +78,57 @@ class parse_backup_task extends \core\task\adhoc_task {
                     ['id' => $version->resourceid]
                 );
             }
+
+            $this->extract_cover_image($tmppath, $tmpdir, $versionid, $version->resourceid);
         } catch (\Throwable $e) {
             $this->mark_failed($versionid, $e->getMessage());
         } finally {
             remove_dir($tmpdir);
+        }
+    }
+
+    /**
+     * Extract a course's cover image from its .mbz backup and store it via
+     * the File API, for later display on resource.php / catalogue cards
+     * (Tasks 9/10). Cosmetic only — never allowed to fail the parse itself,
+     * so every failure mode here is caught and just mtrace()d.
+     *
+     * Only 'course' shares have a course cover image to extract; a
+     * single-activity share's backup has no course-level overviewfiles entry
+     * (see the design doc's "Thumbnails" decision row) so this is a no-op
+     * for those, by design.
+     *
+     * @param string $tmppath absolute path to the copied .mbz file
+     * @param string $tmpdir writable temp directory (still exists; removed
+     *                       by the caller's finally block)
+     * @param int $versionid
+     * @param int $resourceid
+     */
+    protected function extract_cover_image(string $tmppath, string $tmpdir, int $versionid, int $resourceid): void {
+        global $DB;
+
+        try {
+            $resourcetype = $DB->get_field('local_oerexchange_resources', 'type', ['id' => $resourceid]);
+            if ($resourcetype !== 'course') {
+                return;
+            }
+
+            $coverimagepath = mbz_parser::extract_cover_image($tmppath, $tmpdir);
+            if ($coverimagepath && is_readable($coverimagepath)) {
+                $fs = get_file_storage();
+                $context = \context_system::instance();
+                $fs->delete_area_files($context->id, 'local_oerexchange', 'coverimage', $resourceid);
+                $fs->create_file_from_pathname([
+                    'contextid' => $context->id,
+                    'component' => 'local_oerexchange',
+                    'filearea' => 'coverimage',
+                    'itemid' => $resourceid,
+                    'filepath' => '/',
+                    'filename' => basename($coverimagepath),
+                ], $coverimagepath);
+            }
+        } catch (\Throwable $e) {
+            mtrace("local_oerexchange: cover image extraction failed for version {$versionid}: " . $e->getMessage());
         }
     }
 
