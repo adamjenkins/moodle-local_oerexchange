@@ -14,9 +14,22 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+/**
+ * Tests for profile_manager.
+ *
+ * @package    local_oerexchange
+ * @copyright  2026 Adam Jenkins <adam@wisecat.net>
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
 namespace local_oerexchange;
 
 use local_oerexchange\local\profile_manager;
+
+defined('MOODLE_INTERNAL') || die();
+
+global $CFG;
+require_once($CFG->dirroot . '/local/oerexchange/tests/fixtures/racing_db_stub.php');
 
 /**
  * Tests for profile_manager.
@@ -123,5 +136,86 @@ final class profile_manager_test extends \advanced_testcase {
         $this->assertSame(15, $metrics['downloadtotal']);
         $this->assertNull($metrics['avgrating'], 'no reviews yet');
         $this->assertSame($now, $metrics['membersince']);
+    }
+
+    public function test_save_converts_a_lost_slug_race_to_error_slugtaken(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $user1 = $this->getDataGenerator()->create_user();
+        $user2 = $this->getDataGenerator()->create_user();
+        profile_manager::get_or_create_for_user((int) $user1->id);
+        profile_manager::get_or_create_for_user((int) $user2->id);
+
+        // Simulate user1's save() winning a race for 'raceslug' in the window
+        // between user2's slug_available() check and user2's update_record():
+        // the conflicting row is inserted directly, via the real $DB, right
+        // before user2's save() runs.
+        $DB->set_field('local_oerexchange_profiles', 'slug', 'raceslug', ['userid' => $user1->id]);
+
+        $realdb = $DB;
+        $DB = new racing_db_stub($realdb, 'local_oerexchange_profiles', ['slug' => 'raceslug']);
+        try {
+            profile_manager::save((int) $user2->id, ['slug' => 'raceslug', 'bio' => '', 'expertise' => [],
+                'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true]);
+            $this->fail('Expected a moodle_exception (error_slugtaken) from the lost race.');
+        } catch (\moodle_exception $e) {
+            $this->assertSame(
+                'error_slugtaken',
+                $e->errorcode,
+                'The race loser must see the same documented exception as the common-case slug-taken check.'
+            );
+        } finally {
+            $DB = $realdb;
+        }
+
+        // No corruption: 'raceslug' still resolves only to user1 (the race
+        // winner), and user2's own profile row is untouched.
+        $winner = profile_manager::get_by_slug('raceslug');
+        $this->assertSame((int) $user1->id, (int) $winner->userid);
+        $user2profile = $DB->get_record('local_oerexchange_profiles', ['userid' => $user2->id]);
+        $this->assertNotSame('raceslug', $user2profile->slug);
+    }
+
+    public function test_get_or_create_for_user_recovers_from_a_lost_userid_race(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+
+        // Simulate a concurrent get_or_create_for_user() call for the SAME
+        // user winning the race in the window between our existence check
+        // and our own insert_record(): the row it would have created is
+        // inserted directly, via the real $DB, right before we call the
+        // method under test.
+        $now = time();
+        $winnerslug = 'racewinner';
+        $winnerid = $DB->insert_record('local_oerexchange_profiles', (object) [
+            'userid' => (int) $user->id,
+            'slug' => $winnerslug,
+            'bio' => '',
+            'expertise' => json_encode([]),
+            'orcidurl' => '',
+            'linkedinurl' => '',
+            'researchmapurl' => '',
+            'visible' => 1,
+            'timecreated' => $now,
+            'timemodified' => $now,
+        ]);
+
+        $realdb = $DB;
+        $DB = new racing_db_stub($realdb, 'local_oerexchange_profiles', ['userid' => (int) $user->id]);
+        try {
+            $profile = profile_manager::get_or_create_for_user((int) $user->id);
+        } finally {
+            $DB = $realdb;
+        }
+
+        // A get-OR-create must return what won the race, not throw.
+        $this->assertSame($winnerid, (int) $profile->id);
+        $this->assertSame($winnerslug, $profile->slug);
+        $this->assertSame(
+            1,
+            $DB->count_records('local_oerexchange_profiles', ['userid' => (int) $user->id]),
+            'Losing the race must not leave a duplicate/orphaned profile row.'
+        );
     }
 }
