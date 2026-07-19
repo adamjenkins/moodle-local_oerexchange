@@ -149,6 +149,7 @@ $string['profileavgrating'] = 'Average rating: {$a}/5';
 $string['profiledownloadtotal'] = '{$a} total downloads';
 $string['profileeditbio'] = 'Bio';
 $string['profileeditexpertise'] = 'Expertise areas (comma-separated)';
+$string['profileeditlink'] = 'Edit profile';
 $string['profileeditlinkedin'] = 'LinkedIn URL';
 $string['profileeditorcid'] = 'ORCID URL';
 $string['profileeditresearchmap'] = 'ResearchMap URL';

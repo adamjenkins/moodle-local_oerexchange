@@ -71,7 +71,7 @@ class profile_controller {
         ResponseInterface $response,
         string $slug,
     ): ResponseInterface {
-        global $DB, $OUTPUT, $PAGE;
+        global $DB, $OUTPUT, $PAGE, $USER;
 
         $profile = profile_manager::get_by_slug($slug);
         if (!$profile || !$profile->visible) {
@@ -195,6 +195,22 @@ class profile_controller {
                 : null,
         ])), ['class' => 'small text-muted mb-3']);
 
+        // Owner-only "Edit profile" affordance (final whole-branch review
+        // finding 3): before this fix, nothing anywhere linked to
+        // /u/{slug}/edit — a user had to hand-type the URL. Gated on
+        // isloggedin() && !isguestuser() first, matching this plugin's
+        // established convention elsewhere on this page and on resource.php,
+        // so an anonymous visitor's $USER->id (0) can never spuriously equal
+        // a real profile's userid.
+        if (isloggedin() && !isguestuser() && (int) $USER->id === (int) $profile->userid) {
+            $editurl = \moodle_url::routed_path('/local_oerexchange/u/' . $profile->slug . '/edit');
+            $out .= \html_writer::link(
+                $editurl,
+                get_string('profileeditlink', 'local_oerexchange'),
+                ['class' => 'btn btn-outline-primary me-2', 'id' => 'oerexchange-profile-editlink']
+            );
+        }
+
         $out .= \html_writer::link(
             new \moodle_url('/message/index.php', ['id' => $profile->userid]),
             get_string('profilemessage', 'local_oerexchange'),
@@ -229,11 +245,56 @@ class profile_controller {
         if (empty($resources)) {
             $out .= \html_writer::tag('p', get_string('profilenoresources', 'local_oerexchange'));
         } else {
+            // Cover-image thumbnail per card, using the exact same File API
+            // read + make_pluginfile_url() pattern resource.php's own
+            // detail-page display already uses for the identical
+            // component=local_oerexchange/filearea=coverimage/itemid=resourceid
+            // file (see resource.php's "Cover-image thumbnail" block) —
+            // established, already-reviewed, not reinvented here (final
+            // whole-branch review finding 4).
+            //
+            // resource.php has NO placeholder-icon fallback of its own: when
+            // a resource has no cover file, it simply renders no <img> tag
+            // at all (verified by reading resource.php in full, 2026-07-19 —
+            // there is no icon/placeholder asset or CSS anywhere in this
+            // plugin). Per this task's explicit "check this" instruction,
+            // that means there is no existing placeholder infrastructure to
+            // reuse, and adding new placeholder-icon infrastructure is out
+            // of scope — so a card with no cover image likewise renders no
+            // <img> tag, matching resource.php's real behaviour exactly
+            // rather than inventing something new.
+            $fs = get_file_storage();
             $out .= \html_writer::start_tag('div', ['class' => 'row row-cols-1 row-cols-md-3 g-3']);
             foreach ($resources as $r) {
                 $rurl = new \moodle_url('/local/oerexchange/resource.php', ['id' => $r->id]);
                 $out .= \html_writer::start_tag('div', ['class' => 'col']);
                 $out .= \html_writer::start_tag('div', ['class' => 'card h-100']);
+
+                $coverfiles = $fs->get_area_files(
+                    \context_system::instance()->id,
+                    'local_oerexchange',
+                    'coverimage',
+                    $r->id,
+                    'id',
+                    false
+                );
+                if ($coverfiles) {
+                    $coverfile = reset($coverfiles);
+                    $coverurl = \moodle_url::make_pluginfile_url(
+                        $coverfile->get_contextid(),
+                        'local_oerexchange',
+                        'coverimage',
+                        $r->id,
+                        '/',
+                        $coverfile->get_filename()
+                    );
+                    $out .= \html_writer::empty_tag('img', [
+                        'src' => $coverurl->out(false),
+                        'alt' => get_string('thumbnailalt', 'local_oerexchange', s($r->title)),
+                        'class' => 'card-img-top',
+                    ]);
+                }
+
                 $out .= \html_writer::start_tag('div', ['class' => 'card-body']);
                 $typestring = $r->type === 'activity'
                     ? get_string('typeactivity', 'local_oerexchange')

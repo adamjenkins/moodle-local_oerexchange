@@ -158,6 +158,112 @@ final class profile_controller_test extends route_testcase {
         $this->assertStringContainsString('Biology', $body);
     }
 
+    /**
+     * FINDING 3 (final whole-branch review): before this fix, nothing in the
+     * codebase linked to /u/{slug}/edit — a user would have to hand-type the
+     * URL. The link must appear for the owner and be absent for everyone
+     * else (a non-owner, and an anonymous visitor).
+     */
+    public function test_owner_sees_edit_link_but_others_do_not(): void {
+        $this->resetAfterTest();
+        $owner = $this->getDataGenerator()->create_user();
+        profile_manager::get_or_create_for_user((int) $owner->id);
+        profile_manager::save((int) $owner->id, ['slug' => 'ownerview', 'bio' => '', 'expertise' => [],
+            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true]);
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+
+        // Owner, logged in: link must appear.
+        $this->setUser($owner);
+        $response = $this->process_request('GET', 'u/ownerview', route_loader_interface::ROUTE_GROUP_PAGE);
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+        $this->assertStringContainsString('/local_oerexchange/u/ownerview/edit', $body);
+        $this->assertStringContainsString(get_string('profileeditlink', 'local_oerexchange'), $body);
+
+        // A different logged-in user: link must be absent.
+        $other = $this->getDataGenerator()->create_user();
+        $this->setUser($other);
+        $response = $this->process_request('GET', 'u/ownerview', route_loader_interface::ROUTE_GROUP_PAGE);
+        $body = (string) $response->getBody();
+        $this->assertStringNotContainsString('/local_oerexchange/u/ownerview/edit', $body);
+
+        // Anonymous visitor: link must be absent.
+        $this->setUser(null);
+        $response = $this->process_request('GET', 'u/ownerview', route_loader_interface::ROUTE_GROUP_PAGE);
+        $body = (string) $response->getBody();
+        $this->assertStringNotContainsString('/local_oerexchange/u/ownerview/edit', $body);
+    }
+
+    /**
+     * FINDING 4 (final whole-branch review): the profile resource grid
+     * omitted cover-image thumbnails despite the thumbnail subsystem already
+     * existing and working on resource.php. A resource with a cover image
+     * must show it on the grid; one without must render cleanly (no broken
+     * markup) with no <img> tag for that card — resource.php itself has no
+     * placeholder-icon fallback to reuse (verified by reading it in full),
+     * so neither does this grid.
+     */
+    public function test_resource_grid_shows_cover_image_when_present_and_omits_it_when_absent(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user();
+        profile_manager::get_or_create_for_user((int) $creator->id);
+        profile_manager::save((int) $creator->id, ['slug' => 'thumbcreator', 'bio' => '', 'expertise' => [],
+            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true]);
+
+        $siteid = $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'S', 'url' => 'https://x', 'contact' => 'x@x.com', 'serviceuserid' => null,
+            'status' => 'active', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+        $withimageid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'Has A Cover', 'summary' => '', 'language' => '', 'tags' => '',
+            'licenseshortname' => 'CC BY', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => $creator->id, 'siteid' => $siteid, 'status' => 'published',
+            'downloadcount' => 0, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => time() - 100, 'timemodified' => time() - 100,
+        ]);
+        $noimageid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'No Cover Here', 'summary' => '', 'language' => '', 'tags' => '',
+            'licenseshortname' => 'CC BY', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => $creator->id, 'siteid' => $siteid, 'status' => 'published',
+            'downloadcount' => 0, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => time() - 200, 'timemodified' => time() - 200,
+        ]);
+
+        $fs = get_file_storage();
+        $fs->create_file_from_string([
+            'contextid' => \context_system::instance()->id,
+            'component' => 'local_oerexchange',
+            'filearea' => 'coverimage',
+            'itemid' => $withimageid,
+            'filepath' => '/',
+            'filename' => 'cover.png',
+        ], 'fake-png-bytes');
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+
+        $response = $this->process_request('GET', 'u/thumbcreator', route_loader_interface::ROUTE_GROUP_PAGE);
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+
+        $expectedurl = \moodle_url::make_pluginfile_url(
+            \context_system::instance()->id,
+            'local_oerexchange',
+            'coverimage',
+            $withimageid,
+            '/',
+            'cover.png'
+        )->out(false);
+        $this->assertStringContainsString($expectedurl, $body);
+        $this->assertStringContainsString('<img', $body);
+
+        // The card without a cover image must not reference a coverimage URL
+        // for its own resource id.
+        $noimageurlfragment = 'coverimage/' . $noimageid . '/';
+        $this->assertStringNotContainsString($noimageurlfragment, $body);
+    }
+
     public function test_hidden_profile_renders_404(): void {
         $this->resetAfterTest();
         $user = $this->getDataGenerator()->create_user();
