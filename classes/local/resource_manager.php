@@ -64,6 +64,7 @@ class resource_manager {
         }
 
         $now = time();
+        $isnewresource = ($resourceid === null);
 
         // Everything below — the resource/version rows, moving the file into
         // permanent storage, and queuing the parse task — must land atomically.
@@ -142,6 +143,23 @@ class resource_manager {
             // The rollback() call re-throws $e after unwinding the transaction, so
             // callers still see the original failure and no partial state is committed.
             $transaction->rollback($e);
+        }
+
+        if ($isnewresource) {
+            // A creator's profile is lazily created on their first publish
+            // (design: "auto-created once they publish") — this is the ONLY
+            // production call site that ever creates one; profile_edit_controller
+            // only reaches an existing profile (get_by_slug()), never creates
+            // one. Deliberately outside the transaction above:
+            // get_or_create_for_user() is its own idempotent, TOCTOU-safe
+            // operation (see its docblock) that doesn't need the resource
+            // insert's atomicity, and keeping it out keeps that transaction
+            // focused on the resource/version/file invariant it documents.
+            // Deliberately NOT called for the "new version of an existing
+            // resource" branch above ($isnewresource false) — that creator's
+            // profile, if any, already exists; publishing a second version
+            // isn't a new "first publish" event.
+            profile_manager::get_or_create_for_user($creatorid);
         }
 
         return [$resourceid, $versionid];

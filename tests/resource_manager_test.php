@@ -16,6 +16,7 @@
 
 namespace local_oerexchange;
 
+use local_oerexchange\local\profile_manager;
 use local_oerexchange\local\resource_manager;
 
 /**
@@ -183,6 +184,82 @@ final class resource_manager_test extends \advanced_testcase {
             ],
             $resourceid
         );
+    }
+
+    /**
+     * FINDING 1 (final whole-branch review): before this fix, no production
+     * code path ever called profile_manager::get_or_create_for_user() —
+     * profile_edit_controller::edit()'s GET branch only reads an existing
+     * profile (get_by_slug()), it never creates one, so the edit page and
+     * public profile page 404 forever unless a profile row already exists.
+     * resource_manager::publish() is the one place that should create it,
+     * on a creator's first-ever published resource.
+     */
+    public function test_publish_creates_a_profile_for_the_creator_on_first_publish(): void {
+        $this->resetAfterTest();
+        set_config('maxbackupbytes', 1000, 'local_oerexchange');
+
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+
+        $this->assertNull(profile_manager::get_by_userid((int) $user->id), 'precondition: no profile yet');
+
+        resource_manager::publish(
+            $this->create_draft_file($user->id, str_repeat('x', 50)),
+            (int) $user->id,
+            1,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ]
+        );
+
+        $profile = profile_manager::get_by_userid((int) $user->id);
+        $this->assertNotNull($profile, 'publish() must create a profile row for a first-time creator');
+        $this->assertSame((int) $user->id, (int) $profile->userid);
+    }
+
+    /**
+     * Publishing a second version of an already-published resource must not
+     * duplicate or crash on the (already-existing) profile row — this is a
+     * "does nothing harmful" assertion, not a claim that publish() must skip
+     * calling get_or_create_for_user() (it's naturally idempotent either way).
+     */
+    public function test_publish_new_version_does_not_duplicate_or_break_existing_profile(): void {
+        global $DB;
+        $this->resetAfterTest();
+        set_config('maxbackupbytes', 1000, 'local_oerexchange');
+
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+
+        [$resourceid] = resource_manager::publish(
+            $this->create_draft_file($user->id, str_repeat('x', 50)),
+            (int) $user->id,
+            1,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ]
+        );
+        $firstprofile = profile_manager::get_by_userid((int) $user->id);
+        $this->assertNotNull($firstprofile);
+
+        resource_manager::publish(
+            $this->create_draft_file($user->id, str_repeat('y', 50)),
+            (int) $user->id,
+            1,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ],
+            $resourceid
+        );
+
+        $count = $DB->count_records('local_oerexchange_profiles', ['userid' => $user->id]);
+        $this->assertSame(1, $count, 'a second version must not create a duplicate profile row');
+        $secondprofile = profile_manager::get_by_userid((int) $user->id);
+        $this->assertSame($firstprofile->id, $secondprofile->id);
     }
 
     /**
