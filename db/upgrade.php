@@ -29,6 +29,43 @@
  * @return bool
  */
 function xmldb_local_oerexchange_upgrade($oldversion) {
-    // No upgrade steps yet — initial release.
+    global $DB;
+
+    $dbman = $DB->get_manager();
+
+    if ($oldversion < 2026072000) {
+        $table = new xmldb_table('local_oerexchange_profiles');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('slug', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('bio', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('expertise', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('orcidurl', XMLDB_TYPE_CHAR, '255', null, null, null, null);
+        $table->add_field('linkedinurl', XMLDB_TYPE_CHAR, '255', null, null, null, null);
+        $table->add_field('researchmapurl', XMLDB_TYPE_CHAR, '255', null, null, null, null);
+        $table->add_field('visible', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '1');
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('userid', XMLDB_INDEX_UNIQUE, ['userid']);
+        $table->add_index('slug', XMLDB_INDEX_UNIQUE, ['slug']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        $table = new xmldb_table('local_oerexchange_badges');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('badgekey', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timeawarded', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('useridbadgekey', XMLDB_INDEX_UNIQUE, ['userid', 'badgekey']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_plugin_savepoint(true, 2026072000, 'local', 'oerexchange');
+    }
+
     return true;
 }
