@@ -21,6 +21,7 @@ use core_external\external_function_parameters;
 use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
+use local_oerexchange\local\profile_manager;
 
 /**
  * local_oerexchange_search external function.
@@ -113,8 +114,27 @@ class search extends external_api {
             $perpage
         );
 
+        // Core's core_user has no batch-by-id-array method; a plain get_records_list()
+        // is this codebase's own established pattern for this exact shape —
+        // see block_oerclient.php's render_shares_panel(), which does the same
+        // thing for course names ($DB->get_records_list('course', 'id', $courseids, ...)).
+        // execute()'s existing `global $DB;` (top of the method) already covers this block.
+        $creatorids = array_unique(array_map(fn($r) => (int) $r->creatorid, $records));
+        $creators = $creatorids ? $DB->get_records_list('user', 'id', $creatorids) : [];
+        $creatorprofiles = profile_manager::get_by_userids($creatorids);
+
         $results = [];
         foreach ($records as $r) {
+            $creatorid = (int) $r->creatorid;
+            $creator = $creators[$creatorid] ?? null;
+            $creatorname = $creator ? fullname($creator) : '';
+            $creatorprofileurl = '';
+            if (isset($creatorprofiles[$creatorid]) && $creatorprofiles[$creatorid]->visible) {
+                $creatorprofileurl = \moodle_url::routed_path(
+                    '/local_oerexchange/u/' . $creatorprofiles[$creatorid]->slug
+                )->out(false);
+            }
+
             $results[] = [
                 'id' => (int) $r->id,
                 'type' => $r->type,
@@ -127,6 +147,8 @@ class search extends external_api {
                 'downloadcount' => (int) $r->downloadcount,
                 'importcount' => (int) $r->importcount,
                 'timeshared' => (int) $r->timeshared,
+                'creatorname' => $creatorname,
+                'creatorprofileurl' => $creatorprofileurl,
             ];
         }
 
@@ -153,6 +175,8 @@ class search extends external_api {
                 'downloadcount' => new external_value(PARAM_INT, 'Download count'),
                 'importcount' => new external_value(PARAM_INT, 'Import count'),
                 'timeshared' => new external_value(PARAM_INT, 'Unix timestamp'),
+                'creatorname' => new external_value(PARAM_TEXT, 'Creator display name'),
+                'creatorprofileurl' => new external_value(PARAM_RAW, 'Creator profile URL, or empty string if none/hidden'),
             ])),
         ]);
     }

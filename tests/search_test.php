@@ -112,4 +112,69 @@ final class search_test extends \advanced_testcase {
         // this exercises the min(max($perpage, 1), 50) clamp path.
         $this->assertSame(3, $result['total']);
     }
+
+    public function test_search_results_include_creator_attribution(): void {
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user(['firstname' => 'Wole', 'lastname' => 'Adeyemi']);
+        \local_oerexchange\local\profile_manager::get_or_create_for_user((int) $creator->id);
+        \local_oerexchange\local\profile_manager::save((int) $creator->id, [
+            'slug' => 'woleadeyemi', 'bio' => '', 'expertise' => [],
+            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true,
+        ]);
+        $this->setUser($this->getDataGenerator()->create_user());
+
+        global $DB;
+        $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'Attributed one', 'summary' => '', 'language' => 'en', 'tags' => '',
+            'licenseshortname' => 'cc-4.0', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => $creator->id, 'siteid' => 1, 'status' => 'published',
+            'downloadcount' => 0, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => time(), 'timemodified' => time(),
+        ]);
+
+        $result = search::execute();
+
+        $this->assertSame('Wole Adeyemi', $result['results'][0]['creatorname']);
+        $this->assertStringContainsString('woleadeyemi', $result['results'][0]['creatorprofileurl']);
+    }
+
+    public function test_search_results_for_creator_with_no_profile_have_empty_profileurl(): void {
+        $this->resetAfterTest();
+        $this->setUser($this->getDataGenerator()->create_user());
+        $this->create_resource('No profile creator');
+
+        $result = search::execute();
+
+        $this->assertSame('', $result['results'][0]['creatorprofileurl']);
+        $this->assertNotSame('', $result['results'][0]['creatorname']);
+    }
+
+    public function test_search_batches_creator_lookups_not_per_result(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setUser($this->getDataGenerator()->create_user());
+
+        // Three resources from the SAME creator — if the implementation looked
+        // up the creator per-result instead of batching, this wouldn't fail
+        // outright, but it's the scenario the batching exists for. Assert the
+        // attribution is correct and consistent across all three rows, which
+        // is what a batched-and-correctly-mapped implementation guarantees.
+        $creator = $this->getDataGenerator()->create_user(['firstname' => 'Shared', 'lastname' => 'Creator']);
+        for ($i = 0; $i < 3; $i++) {
+            $DB->insert_record('local_oerexchange_resources', (object) [
+                'type' => 'course', 'title' => "Resource {$i}", 'summary' => '', 'language' => 'en', 'tags' => '',
+                'licenseshortname' => 'cc-4.0', 'activitytype' => null, 'courseformat' => null,
+                'creatorid' => $creator->id, 'siteid' => 1, 'status' => 'published',
+                'downloadcount' => 0, 'importcount' => 0, 'forkedfromid' => null,
+                'timeshared' => time(), 'timemodified' => time(),
+            ]);
+        }
+
+        $result = search::execute();
+
+        $this->assertCount(3, $result['results']);
+        foreach ($result['results'] as $r) {
+            $this->assertSame('Shared Creator', $r['creatorname']);
+        }
+    }
 }

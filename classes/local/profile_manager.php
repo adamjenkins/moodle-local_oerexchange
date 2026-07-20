@@ -93,6 +93,31 @@ class profile_manager {
     }
 
     /**
+     * Batch version of get_by_userid() for callers that need many users'
+     * profiles at once (e.g. search results) without an N+1 query pattern.
+     * Read-only — never creates a profile row.
+     *
+     * @param int[] $userids
+     * @return array<int, \stdClass> keyed by userid; users with no profile row are simply absent
+     */
+    public static function get_by_userids(array $userids): array {
+        global $DB;
+
+        if (empty($userids)) {
+            return [];
+        }
+
+        [$insql, $inparams] = $DB->get_in_or_equal(array_unique($userids), SQL_PARAMS_NAMED);
+        $records = $DB->get_records_select('local_oerexchange_profiles', "userid {$insql}", $inparams);
+
+        $bykey = [];
+        foreach ($records as $record) {
+            $bykey[(int) $record->userid] = $record;
+        }
+        return $bykey;
+    }
+
+    /**
      * Slugs are used in a URL path segment — restrict to a safe, readable charset.
      *
      * @param string $slug
