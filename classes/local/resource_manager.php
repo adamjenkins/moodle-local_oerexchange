@@ -34,7 +34,8 @@ class resource_manager {
      *
      * @param int $draftitemid draft area holding exactly one .mbz file
      * @param int $creatorid Exchange-local userid
-     * @param int $siteid the registered site the share came from
+     * @param int|null $siteid the registered site the share came from, or null for a direct
+     *                          upload with no client site involved
      * @param array $metadata title, summary, language, tags, licenseshortname, type, activitytype
      * @param int|null $resourceid null to create a new resource, or an existing resource's id
      *                              (must belong to $creatorid) to add a version to it
@@ -43,7 +44,7 @@ class resource_manager {
     public static function publish(
         int $draftitemid,
         int $creatorid,
-        int $siteid,
+        ?int $siteid,
         array $metadata,
         ?int $resourceid = null
     ): array {
@@ -78,6 +79,7 @@ class resource_manager {
         $transaction = $DB->start_delegated_transaction();
         try {
             if ($resourceid === null) {
+                $isdataresource = ($metadata['type'] === 'data');
                 $resourceid = (int) $DB->insert_record('local_oerexchange_resources', (object) [
                     'type' => $metadata['type'],
                     'title' => $metadata['title'],
@@ -86,10 +88,20 @@ class resource_manager {
                     'tags' => $metadata['tags'] ?? '',
                     'licenseshortname' => $metadata['licenseshortname'],
                     'activitytype' => $metadata['activitytype'] ?? null,
+                    'dataresourcetype' => $metadata['dataresourcetype'] ?? null,
                     'courseformat' => null,
                     'creatorid' => $creatorid,
                     'siteid' => $siteid,
-                    'status' => 'published',
+                    // Data resources have no async structural validation (they
+                    // aren't Moodle backups) — nothing will ever flip them out of
+                    // 'pending', so they publish immediately once the caller's own
+                    // synchronous extension/MIME check (Task 5) has already passed.
+                    // Course/activity resources start 'pending' and are flipped to
+                    // 'published' by parse_backup_task only once sanitycheck and
+                    // mbz_parser both succeed (Task 3) — closing the previous gap
+                    // where a resource was publicly listed before any validation
+                    // ran at all.
+                    'status' => $isdataresource ? 'published' : 'pending',
                     'downloadcount' => 0,
                     'importcount' => 0,
                     'forkedfromid' => $metadata['forkedfromid'] ?? null,
@@ -115,6 +127,7 @@ class resource_manager {
                 $DB->set_field('local_oerexchange_resources', 'timemodified', $now, ['id' => $resourceid]);
             }
 
+            $isdataresource = ($metadata['type'] === 'data');
             $versionid = (int) $DB->insert_record('local_oerexchange_versions', (object) [
                 'resourceid' => $resourceid,
                 'versionnumber' => $versionnumber,
@@ -125,7 +138,11 @@ class resource_manager {
                 'backupversion' => null,
                 'structurejson' => null,
                 'requiredplugins' => null,
-                'status' => 'parsing',
+                // A data resource is not a Moodle backup — there is nothing for
+                // parse_backup_task to parse, and can_download_unsigned()/
+                // download.php gate on version status = 'ready', so this must be
+                // 'ready' immediately rather than left at 'parsing' forever.
+                'status' => $isdataresource ? 'ready' : 'parsing',
                 'parseerror' => null,
                 'timecreated' => $now,
             ]);
@@ -134,9 +151,11 @@ class resource_manager {
             file_save_draft_area_files($draftitemid, $context->id, 'local_oerexchange', 'resource', $versionid);
             $DB->set_field('local_oerexchange_versions', 'itemid', $versionid, ['id' => $versionid]);
 
-            $task = new parse_backup_task();
-            $task->set_custom_data(['versionid' => $versionid]);
-            \core\task\manager::queue_adhoc_task($task);
+            if (!$isdataresource) {
+                $task = new parse_backup_task();
+                $task->set_custom_data(['versionid' => $versionid]);
+                \core\task\manager::queue_adhoc_task($task);
+            }
 
             $transaction->allow_commit();
         } catch (\Throwable $e) {

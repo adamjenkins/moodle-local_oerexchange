@@ -18,6 +18,7 @@ namespace local_oerexchange;
 
 use local_oerexchange\local\profile_manager;
 use local_oerexchange\local\resource_manager;
+use local_oerexchange\task\parse_backup_task;
 
 /**
  * Tests for resource_manager: the download visibility gate (MDL Shield audit
@@ -310,6 +311,135 @@ final class resource_manager_test extends \advanced_testcase {
         $this->resetAfterTest();
         $resource = (object) ['creatorid' => 0];
         $this->assertFalse(resource_manager::user_can_edit_resource($resource, 0));
+    }
+
+    /**
+     * FINDING (Task 2, client-attribution/data-resource plan): a brand-new
+     * course/activity resource must start 'pending', not 'published' —
+     * closing the gap where a resource was publicly listed before
+     * parse_backup_task's sanitycheck/mbz_parser validation had run at all.
+     * It's parse_backup_task (Task 3) that flips it to 'published' once
+     * validation succeeds.
+     */
+    public function test_publish_new_course_resource_starts_pending(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+        set_config('maxbackupbytes', 1000, 'local_oerexchange');
+
+        [$resourceid] = resource_manager::publish(
+            $this->create_draft_file($user->id, str_repeat('x', 50)),
+            (int) $user->id,
+            1,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ]
+        );
+
+        $status = $DB->get_field('local_oerexchange_resources', 'status', ['id' => $resourceid], MUST_EXIST);
+        $this->assertSame('pending', $status);
+    }
+
+    public function test_publish_new_version_on_published_resource_leaves_resource_status_untouched(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+        set_config('maxbackupbytes', 1000, 'local_oerexchange');
+
+        [$resourceid] = resource_manager::publish(
+            $this->create_draft_file($user->id, str_repeat('x', 50)),
+            (int) $user->id,
+            1,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ]
+        );
+        // Seed the resource as already published (simulating a validated,
+        // catalogue-listed resource that already has a version).
+        $DB->set_field('local_oerexchange_resources', 'status', 'published', ['id' => $resourceid]);
+
+        resource_manager::publish(
+            $this->create_draft_file($user->id, str_repeat('y', 50)),
+            (int) $user->id,
+            1,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ],
+            $resourceid
+        );
+
+        $status = $DB->get_field('local_oerexchange_resources', 'status', ['id' => $resourceid], MUST_EXIST);
+        $this->assertSame('published', $status, 'adding a version must not touch the resource\'s own status');
+    }
+
+    /**
+     * A data resource (type='data') is not a Moodle backup: there is no
+     * async structural validation for parse_backup_task to perform, so it
+     * must publish immediately with its version already 'ready', and must
+     * NOT have a parse_backup_task queued for it.
+     */
+    public function test_publish_data_resource_is_published_immediately(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+        set_config('maxbackupbytes', 1000, 'local_oerexchange');
+
+        $tasksbefore = \core\task\manager::get_adhoc_tasks(parse_backup_task::class);
+
+        [$resourceid, $versionid] = resource_manager::publish(
+            $this->create_draft_file($user->id, str_repeat('x', 50)),
+            (int) $user->id,
+            1,
+            [
+                'type' => 'data', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+                'dataresourcetype' => 'glossary',
+            ]
+        );
+
+        $resourcestatus = $DB->get_field('local_oerexchange_resources', 'status', ['id' => $resourceid], MUST_EXIST);
+        $this->assertSame('published', $resourcestatus);
+
+        $versionstatus = $DB->get_field('local_oerexchange_versions', 'status', ['id' => $versionid], MUST_EXIST);
+        $this->assertSame('ready', $versionstatus);
+
+        $tasksafter = \core\task\manager::get_adhoc_tasks(parse_backup_task::class);
+        $this->assertCount(
+            count($tasksbefore),
+            $tasksafter,
+            'publishing a data resource must not queue a parse_backup_task'
+        );
+    }
+
+    public function test_publish_direct_upload_accepts_null_siteid(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+        set_config('maxbackupbytes', 1000, 'local_oerexchange');
+
+        [$resourceid] = resource_manager::publish(
+            $this->create_draft_file($user->id, str_repeat('x', 50)),
+            (int) $user->id,
+            null,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ]
+        );
+
+        $siteid = $DB->get_field('local_oerexchange_resources', 'siteid', ['id' => $resourceid], MUST_EXIST);
+        $this->assertNull($siteid);
     }
 
     /**

@@ -123,7 +123,14 @@ final class publish_resource_test extends \advanced_testcase {
 
         $resource = $DB->get_record('local_oerexchange_resources', ['id' => $result['resourceid']], '*', MUST_EXIST);
         $this->assertSame((int) $user->id, (int) $resource->creatorid, 'creatorid must always be $USER->id, never client-supplied');
-        $this->assertSame('published', $resource->status);
+        // Task 2's validation-gap fix (SHARE-UPLOAD-PLAN.md Global Constraints):
+        // a brand-new course/activity resource now starts 'pending', not
+        // 'published' — publish_resource.php's call shape is explicitly IN
+        // SCOPE for this behavior change, only its immediate-then-async
+        // validation *timing* is otherwise unaffected. parse_backup_task
+        // (Task 3) flips it to 'published' once structural validation
+        // succeeds.
+        $this->assertSame('pending', $resource->status);
     }
 
     public function test_execute_rejects_an_invalid_type(): void {
