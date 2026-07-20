@@ -70,6 +70,21 @@ class parse_backup_task extends \core\task\adhoc_task {
                 'parseerror' => null,
             ]);
 
+            // Task 2's validation-gap fix: a brand-new resource starts 'pending'
+            // and is only made publicly visible (search.php filters on
+            // resource.status = 'published') once its first version's structural
+            // validation has actually succeeded. A resource already 'published'
+            // (a new version being added to it, or one that started 'data'-typed
+            // and published immediately) is deliberately left untouched by this —
+            // only a still-'pending' resource is eligible to flip here.
+            $DB->set_field_select(
+                'local_oerexchange_resources',
+                'status',
+                'published',
+                'id = ? AND status = ?',
+                [$version->resourceid, 'pending']
+            );
+
             if ($parsed->courseformat) {
                 $DB->set_field(
                     'local_oerexchange_resources',
