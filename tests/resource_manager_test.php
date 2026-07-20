@@ -263,6 +263,56 @@ final class resource_manager_test extends \advanced_testcase {
     }
 
     /**
+     * FINDING 2 (MDL Shield round 2 audit): user_can_edit_resource() — the
+     * shared ownership/moderator gate extracted during the final
+     * whole-branch review's fix (docblock, resource_manager.php:199-215) —
+     * had no direct unit test, only indirect coverage via resource.php,
+     * which itself has no unit-test harness. These tests cover its four
+     * documented cases directly.
+     */
+    public function test_user_can_edit_resource_allows_the_creator(): void {
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user();
+        $resource = (object) ['creatorid' => $creator->id];
+        $this->assertTrue(resource_manager::user_can_edit_resource($resource, (int) $creator->id));
+    }
+
+    public function test_user_can_edit_resource_blocks_a_different_non_moderator_user(): void {
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user();
+        $other = $this->getDataGenerator()->create_user();
+        $resource = (object) ['creatorid' => $creator->id];
+        $this->assertFalse(resource_manager::user_can_edit_resource($resource, (int) $other->id));
+    }
+
+    public function test_user_can_edit_resource_allows_a_moderator_who_is_not_the_creator(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $creator = $this->getDataGenerator()->create_user();
+        $moderator = $this->getDataGenerator()->create_user();
+        $roleid = $DB->get_field('role', 'id', ['shortname' => 'manager']);
+        role_assign($roleid, $moderator->id, \context_system::instance()->id);
+
+        $resource = (object) ['creatorid' => $creator->id];
+        $this->assertTrue(resource_manager::user_can_edit_resource($resource, (int) $moderator->id));
+    }
+
+    /**
+     * The guest/tombstone guard this helper was specifically extracted to
+     * preserve (docblock: "0 must never match as owner no matter what
+     * $userid is passed") — a tombstoned resource has creatorid = 0
+     * (profile_manager::delete_creator_resource()), and an
+     * anonymous/unauthenticated-equivalent caller (userid 0) must not match
+     * it as its own creator.
+     */
+    public function test_user_can_edit_resource_blocks_anonymous_on_a_tombstoned_resource(): void {
+        $this->resetAfterTest();
+        $resource = (object) ['creatorid' => 0];
+        $this->assertFalse(resource_manager::user_can_edit_resource($resource, 0));
+    }
+
+    /**
      * Creates a draft-area file with the given contents, for use as a fake upload in tests.
      *
      * @param int $userid
