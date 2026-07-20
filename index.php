@@ -116,6 +116,7 @@ echo html_writer::select(
         '' => '',
         'course' => get_string('typecourse', 'local_oerexchange'),
         'activity' => get_string('typeactivity', 'local_oerexchange'),
+        'data' => get_string('typedata', 'local_oerexchange'),
     ],
     'type',
     $type,
@@ -164,9 +165,17 @@ if (empty($resources)) {
     echo html_writer::start_tag('div', ['class' => 'oerexchange-list row row-cols-1 row-cols-md-3 g-3']);
     foreach ($resources as $r) {
         $url = new moodle_url('/local/oerexchange/resource.php', ['id' => $r->id]);
-        $typelabel = $r->type === 'course'
-            ? get_string('typecourse', 'local_oerexchange')
-            : get_string('typeactivity', 'local_oerexchange') . ($r->activitytype ? ' (' . s($r->activitytype) . ')' : '');
+        if ($r->type === 'course') {
+            $typelabel = get_string('typecourse', 'local_oerexchange');
+        } else if ($r->type === 'data') {
+            $typelabel = get_string('typedata', 'local_oerexchange');
+            if (!empty($r->dataresourcetype)) {
+                $typelabel .= ' (' . get_string('datatype_' . $r->dataresourcetype, 'local_oerexchange') . ')';
+            }
+        } else {
+            $typelabel = get_string('typeactivity', 'local_oerexchange')
+                . ($r->activitytype ? ' (' . s($r->activitytype) . ')' : '');
+        }
         echo html_writer::start_tag('div', ['class' => 'col']);
         echo html_writer::start_tag('div', ['class' => 'card h-100']);
         echo html_writer::start_tag('div', ['class' => 'card-body']);

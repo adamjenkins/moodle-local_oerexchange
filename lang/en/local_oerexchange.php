@@ -247,6 +247,7 @@ $string['tryitpluginwarning'] = 'This resource needs a plugin that may not fully
 $string['tryitunavailable'] = 'Try it is currently unavailable.';
 $string['typeactivity'] = 'Activity';
 $string['typecourse'] = 'Course';
+$string['typedata'] = 'Data resource';
 $string['typelabel'] = 'Type';
 $string['uploaddatafile'] = 'File';
 $string['uploaddataheading'] = 'Upload a data resource';
