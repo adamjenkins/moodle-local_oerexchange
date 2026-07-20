@@ -15,6 +15,16 @@ plugin installed on their own Moodle sites.
   real Exchange account.
 - **Licensing**: Creative Commons via core's `license_manager`.
 - **Community**: adaptation-story reviews, reports, and a moderation queue.
+- **Educator profiles**: a shareable profile page per educator
+  (`/local_oerexchange/u/{slug}`, bio/expertise/badges/portfolio links/metrics/
+  resource grid), auto-created on first published resource. Author attribution
+  and a creator/moderator-editable thumbnail on every resource, Open Graph
+  social-preview tags via the Hooks API, a nightly badge-computation task, and
+  a full-deletion-with-tombstone GDPR path (a departing user's shared
+  courseware is genuinely deleted, not just anonymized, while existing links
+  degrade gracefully instead of breaking). See
+  `classes/local/profile_manager.php`, `classes/local/badge_manager.php`, and
+  `classes/route/controller/`.
 - **Sandbox integration**: builds Moodle Playground (in-browser, WASM) trial
   launch URLs — no server-side trial execution. See `classes/local/sandbox/`.
 
