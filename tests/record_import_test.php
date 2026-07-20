@@ -17,9 +17,10 @@
 namespace local_oerexchange\external;
 
 /**
- * Tests for local_oerexchange_record_import — specifically the
- * versionid-belongs-to-resourceid cross-validation added for MDL Shield
- * audit finding 1b (2026-07-18).
+ * Tests for local_oerexchange_record_import — the versionid-belongs-to-
+ * resourceid cross-validation added for MDL Shield audit finding 1b
+ * (2026-07-18), and the userid-linked-to-calling-site corroboration added
+ * for MDL Shield round 2 audit finding 1 (2026-07-19).
  *
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -112,5 +113,89 @@ final class record_import_test extends \advanced_testcase {
         $this->assertEquals(0, $DB->get_field('local_oerexchange_resources', 'importcount', ['id' => $resourceid1]));
         $this->assertEquals(0, $DB->get_field('local_oerexchange_resources', 'importcount', ['id' => $resourceid2]));
         $this->assertEquals(0, $DB->count_records('local_oerexchange_imports'));
+    }
+
+    /**
+     * MDL Shield round 2 audit finding 1: userid is client-supplied and was
+     * previously trusted with no verification, letting a malicious/
+     * compromised client site attribute an import to an arbitrary
+     * Exchange-local userid. A userid actually linked to the calling site
+     * (a 'used' local_oerexchange_linkcodes row for that userid+siteid) must
+     * still be recorded as-is.
+     */
+    public function test_userid_linked_to_the_calling_site_is_recorded_as_submitted(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$siteuser, $resourceid1, $versionid1] = $this->setup_fixtures();
+        $siteid = $DB->get_field('local_oerexchange_sites', 'id', ['serviceuserid' => $siteuser->id], MUST_EXIST);
+        $importer = $this->getDataGenerator()->create_user();
+        $DB->insert_record('local_oerexchange_linkcodes', (object) [
+            'code' => 'testcode1', 'siteid' => $siteid, 'userid' => $importer->id,
+            'token' => 'testtoken1', 'status' => 'used',
+            'timecreated' => time(), 'timeexpires' => time() + DAYSECS,
+        ]);
+        $this->setUser($siteuser);
+
+        record_import::execute($resourceid1, $versionid1, (int) $importer->id);
+
+        $this->assertEquals(
+            $importer->id,
+            $DB->get_field('local_oerexchange_imports', 'userid', ['resourceid' => $resourceid1])
+        );
+    }
+
+    /**
+     * A userid NOT linked to the calling site (no matching 'used'
+     * linkcodes row) is a forged/untrustworthy attribution — the call must
+     * still succeed (an import genuinely happened) but record userid = 0
+     * ("unlinked importer", already a supported documented value) rather
+     * than trusting the client's claim.
+     */
+    public function test_unlinked_userid_is_recorded_as_zero_not_the_forged_value(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$siteuser, $resourceid1, $versionid1] = $this->setup_fixtures();
+        // A real Exchange user who exists, but was never linked to this
+        // calling site — the forged-attribution case.
+        $victim = $this->getDataGenerator()->create_user();
+        $this->setUser($siteuser);
+
+        $result = record_import::execute($resourceid1, $versionid1, (int) $victim->id);
+
+        $this->assertTrue($result['success'], 'the call still succeeds — the import genuinely happened');
+        $importrow = $DB->get_record('local_oerexchange_imports', ['resourceid' => $resourceid1], '*', MUST_EXIST);
+        $this->assertNull($importrow->userid, 'falls back to unlinked (0/null), never the forged userid');
+        $this->assertNotEquals($victim->id, $importrow->userid);
+    }
+
+    /**
+     * A linkcode for the right userid but a DIFFERENT site (or not 'used')
+     * must not corroborate the claim either — the check is siteid-specific,
+     * not just "this userid was linked to something, somewhere".
+     */
+    public function test_userid_linked_to_a_different_site_is_recorded_as_zero(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$siteuser, $resourceid1, $versionid1] = $this->setup_fixtures();
+        $othersiteid = $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'Other site', 'url' => 'https://other.example.com', 'contact' => 'y@example.com',
+            'serviceuserid' => $this->getDataGenerator()->create_user()->id, 'status' => 'active',
+            'timecreated' => time(), 'timemodified' => time(),
+        ]);
+        $importer = $this->getDataGenerator()->create_user();
+        $DB->insert_record('local_oerexchange_linkcodes', (object) [
+            'code' => 'testcode2', 'siteid' => $othersiteid, 'userid' => $importer->id,
+            'token' => 'testtoken2', 'status' => 'used',
+            'timecreated' => time(), 'timeexpires' => time() + DAYSECS,
+        ]);
+        $this->setUser($siteuser);
+
+        record_import::execute($resourceid1, $versionid1, (int) $importer->id);
+
+        $importrow = $DB->get_record('local_oerexchange_imports', ['resourceid' => $resourceid1], '*', MUST_EXIST);
+        $this->assertNull($importrow->userid);
     }
 }

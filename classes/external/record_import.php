@@ -77,11 +77,35 @@ class record_import extends external_api {
             throw new \moodle_exception('error_notfound', 'local_oerexchange');
         }
 
+        // Userid is client-supplied and otherwise entirely unverified — same
+        // corroboration pattern publish_resource.php applies to its siteid
+        // parameter (see that file's comment): re-validate it against the
+        // calling site's own link history via local_oerexchange_linkcodes
+        // before trusting it, so a malicious/compromised client site can't
+        // attribute an import to an arbitrary Exchange-local userid (which
+        // would otherwise feed that user's own GDPR export data). Unlike
+        // publish_resource.php's siteid check, an unverifiable userid does
+        // NOT reject the call outright — an import genuinely happened, and
+        // 0 ("unlinked importer") is already a supported, documented value
+        // for this parameter, so falling back to it is more correct than
+        // either trusting a forged attribution or failing the whole call.
+        $verifieduserid = 0;
+        if ($params['userid']) {
+            $linked = $DB->record_exists('local_oerexchange_linkcodes', [
+                'userid' => $params['userid'],
+                'siteid' => $site->id,
+                'status' => 'used',
+            ]);
+            if ($linked) {
+                $verifieduserid = $params['userid'];
+            }
+        }
+
         $DB->insert_record('local_oerexchange_imports', (object) [
             'resourceid' => $resource->id,
             'versionid' => $version->id,
             'siteid' => $site->id,
-            'userid' => $params['userid'] ?: null,
+            'userid' => $verifieduserid ?: null,
             'timecreated' => time(),
         ]);
         // Atomic increment — a read-modify-write ($resource->importcount + 1) loses
