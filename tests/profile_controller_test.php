@@ -84,24 +84,33 @@ final class profile_controller_test extends route_testcase {
         // the actual compiled route pattern
         // (abstract_route_loader.php:112).
         //
-        // The controller builds this via moodle_url::routed_path(), which
-        // prepends '/r.php/' unless $CFG->routerconfigured is truthy. No
-        // '/r.php/' prefix is expected below because PHPUnit's bootstrap
-        // (lib/phpunit/bootstrap.php) carries routerconfigured through from
-        // the real config.php unchanged — verified empirically (2026-07-19)
-        // to read '1' under this test suite, unlike the falsy value seen
-        // during an actual routed HTTP request on this dev VM (see
+        // The controller builds both $PAGE->url and the share button's URL
+        // from the exact same moodle_url::routed_path() call (see
+        // profile_controller.php around the $profileurl assignment), which
+        // prepends '/r.php/' unless $CFG->routerconfigured is truthy — a
+        // flag whose value is environment- (and even routed-request-phase-)
+        // dependent, not a constant this test can hardcode against (see
         // dev-docs/harness/discoveries/
-        // 2026-07-19-routerconfigured-inconsistent-during-routed-requests.md).
-        // If this assertion ever starts failing with a '/r.php/'-prefixed
-        // URL, re-verify that value rather than assuming a regression.
+        // 2026-07-19-routerconfigured-inconsistent-during-routed-requests.md,
+        // which found this flag's behaviour unusually order-dependent even
+        // in production). What actually matters here is that $PAGE->url and
+        // the share button stay byte-for-byte consistent with each other
+        // and with what routed_path() itself would produce for this slug in
+        // whatever environment runs this test — so compute the expected
+        // value the same way the controller does, rather than asserting one
+        // hardcoded literal.
         global $PAGE;
-        $this->assertSame('/moodle/local_oerexchange/u/janedoe', $PAGE->url->get_path());
+        $expectedprofileurl = \moodle_url::routed_path('/local_oerexchange/u/janedoe');
+        $this->assertSame($expectedprofileurl->get_path(), $PAGE->url->get_path());
         $this->assertStringContainsString(
-            'data-share-url="https://www.example.com/moodle/local_oerexchange/u/janedoe"',
+            'data-share-url="' . $expectedprofileurl->out(false) . '"',
             $body
         );
         $this->assertStringNotContainsString('data-share-url="https://www.example.com/moodle/u/janedoe"', $body);
+        $this->assertStringNotContainsString(
+            'data-share-url="https://www.example.com/moodle/r.php/u/janedoe"',
+            $body
+        );
     }
 
     public function test_visible_profile_shows_metrics_badges_and_message_link(): void {

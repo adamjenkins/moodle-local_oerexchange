@@ -84,15 +84,24 @@ final class hook_callbacks_test extends \advanced_testcase {
         // The real, resolvable URL, not the bare '/u/{slug}' the #[route]
         // attribute declares (component-relative only — see
         // profile_controller's class docblock). build_og_meta_html() builds
-        // this via moodle_url::routed_path(); no '/r.php/' prefix is
-        // expected here because PHPUnit's bootstrap carries
-        // $CFG->routerconfigured through from config.php unchanged (reads
-        // truthy under this test suite) — see profile_controller_test.php's
-        // matching comment and
+        // this via moodle_url::routed_path(), which prepends an extra
+        // '/r.php/' segment or not depending on $CFG->routerconfigured — a
+        // flag whose value is environment- (and even routed-request-phase-)
+        // dependent, not something this test should be coupled to (see
         // dev-docs/harness/discoveries/
-        // 2026-07-19-routerconfigured-inconsistent-during-routed-requests.md.
-        $this->assertStringContainsString('content="https://www.example.com/moodle/local_oerexchange/u/janedoe"', $html);
-        $this->assertStringNotContainsString('content="https://www.example.com/moodle/u/janedoe"', $html);
+        // 2026-07-19-routerconfigured-inconsistent-during-routed-requests.md).
+        // What this test actually cares about is that the emitted og:url
+        // carries the real, component-prefixed slug path — so match on
+        // that suffix, tolerating an optional '/r.php' segment before it,
+        // rather than asserting one hardcoded full form.
+        $this->assertMatchesRegularExpression(
+            '#property="og:url" content="https://www\.example\.com/moodle(?:/r\.php)?/local_oerexchange/u/janedoe"#',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '#property="og:url" content="https://www\.example\.com/moodle(?:/r\.php)?/u/janedoe"#',
+            $html
+        );
         $this->assertStringContainsString('property="og:type" content="profile"', $html);
     }
 
@@ -126,8 +135,15 @@ final class hook_callbacks_test extends \advanced_testcase {
         $this->assertStringContainsString('property="og:title"', $html);
         // The gate matched (og:title present), but the *emitted* og:url is
         // always the real path built by build_og_meta_html(), never an echo
-        // of whatever $PAGE->url happened to be.
-        $this->assertStringContainsString('content="https://www.example.com/moodle/local_oerexchange/u/janedoe"', $html);
+        // of whatever $PAGE->url happened to be. As above, match only the
+        // component-prefixed slug suffix — an optional '/r.php' prefix
+        // depends on $CFG->routerconfigured, which this test has no reason
+        // to be coupled to (see the matching comment and discovery doc
+        // referenced in test_visible_profile_page_adds_og_tags() above).
+        $this->assertMatchesRegularExpression(
+            '#property="og:url" content="https://www\.example\.com/moodle(?:/r\.php)?/local_oerexchange/u/janedoe"#',
+            $html
+        );
     }
 
     public function test_hidden_profile_page_adds_nothing(): void {
