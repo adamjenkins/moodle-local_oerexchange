@@ -178,10 +178,22 @@ if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser())
     // client-side type filtering that can be trusted, and this filearea is
     // served inline via local_oerexchange_pluginfile() (lib.php, Task 9) —
     // an arbitrary uploaded file (e.g. .html/.svg) rendered inline from the
-    // Moodle origin would be a stored-XSS vector. Reject anything that
-    // isn't an image before it ever reaches the permanent 'coverimage'
-    // filearea, rather than trusting the draft-area file's extension alone.
-    if (strpos((string) $draftfile->get_mimetype(), 'image/') !== 0) {
+    // Moodle origin would be a stored-XSS vector (in practice, defence in
+    // depth: core's send_file() already forces Content-Disposition:
+    // attachment for image/svg+xml regardless of this check, since
+    // local_oerexchange_pluginfile() never passes dontforcesvgdownload —
+    // see lib.php). Reject anything that isn't a raster image before it
+    // ever reaches the permanent 'coverimage' filearea, rather than
+    // trusting the draft-area file's extension alone.
+    //
+    // Deliberately an explicit allowlist, not a "starts with image/" prefix
+    // check: core maps a '.svg' filename to mimetype 'image/svg+xml', which
+    // begins with "image/" but is not a raster format, so a prefix check
+    // would not exclude it. Same allowlist as
+    // mbz_parser::is_allowed_cover_image_type() uses for the sibling
+    // cover-image-from-backup path.
+    $allowedthumbnailmimetypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+    if (!in_array((string) $draftfile->get_mimetype(), $allowedthumbnailmimetypes, true)) {
         throw new moodle_exception('error_thumbnailnotanimage', 'local_oerexchange');
     }
     // No admin setting for this (out of this task's scope); mirrors
