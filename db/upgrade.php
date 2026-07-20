@@ -67,5 +67,38 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026072000, 'local', 'oerexchange');
     }
 
+    if ($oldversion < 2026072001) {
+        $table = new xmldb_table('local_oerexchange_resources');
+
+        $field = new xmldb_field('dataresourcetype', XMLDB_TYPE_CHAR, '30', null, null, null, null, 'activitytype');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Make siteid nullable using raw SQL to bypass foreign key/index dependencies.
+        $dbtype = get_class($DB);
+        if (strpos($dbtype, 'pgsql') !== false || strpos($dbtype, 'postgres') !== false) {
+            // PostgreSQL - try to drop foreign key constraint first if it exists
+            try {
+                $DB->execute("ALTER TABLE mdl_local_oerexchange_resources DROP CONSTRAINT mdl_locaoerereso_sit_fk CASCADE");
+            } catch (Exception $e) {
+                // Constraint might not exist, continue anyway
+            }
+            // Now make the column nullable
+            $DB->execute("ALTER TABLE mdl_local_oerexchange_resources ALTER COLUMN siteid DROP NOT NULL");
+        } else {
+            // MySQL/MariaDB - drop foreign key if it exists
+            try {
+                $DB->execute("ALTER TABLE mdl_local_oerexchange_resources DROP FOREIGN KEY mdl_locaoerereso_sit_fk");
+            } catch (Exception $e) {
+                // Foreign key might not exist, continue anyway
+            }
+            // Now modify the column to be nullable
+            $DB->execute("ALTER TABLE mdl_local_oerexchange_resources MODIFY siteid INT(10) NULL");
+        }
+
+        upgrade_plugin_savepoint(true, 2026072001, 'local', 'oerexchange');
+    }
+
     return true;
 }

@@ -34,10 +34,11 @@
         <FIELD NAME="tags" TYPE="text" NOTNULL="false" COMMENT="comma-separated subject tags"/>
         <FIELD NAME="licenseshortname" TYPE="char" LENGTH="255" NOTNULL="true"/>
         <FIELD NAME="activitytype" TYPE="char" LENGTH="100" NOTNULL="false" COMMENT="modname, set when type=activity"/>
+        <FIELD NAME="dataresourcetype" TYPE="char" LENGTH="30" NOTNULL="false" COMMENT="glossary|questionbank|other, set when type=data"/>
         <FIELD NAME="courseformat" TYPE="char" LENGTH="100" NOTNULL="false"/>
         <FIELD NAME="creatorid" TYPE="int" LENGTH="10" NOTNULL="true" COMMENT="Exchange-local userid of the creator"/>
-        <FIELD NAME="siteid" TYPE="int" LENGTH="10" NOTNULL="true"/>
-        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="published" COMMENT="published|hidden|removed|deleted"/>
+        <FIELD NAME="siteid" TYPE="int" LENGTH="10" NOTNULL="false" COMMENT="null for a direct upload with no client site involved"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="published" COMMENT="published|pending|hidden|removed|deleted"/>
         <FIELD NAME="downloadcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="importcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="forkedfromid" TYPE="int" LENGTH="10" NOTNULL="false"/>
@@ -46,7 +47,6 @@
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
-        <KEY NAME="siteid" TYPE="foreign" FIELDS="siteid" REFTABLE="local_oerexchange_sites" REFFIELDS="id"/>
         <KEY NAME="forkedfromid" TYPE="foreign" FIELDS="forkedfromid" REFTABLE="local_oerexchange_resources" REFFIELDS="id"/>
       </KEYS>
       <INDEXES>
