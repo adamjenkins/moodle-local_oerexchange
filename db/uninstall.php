@@ -34,6 +34,7 @@ function xmldb_local_oerexchange_uninstall() {
     $contextid = context_system::instance()->id;
     $fs->delete_area_files($contextid, 'local_oerexchange', 'resource');
     $fs->delete_area_files($contextid, 'local_oerexchange', 'allowlist');
+    $fs->delete_area_files($contextid, 'local_oerexchange', 'coverimage');
 
     return true;
 }
