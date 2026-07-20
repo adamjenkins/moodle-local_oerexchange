@@ -22,6 +22,7 @@ use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
 use local_oerexchange\local\download_signer;
+use local_oerexchange\local\profile_manager;
 
 /**
  * local_oerexchange_get_resource external function.
@@ -57,6 +58,14 @@ class get_resource extends external_api {
         $resource = $DB->get_record('local_oerexchange_resources', ['id' => $params['resourceid']], '*', MUST_EXIST);
         if ($resource->status !== 'published') {
             throw new \moodle_exception('error_notfound', 'local_oerexchange');
+        }
+
+        $creator = \core_user::get_user($resource->creatorid);
+        $creatorname = $creator ? fullname($creator) : '';
+        $creatorprofileurl = '';
+        $creatorprofile = profile_manager::get_by_userid((int) $resource->creatorid);
+        if ($creatorprofile && $creatorprofile->visible) {
+            $creatorprofileurl = \moodle_url::routed_path('/local_oerexchange/u/' . $creatorprofile->slug)->out(false);
         }
 
         $version = $DB->get_record(
@@ -119,6 +128,8 @@ class get_resource extends external_api {
             'importcount' => (int) $resource->importcount,
             'forkedfromid' => $resource->forkedfromid !== null ? (int) $resource->forkedfromid : -1,
             'timeshared' => (int) $resource->timeshared,
+            'creatorname' => $creatorname,
+            'creatorprofileurl' => $creatorprofileurl,
             'versionid' => $version ? (int) $version->id : -1,
             'moodleversion' => $version->moodleversion ?? '',
             'structurejson' => $version->structurejson ?? '',
@@ -148,6 +159,8 @@ class get_resource extends external_api {
             'importcount' => new external_value(PARAM_INT, 'Import count'),
             'forkedfromid' => new external_value(PARAM_INT, 'Attribution: source resource id, or -1'),
             'timeshared' => new external_value(PARAM_INT, 'Unix timestamp'),
+            'creatorname' => new external_value(PARAM_TEXT, 'Creator display name'),
+            'creatorprofileurl' => new external_value(PARAM_RAW, 'Creator profile URL, or empty string if none/hidden'),
             'versionid' => new external_value(PARAM_INT, 'Latest ready version id, or -1 if none ready yet'),
             'moodleversion' => new external_value(PARAM_TEXT, 'Moodle release the backup was made from'),
             'structurejson' => new external_value(PARAM_RAW, 'JSON structure preview'),

@@ -119,4 +119,91 @@ final class get_resource_test extends \advanced_testcase {
         $this->assertCount(1, $result['reviews']);
         $this->assertSame('visible one', $result['reviews'][0]['contexttext']);
     }
+
+    public function test_creatorname_is_always_present_for_a_published_resource(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user(['firstname' => 'Priya', 'lastname' => 'Nair']);
+        $this->setUser($this->getDataGenerator()->create_user());
+
+        $resourceid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'Has a creator', 'summary' => '', 'language' => '', 'tags' => '',
+            'licenseshortname' => 'cc-4.0', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => $creator->id, 'siteid' => 1, 'status' => 'published',
+            'downloadcount' => 0, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => time(), 'timemodified' => time(),
+        ]);
+
+        $result = get_resource::execute($resourceid);
+
+        $this->assertSame('Priya Nair', $result['creatorname']);
+    }
+
+    public function test_creatorprofileurl_is_empty_when_creator_has_no_profile(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user();
+        $this->setUser($this->getDataGenerator()->create_user());
+
+        $resourceid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'No profile yet', 'summary' => '', 'language' => '', 'tags' => '',
+            'licenseshortname' => 'cc-4.0', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => $creator->id, 'siteid' => 1, 'status' => 'published',
+            'downloadcount' => 0, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => time(), 'timemodified' => time(),
+        ]);
+
+        $result = get_resource::execute($resourceid);
+
+        $this->assertSame('', $result['creatorprofileurl']);
+    }
+
+    public function test_creatorprofileurl_is_empty_when_creators_profile_is_hidden(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user();
+        \local_oerexchange\local\profile_manager::get_or_create_for_user((int) $creator->id);
+        \local_oerexchange\local\profile_manager::save((int) $creator->id, [
+            'slug' => 'hiddenprofile', 'bio' => '', 'expertise' => [],
+            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => false,
+        ]);
+        $this->setUser($this->getDataGenerator()->create_user());
+
+        $resourceid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'Hidden profile creator', 'summary' => '', 'language' => '', 'tags' => '',
+            'licenseshortname' => 'cc-4.0', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => $creator->id, 'siteid' => 1, 'status' => 'published',
+            'downloadcount' => 0, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => time(), 'timemodified' => time(),
+        ]);
+
+        $result = get_resource::execute($resourceid);
+
+        $this->assertSame('', $result['creatorprofileurl']);
+    }
+
+    public function test_creatorprofileurl_is_a_real_url_when_creators_profile_is_visible(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user();
+        \local_oerexchange\local\profile_manager::get_or_create_for_user((int) $creator->id);
+        \local_oerexchange\local\profile_manager::save((int) $creator->id, [
+            'slug' => 'visibleprofile', 'bio' => '', 'expertise' => [],
+            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true,
+        ]);
+        $this->setUser($this->getDataGenerator()->create_user());
+
+        $resourceid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'Visible profile creator', 'summary' => '', 'language' => '', 'tags' => '',
+            'licenseshortname' => 'cc-4.0', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => $creator->id, 'siteid' => 1, 'status' => 'published',
+            'downloadcount' => 0, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => time(), 'timemodified' => time(),
+        ]);
+
+        $result = get_resource::execute($resourceid);
+
+        $this->assertNotSame('', $result['creatorprofileurl']);
+        $this->assertStringContainsString('visibleprofile', $result['creatorprofileurl']);
+    }
 }
