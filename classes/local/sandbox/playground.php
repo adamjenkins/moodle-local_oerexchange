@@ -163,13 +163,18 @@ class playground {
      *                        to skip a runtime install step for a plugin already baked into
      *                        that branch's bundle. Pass '' (default) to always emit runtime
      *                        install steps, e.g. from a caller that hasn't resolved a branch.
+     * @param string $resourcetype 'course' or 'activity' (resources.type — a 'data' resource is
+     *                              never Try-it-able and must not reach this method at all; see
+     *                              its caller's guard). Defaults to 'course' so any caller not
+     *                              yet updated keeps today's exact restoreCourse behavior.
      * @return array the blueprint structure (JSON-encode before use)
      */
     public static function build_blueprint(
         string $resourcetitle,
         string $signedmbzurl,
         array $allowedplugininstalls,
-        string $branch = ''
+        string $branch = '',
+        string $resourcetype = 'course'
     ): array {
         $steps = [];
 
@@ -207,11 +212,30 @@ class playground {
             ];
         }
 
-        $steps[] = [
-            'step' => 'restoreCourse',
-            'url' => $signedmbzurl,
-            'category' => 'Trial',
-        ];
+        if ($resourcetype === 'activity') {
+            // A single-activity backup is TYPE_1ACTIVITY, not TYPE_1COURSE —
+            // the playground's own restoreCourse step handler hard-rejects
+            // anything that isn't a full-course backup (verified against the
+            // pinned upstream source, reference-clones/moodle-playground/src/
+            // blueprint/php/helpers.js: `if ($backuptype !== backup::TYPE_1COURSE)
+            // { fail(...); }`). Instead of a restoreCourse step, run a
+            // self-contained runPhpCode step that creates a fresh
+            // single-activity-format course and restores the activity backup
+            // INTO it with TARGET_EXISTING_ADDING — modeled directly on the
+            // upstream restoreCourse PHP generator's own pattern (same
+            // download/extract/error-handling shape), so it behaves
+            // consistently with every other blueprint step's error reporting.
+            $steps[] = [
+                'step' => 'runPhpCode',
+                'code' => self::build_activity_restore_php($signedmbzurl),
+            ];
+        } else {
+            $steps[] = [
+                'step' => 'restoreCourse',
+                'url' => $signedmbzurl,
+                'category' => 'Trial',
+            ];
+        }
 
         return [
             'steps' => $steps,
@@ -221,6 +245,143 @@ class playground {
             // course index if wrong (restoreCourse failures are non-fatal).
             'landingPage' => '/course/view.php?id=2',
         ];
+    }
+
+    /**
+     * Build the runPhpCode step body for a single-activity Try-it: create a
+     * fresh format_singleactivity course, then restore the activity backup
+     * into it with TARGET_EXISTING_ADDING. See build_blueprint()'s call site
+     * for why this can't reuse the restoreCourse step type.
+     *
+     * The leading define(CLI_SCRIPT)/require(config.php) matters: verified
+     * live 2026-07-20 that — unlike the restoreCourse step — runPhpCode's
+     * execution environment does NOT auto-bootstrap Moodle; its handler
+     * (reference-clones/moodle-playground/src/blueprint/steps/request.js
+     * handleRunPhpCode()) only prepends a bare "<?php" if missing, nothing
+     * more. Without this require, raise_memory_limit() below fatals with
+     * "Call to undefined function" because no config.php has ever run in
+     * this PHP process. Every OTHER upstream generator in helpers.js
+     * (including phpRestoreCourse(), the pattern this method is modeled on)
+     * is prefixed with exactly this CLI_HEADER boilerplate for the same
+     * reason — runPhpCode's own code strings are the one case that must
+     * supply it manually. MOODLE_ROOT is hardcoded '/www/moodle' in
+     * helpers.js too: it is the in-browser WASM mount point, fixed across
+     * every trial regardless of the real Moodle site's own path, not a
+     * value to derive from this plugin's $CFG.
+     *
+     * The generated code is kept comment-free: it is base64-encoded whole
+     * into the trial's launch URL (build_launch_url()), and a verbose
+     * version measurably risked tripping nginx's fastcgi response-header
+     * buffer limit on the sandbox_launch.php redirect (found live
+     * 2026-07-20: intermittent "upstream sent too big header", full
+     * Location: URL ~5KB) — every extra byte here is a real cost.
+     *
+     * download_file_content() is called with the $tofile (8th) parameter
+     * streaming straight to a temp path, NOT with $fullresponse=true reading
+     * into a variable — verified live 2026-07-20 that the $fullresponse=true
+     * form (this method's first attempt) DOES fetch successfully inside the
+     * WASM sandbox, but its ->results is the response BODY BYTES, not a file
+     * path; passing those bytes straight to extract_to_pathname() (which
+     * expects a path and calls fopen() on it) fatals with "fopen(): Argument
+     * #1 ($filename) must not contain any null bytes" the instant the binary
+     * .mbz content contains one, which it does. This is the exact working
+     * pattern from the upstream restoreCourse generator in helpers.js
+     * (phpRestoreCourse()'s sourceBlock), reused here unchanged.
+     *
+     * After a successful restore, the course's format_singleactivity
+     * 'activitytype' option is set to the restored module's modname —
+     * verified live 2026-07-20 that without this, format_singleactivity's
+     * own page_set_course() (course/format/singleactivity/lib.php) can't
+     * find a course-module matching its unset/default activitytype (it
+     * defaults to the first registered activity type, e.g. 'forum', not
+     * whatever was actually restored) and redirects to "add an activity"
+     * instead of the restored activity, even though the restore itself
+     * succeeded.
+     *
+     * @param string $signedmbzurl
+     * @return string PHP source (without the leading <?php — the runPhpCode
+     *                 step handler adds it if missing)
+     */
+    private static function build_activity_restore_php(string $signedmbzurl): string {
+        $urlliteral = str_replace("'", "\\'", $signedmbzurl);
+
+        return <<<PHP
+define('CLI_SCRIPT', true);
+require('/www/moodle/config.php');
+raise_memory_limit(MEMORY_EXTRA);
+@set_time_limit(0);
+require_once(\$CFG->dirroot . '/backup/util/includes/restore_includes.php');
+require_once(\$CFG->dirroot . '/course/lib.php');
+global \$CFG, \$DB, \$USER;
+
+function fail(\$msg) {
+    while (ob_get_level()) { ob_end_clean(); }
+    echo json_encode(['ok' => false, 'error' => \$msg]);
+    exit(0);
+}
+set_exception_handler(function(\$e) { fail(\$e->getMessage()); });
+
+\$admin = get_admin();
+if (!\$admin) { fail('Administrator account not found.'); }
+\$USER = \$admin;
+
+\$mbz = make_request_directory() . '/source.mbz';
+\$dlok = download_file_content('$urlliteral', null, null, false, 600, 30, false, \$mbz);
+if (\$dlok === false || !is_file(\$mbz) || filesize(\$mbz) < 1000) {
+    fail('Could not download the activity backup.');
+}
+
+\$backupdir = restore_controller::get_tempdir_name(SITEID, \$admin->id);
+\$path = make_backup_temp_directory(\$backupdir);
+\$packer = get_file_packer('application/vnd.moodle.backup');
+if (!\$packer->extract_to_pathname(\$mbz, \$path)) {
+    fulldelete(\$path);
+    fail('Could not extract the activity backup (.mbz).');
+}
+if (!is_file(\$path . '/moodle_backup.xml')) {
+    fulldelete(\$path);
+    fail('The .mbz does not contain moodle_backup.xml (not a valid Moodle backup).');
+}
+\$tmprc = new restore_controller(
+    \$backupdir, SITEID, backup::INTERACTIVE_NO, backup::MODE_GENERAL, \$admin->id, backup::TARGET_EXISTING_ADDING
+);
+\$backuptype = \$tmprc->get_type();
+\$tmprc->destroy();
+if (\$backuptype !== backup::TYPE_1ACTIVITY) {
+    fulldelete(\$path);
+    fail('The supplied .mbz is not a single-activity backup.');
+}
+
+\$newcourse = new stdClass();
+\$newcourse->fullname = 'Trial activity';
+\$newcourse->shortname = 'trial-activity-' . time();
+\$newcourse->category = 1;
+\$newcourse->format = 'singleactivity';
+\$course = create_course(\$newcourse);
+
+\$rc = new restore_controller(
+    \$backupdir, \$course->id, backup::INTERACTIVE_NO, backup::MODE_GENERAL, \$admin->id, backup::TARGET_EXISTING_ADDING
+);
+try {
+    \$rc->execute_precheck();
+    \$rc->execute_plan();
+    \$rc->destroy();
+} catch (\\Throwable \$e) {
+    \$rc->destroy();
+    fulldelete(\$path);
+    fail('Activity restore failed: ' . \$e->getMessage());
+}
+fulldelete(\$path);
+
+rebuild_course_cache(\$course->id, true);
+\$modinfo = get_fast_modinfo(\$course->id);
+\$restoredcm = reset(\$modinfo->get_cms());
+if (\$restoredcm) {
+    course_get_format(\$course)->update_course_format_options(['activitytype' => \$restoredcm->modname]);
+}
+
+echo json_encode(['ok' => true, 'courseid' => \$course->id]);
+PHP;
     }
 
     /**

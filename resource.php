@@ -408,7 +408,10 @@ $hasunreliableplugin = (bool) array_filter($pluginstatuses, fn($p) => $p['status
 
 // Action buttons.
 echo html_writer::start_tag('div', ['class' => 'mb-3']);
-if ($sandboxenabled && $version) {
+if ($sandboxenabled && $version && $resource->type !== 'data') {
+    // A 'data' resource is not a Moodle backup — there is nothing to
+    // restore, so "Try it" is never offered for it (see sandbox_launch.php's
+    // matching defence-in-depth check on this same endpoint's direct URL).
     $tryurl = new moodle_url('/local/oerexchange/sandbox_launch.php', ['id' => $resource->id]);
     echo html_writer::link(
         $tryurl,

@@ -156,6 +156,98 @@ final class playground_test extends \basic_testcase {
         $this->assertSame(['installMoodle', 'login', 'installMoodlePlugin', 'restoreCourse'], $steps);
     }
 
+    public function test_build_blueprint_uses_restorecourse_step_for_course_type(): void {
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course'
+        );
+
+        $steps = array_column($blueprint['steps'], 'step');
+        $this->assertContains('restoreCourse', $steps);
+        $this->assertNotContains('runPhpCode', $steps);
+    }
+
+    /**
+     * A single-activity backup is TYPE_1ACTIVITY, not TYPE_1COURSE — the
+     * playground's own restoreCourse step handler hard-rejects anything that
+     * isn't a full-course backup, so an activity-type resource must instead
+     * get a self-contained runPhpCode step that restores into a fresh
+     * format_singleactivity course with TARGET_EXISTING_ADDING.
+     */
+    public function test_build_blueprint_uses_runphpcode_step_for_activity_type(): void {
+        $blueprint = playground::build_blueprint(
+            'My Quiz',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'activity'
+        );
+
+        $steps = array_column($blueprint['steps'], 'step');
+        $this->assertContains('runPhpCode', $steps);
+        $this->assertNotContains('restoreCourse', $steps);
+
+        $runstep = null;
+        foreach ($blueprint['steps'] as $step) {
+            if ($step['step'] === 'runPhpCode') {
+                $runstep = $step;
+            }
+        }
+        $this->assertNotNull($runstep);
+        $this->assertStringContainsString('TYPE_1ACTIVITY', $runstep['code']);
+        $this->assertStringContainsString('TARGET_EXISTING_ADDING', $runstep['code']);
+        // Found live 2026-07-20: unlike restoreCourse, the runPhpCode step
+        // handler does not bootstrap Moodle on its own — the generated code
+        // must require config.php itself or every Moodle API call in it
+        // (starting with raise_memory_limit()) fatals with "Call to
+        // undefined function".
+        $this->assertStringContainsString("require('/www/moodle/config.php')", $runstep['code']);
+        // Found live 2026-07-20: download_file_content(..., $fullresponse=true)
+        // fetches fine inside the WASM sandbox, but its ->results is raw
+        // response BODY BYTES, not a file path — passing that straight to
+        // extract_to_pathname() (which calls fopen() on its argument) fatals
+        // with "fopen(): Argument #1 ($filename) must not contain any null
+        // bytes" the moment the binary .mbz contains one. The $tofile (8th)
+        // parameter form, streaming straight to a real path, is the only
+        // form that works — it is also the exact pattern the upstream
+        // restoreCourse generator (helpers.js phpRestoreCourse()) uses.
+        $this->assertStringContainsString('make_request_directory()', $runstep['code']);
+        $this->assertStringNotContainsString('->results', $runstep['code']);
+        // Found live 2026-07-20: format_singleactivity's own page_set_course()
+        // redirects to "add an activity" instead of the restored activity
+        // unless the course's 'activitytype' format option is explicitly set
+        // to the restored module's modname after the restore completes.
+        $this->assertStringContainsString('update_course_format_options', $runstep['code']);
+        $this->assertStringContainsString('activitytype', $runstep['code']);
+    }
+
+    /**
+     * Backward-compat: a caller that hasn't been updated to pass
+     * $resourcetype (or explicitly passes 'course') must keep today's exact
+     * restoreCourse behavior.
+     */
+    public function test_build_blueprint_defaults_to_course_type_when_omitted(): void {
+        $withdefault = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            []
+        );
+        $explicit = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course'
+        );
+
+        $this->assertSame($explicit, $withdefault);
+        $steps = array_column($withdefault['steps'], 'step');
+        $this->assertContains('restoreCourse', $steps);
+    }
+
     public function test_build_launch_url_embeds_branch_and_base64_blueprint(): void {
         $blueprint = ['steps' => [['step' => 'installMoodle']], 'landingPage' => '/course/view.php?id=2'];
         $url = playground::build_launch_url('https://exchange.example/try/', '5.2', $blueprint);

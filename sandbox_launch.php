@@ -45,6 +45,14 @@ if (empty($sandboxbaseurl)) {
 
 $resource = $DB->get_record('local_oerexchange_resources', ['id' => $id, 'status' => 'published'], '*', MUST_EXIST);
 
+if ($resource->type === 'data') {
+    // A data resource is not a Moodle backup — there is nothing to restore
+    // and no meaningful trial to boot. resource.php already hides the "Try
+    // it" button for this type; this is the defence-in-depth check for a
+    // direct hit on this endpoint.
+    throw new moodle_exception('tryitunavailable', 'local_oerexchange');
+}
+
 $latest = $DB->get_records(
     'local_oerexchange_versions',
     ['resourceid' => $resource->id, 'status' => 'ready'],
@@ -77,7 +85,7 @@ foreach ($requiredplugins as $plugin) {
 }
 
 $signedmbzurl = download_signer::sign_url($version->id, playground::SIGNED_URL_TTL)->out(false);
-$blueprint = playground::build_blueprint($resource->title, $signedmbzurl, $allowedinstalls, $branch);
+$blueprint = playground::build_blueprint($resource->title, $signedmbzurl, $allowedinstalls, $branch, $resource->type);
 $launchurl = playground::build_launch_url($sandboxbaseurl, $branch, $blueprint);
 
 $DB->insert_record('local_oerexchange_trials', (object) [
