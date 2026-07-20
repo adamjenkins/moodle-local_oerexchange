@@ -127,6 +127,27 @@ final class parse_backup_task_coverimage_test extends \advanced_testcase {
         $this->assertEmpty($this->coverimage_files($resourceid));
     }
 
+    public function test_no_cover_image_extracted_for_non_raster_manifest_entry(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        // Same fixture as test_extracts_cover_image_for_course_backup_with_image(),
+        // except the overviewfiles manifest entry claims filename 'evil.svg' /
+        // mimetype 'image/svg+xml' instead of 'coverimage.png' — a crafted
+        // .mbz attempting to get a non-raster file stored via this ingestion
+        // path. Must be skipped, same as the no-image-in-backup case.
+        [$resourceid, $versionid] = $this->stage_version('course_with_evil_svg.mbz', 'course');
+
+        $task = new parse_backup_task();
+        $task->set_custom_data(['versionid' => $versionid]);
+        $task->execute();
+
+        $version = $DB->get_record('local_oerexchange_versions', ['id' => $versionid]);
+        $this->assertSame('ready', $version->status);
+
+        $this->assertEmpty($this->coverimage_files($resourceid));
+    }
+
     public function test_no_cover_image_extracted_for_activity_type_share(): void {
         global $DB;
         $this->resetAfterTest();

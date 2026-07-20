@@ -135,6 +135,18 @@ class mbz_parser {
                 continue;
             }
 
+            if (!self::is_allowed_cover_image_type($filename)) {
+                // The manifest entry's claimed filename/mimetype is attacker-influenced (it
+                // comes straight from an uploaded .mbz), so it gets no more trust here than
+                // resource.php's direct thumbnail-upload path gives a draft file — reject
+                // anything outside an explicit raster-image allowlist rather than storing it.
+                // This is not an XSS mitigation (local_oerexchange_pluginfile() never passes
+                // dontforcesvgdownload, so core's send_file() already forces image/svg+xml
+                // downloads — see lib.php); it exists because nothing on this path should have
+                // weaker input validation than the sibling upload path already has.
+                continue;
+            }
+
             $archivepath = 'files/' . substr($contenthash, 0, 2) . '/' . $contenthash;
             $contentdir = $outputdir . '/coverimage_content';
             check_dir_exists($contentdir);
@@ -153,6 +165,25 @@ class mbz_parser {
         }
 
         return null;
+    }
+
+    /**
+     * Whether a manifest entry's filename resolves (via core's extension-based
+     * mimeinfo()) to one of the raster image formats this plugin accepts as a
+     * course cover image.
+     *
+     * Deliberately an explicit allowlist, not an "image/" prefix check: core
+     * maps a '.svg' filename to the mimetype 'image/svg+xml', which begins
+     * with 'image/' but is not a raster format — and unlike a prefix check,
+     * an allowlist can't accidentally admit it or any other non-raster
+     * "image/*" type.
+     *
+     * @param string $filename
+     * @return bool
+     */
+    protected static function is_allowed_cover_image_type(string $filename): bool {
+        static $allowedmimetypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+        return in_array(mimeinfo('type', $filename), $allowedmimetypes, true);
     }
 
     /**
