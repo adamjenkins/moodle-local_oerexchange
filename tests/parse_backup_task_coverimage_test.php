@@ -148,6 +148,32 @@ final class parse_backup_task_coverimage_test extends \advanced_testcase {
         $this->assertEmpty($this->coverimage_files($resourceid));
     }
 
+    public function test_no_cover_image_extracted_for_non_image_content(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        // Same fixture as test_extracts_cover_image_for_course_backup_with_image(),
+        // except the overviewfiles manifest entry's ARCHIVED CONTENT (not its
+        // claimed filename/mimetype) has been replaced with plain text. The
+        // manifest still claims filename 'coverimage.png' / mimetype
+        // 'image/png', so this passes is_allowed_cover_image_type() — unlike
+        // course_with_evil_svg.mbz above, which is rejected by that
+        // extension/mimetype check before extraction ever happens. This
+        // fixture instead exercises is_verified_raster_image()'s
+        // getimagesize() content check, which must reject it once the actual
+        // (non-image) bytes are extracted.
+        [$resourceid, $versionid] = $this->stage_version('course_with_fake_raster.mbz', 'course');
+
+        $task = new parse_backup_task();
+        $task->set_custom_data(['versionid' => $versionid]);
+        $task->execute();
+
+        $version = $DB->get_record('local_oerexchange_versions', ['id' => $versionid]);
+        $this->assertSame('ready', $version->status);
+
+        $this->assertEmpty($this->coverimage_files($resourceid));
+    }
+
     public function test_no_cover_image_extracted_for_activity_type_share(): void {
         global $DB;
         $this->resetAfterTest();
