@@ -75,29 +75,54 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
             $dbman->add_field($table, $field);
         }
 
-        // Make siteid nullable using raw SQL to bypass foreign key/index dependencies.
-        $dbtype = get_class($DB);
-        if (strpos($dbtype, 'pgsql') !== false || strpos($dbtype, 'postgres') !== false) {
-            // PostgreSQL - try to drop foreign key constraint first if it exists
-            try {
-                $DB->execute("ALTER TABLE mdl_local_oerexchange_resources DROP CONSTRAINT mdl_locaoerereso_sit_fk CASCADE");
-            } catch (Exception $e) {
-                // Constraint might not exist, continue anyway
-            }
-            // Now make the column nullable
-            $DB->execute("ALTER TABLE mdl_local_oerexchange_resources ALTER COLUMN siteid DROP NOT NULL");
-        } else {
-            // MySQL/MariaDB - drop foreign key if it exists
-            try {
-                $DB->execute("ALTER TABLE mdl_local_oerexchange_resources DROP FOREIGN KEY mdl_locaoerereso_sit_fk");
-            } catch (Exception $e) {
-                // Foreign key might not exist, continue anyway
-            }
-            // Now modify the column to be nullable
-            $DB->execute("ALTER TABLE mdl_local_oerexchange_resources MODIFY siteid INT(10) NULL");
+        // The siteid foreign key is implemented, per Moodle's XMLDB layer, as a plain
+        // index rather than a DB-enforced constraint on both MySQL/MariaDB and
+        // PostgreSQL (sql_generator::$foreign_keys is false for both). dbman's
+        // change_field_notnull() unconditionally refuses to modify a column that any
+        // index still covers (database_manager::check_field_dependencies()), so the
+        // key has to be dropped and recreated around the NOT NULL change. Both
+        // drop_key() and add_key() are safe/no-op if the underlying index is already
+        // absent/present, so this is safe to run unconditionally.
+        $field = new xmldb_field('siteid', XMLDB_TYPE_INTEGER, '10', null, null, null, null);
+        if ($dbman->field_exists($table, $field)) {
+            $key = new xmldb_key('siteid', XMLDB_KEY_FOREIGN, ['siteid'], 'local_oerexchange_sites', ['id']);
+            $dbman->drop_key($table, $key);
+            $dbman->change_field_notnull($table, $field);
+            $dbman->add_key($table, $key);
         }
 
         upgrade_plugin_savepoint(true, 2026072001, 'local', 'oerexchange');
+    }
+
+    if ($oldversion < 2026072002) {
+        // A now-superseded version of this upgrade step (deployed briefly before this
+        // fix) used hand-rolled, hardcoded-table-prefix raw SQL instead of the dbman
+        // API above, and db/install.xml briefly had the siteid foreign key removed
+        // entirely. This defensively reconciles any environment's live schema to the
+        // same target state (siteid nullable, siteid foreign key/index present)
+        // using only dbman calls, checking before acting rather than assuming a
+        // specific starting state.
+        $table = new xmldb_table('local_oerexchange_resources');
+        $field = new xmldb_field('siteid', XMLDB_TYPE_INTEGER, '10', null, null, null, null);
+        $key = new xmldb_key('siteid', XMLDB_KEY_FOREIGN, ['siteid'], 'local_oerexchange_sites', ['id']);
+        $index = new xmldb_index('siteid', XMLDB_INDEX_NOTUNIQUE, ['siteid']);
+
+        if ($dbman->field_exists($table, $field)) {
+            // Drop the underlying index first only if it is actually present, since
+            // change_field_notnull() refuses to touch a column any index still
+            // covers (this is a no-op on an environment where the earlier raw-SQL
+            // step already dropped it).
+            if ($dbman->index_exists($table, $index)) {
+                $dbman->drop_key($table, $key);
+            }
+            $dbman->change_field_notnull($table, $field);
+            // Re-add the key/index only if it's actually missing.
+            if (!$dbman->index_exists($table, $index)) {
+                $dbman->add_key($table, $key);
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026072002, 'local', 'oerexchange');
     }
 
     return true;

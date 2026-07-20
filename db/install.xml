@@ -47,6 +47,7 @@
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="siteid" TYPE="foreign" FIELDS="siteid" REFTABLE="local_oerexchange_sites" REFFIELDS="id"/>
         <KEY NAME="forkedfromid" TYPE="foreign" FIELDS="forkedfromid" REFTABLE="local_oerexchange_resources" REFFIELDS="id"/>
       </KEYS>
       <INDEXES>
