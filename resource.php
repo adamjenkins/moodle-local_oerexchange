@@ -196,6 +196,21 @@ if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser())
     if (!in_array((string) $draftfile->get_mimetype(), $allowedthumbnailmimetypes, true)) {
         throw new moodle_exception('error_thumbnailnotanimage', 'local_oerexchange');
     }
+    // Additional check alongside (not instead of) the mimetype allowlist
+    // above (MDL Shield round 2 audit finding 2, 2026-07-19): that check
+    // only trusts the mimetype core derived from the uploaded FILENAME's
+    // extension, so content renamed to e.g. 'cover.png' still passes it
+    // regardless of what it actually contains. getimagesizefromstring()
+    // sniffs the real bytes: it returns false for non-image content, and
+    // reports the ACTUAL detected type (its [2] element, an IMAGETYPE_*
+    // constant) regardless of the claimed extension/mimetype. Same
+    // accepted raster set as the allowlist above, kept consistent with
+    // mbz_parser::is_verified_raster_image()'s equivalent check.
+    $allowedrasterimagetypes = [IMAGETYPE_PNG, IMAGETYPE_JPEG, IMAGETYPE_GIF, IMAGETYPE_WEBP];
+    $thumbnailimageinfo = @getimagesizefromstring($draftfile->get_content());
+    if ($thumbnailimageinfo === false || !in_array($thumbnailimageinfo[2], $allowedrasterimagetypes, true)) {
+        throw new moodle_exception('error_thumbnailnotanimage', 'local_oerexchange');
+    }
     // No admin setting for this (out of this task's scope); mirrors
     // resource_manager::publish()'s maxbackupbytes pattern with a flat
     // default sized for a thumbnail rather than a course backup.

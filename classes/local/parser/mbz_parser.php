@@ -157,6 +157,16 @@ class mbz_parser {
                 continue;
             }
 
+            if (!self::is_verified_raster_image($extracted)) {
+                // The extension/mimetype allowlist above only checked the
+                // manifest's claimed filename — also attacker-influenced.
+                // Verify the actual bytes: getimagesize() reports the real
+                // detected image type regardless of what the manifest or
+                // filename claimed, catching e.g. arbitrary content renamed
+                // to a '.png' filename that passed is_allowed_cover_image_type().
+                continue;
+            }
+
             $target = $contentdir . '/' . clean_param($filename, PARAM_FILE);
             if ($target !== $extracted && @rename($extracted, $target)) {
                 return $target;
@@ -184,6 +194,33 @@ class mbz_parser {
     protected static function is_allowed_cover_image_type(string $filename): bool {
         static $allowedmimetypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
         return in_array(mimeinfo('type', $filename), $allowedmimetypes, true);
+    }
+
+    /**
+     * Whether a file on disk is actually one of the raster image formats this
+     * plugin accepts as a course cover image, verified from its real bytes
+     * rather than its claimed filename/mimetype (MDL Shield round 2 audit
+     * finding 2, 2026-07-19). is_allowed_cover_image_type() above only checks
+     * the manifest's claimed filename, which — like the filename itself — is
+     * attacker-influenced (it comes straight from an uploaded .mbz); content
+     * naming itself 'cover.png' would pass that check regardless of what it
+     * actually contains. getimagesize() sniffs the real bytes: it returns
+     * false for non-image content, and reports the ACTUAL detected type (its
+     * [2] element, an IMAGETYPE_* constant) regardless of the file's claimed
+     * extension. Applied as an ADDITIONAL check alongside (not instead of)
+     * is_allowed_cover_image_type() — same accepted raster set, kept
+     * consistent with resource.php's equivalent check.
+     *
+     * @param string $path absolute path to a file already extracted to disk
+     * @return bool
+     */
+    protected static function is_verified_raster_image(string $path): bool {
+        static $allowedimagetypes = [IMAGETYPE_PNG, IMAGETYPE_JPEG, IMAGETYPE_GIF, IMAGETYPE_WEBP];
+        $imageinfo = @getimagesize($path);
+        if ($imageinfo === false) {
+            return false;
+        }
+        return in_array($imageinfo[2], $allowedimagetypes, true);
     }
 
     /**
