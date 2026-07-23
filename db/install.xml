@@ -38,7 +38,7 @@
         <FIELD NAME="courseformat" TYPE="char" LENGTH="100" NOTNULL="false"/>
         <FIELD NAME="creatorid" TYPE="int" LENGTH="10" NOTNULL="true" COMMENT="Exchange-local userid of the creator"/>
         <FIELD NAME="siteid" TYPE="int" LENGTH="10" NOTNULL="false" COMMENT="null for a direct upload with no client site involved"/>
-        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="published" COMMENT="published|pending|hidden|removed|deleted"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="published" COMMENT="published|pending|hidden|removed|modhidden|deleted — &apos;hidden&apos; is the author&apos;s own switch, &apos;modhidden&apos;/&apos;removed&apos; are moderator takedowns only a moderator can lift"/>
         <FIELD NAME="downloadcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="importcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="forkedfromid" TYPE="int" LENGTH="10" NOTNULL="false"/>

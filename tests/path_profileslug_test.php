@@ -27,6 +27,8 @@ namespace local_oerexchange\router\parameters;
 use core\param;
 use core\tests\router\route_testcase;
 use invalid_parameter_exception;
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * Tests for the path_profileslug route parameter.
@@ -38,8 +40,8 @@ use invalid_parameter_exception;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\router\parameters\path_profileslug
  */
+#[CoversClass(path_profileslug::class)]
 final class path_profileslug_test extends route_testcase {
     public function test_default_name_and_type(): void {
         $param = new path_profileslug();
@@ -57,9 +59,9 @@ final class path_profileslug_test extends route_testcase {
      * Valid slugs (matching the ALPHANUMEXT charset used consistently by
      * profile_manager::is_valid_slug()) must pass validation unchanged.
      *
-     * @dataProvider valid_slug_provider
      * @param string $slug
      */
+    #[DataProvider('valid_slug_provider')]
     public function test_validate_accepts_valid_slug(string $slug): void {
         $param = new path_profileslug();
 
@@ -89,9 +91,9 @@ final class path_profileslug_test extends route_testcase {
     /**
      * Slugs containing characters outside the ALPHANUMEXT charset must be rejected.
      *
-     * @dataProvider invalid_slug_provider
      * @param string $slug
      */
+    #[DataProvider('invalid_slug_provider')]
     public function test_validate_rejects_invalid_characters(string $slug): void {
         $param = new path_profileslug();
 

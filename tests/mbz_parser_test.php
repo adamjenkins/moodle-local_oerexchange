@@ -16,6 +16,7 @@
 
 namespace local_oerexchange;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use local_oerexchange\local\parser\mbz_parser;
 use local_oerexchange\local\sanitycheck;
 
@@ -26,9 +27,9 @@ use local_oerexchange\local\sanitycheck;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\local\parser\mbz_parser
- * @covers     \local_oerexchange\local\sanitycheck
  */
+#[CoversClass(sanitycheck::class)]
+#[CoversClass(mbz_parser::class)]
 final class mbz_parser_test extends \advanced_testcase {
     /**
      * Returns the path to this test's fixture .mbz file.

@@ -16,6 +16,7 @@
 
 namespace local_oerexchange;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use local_oerexchange\local\site_manager;
 
 /**
@@ -27,8 +28,8 @@ use local_oerexchange\local\site_manager;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\local\site_manager
  */
+#[CoversClass(site_manager::class)]
 final class site_manager_test extends \advanced_testcase {
     protected function setUp(): void {
         parent::setUp();

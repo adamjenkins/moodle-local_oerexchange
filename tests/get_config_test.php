@@ -16,6 +16,8 @@
 
 namespace local_oerexchange\external;
 
+use PHPUnit\Framework\Attributes\CoversClass;
+
 /**
  * Tests for local_oerexchange_get_config. Added on the fourth MDL Shield
  * audit pass (2026-07-19) — of the 5 external functions, only record_import
@@ -25,8 +27,8 @@ namespace local_oerexchange\external;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\external\get_config
  */
+#[CoversClass(get_config::class)]
 final class get_config_test extends \advanced_testcase {
     public function test_execute_returns_defaults(): void {
         $this->resetAfterTest();

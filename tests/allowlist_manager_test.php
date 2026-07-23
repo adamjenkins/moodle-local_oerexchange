@@ -16,6 +16,7 @@
 
 namespace local_oerexchange;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use local_oerexchange\local\allowlist_manager;
 
 /**
@@ -30,8 +31,8 @@ use local_oerexchange\local\allowlist_manager;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\local\allowlist_manager
  */
+#[CoversClass(allowlist_manager::class)]
 final class allowlist_manager_test extends \basic_testcase {
     public function test_accepts_real_branch_labels(): void {
         foreach (['5.0', '5.2', '4.4', '4.5', '5.10', '10.0'] as $branch) {

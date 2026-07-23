@@ -16,6 +16,8 @@
 
 namespace local_oerexchange\external;
 
+use PHPUnit\Framework\Attributes\CoversClass;
+
 /**
  * Tests for local_oerexchange_record_import — the versionid-belongs-to-
  * resourceid cross-validation added for MDL Shield audit finding 1b
@@ -25,8 +27,8 @@ namespace local_oerexchange\external;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\external\record_import
  */
+#[CoversClass(record_import::class)]
 final class record_import_test extends \advanced_testcase {
     /**
      * Create a site + its dedicated service account, and two resources each

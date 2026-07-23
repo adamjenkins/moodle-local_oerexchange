@@ -16,6 +16,7 @@
 
 namespace local_oerexchange;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use local_oerexchange\local\download_signer;
 
 /**
@@ -28,8 +29,8 @@ use local_oerexchange\local\download_signer;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\local\download_signer
  */
+#[CoversClass(download_signer::class)]
 final class download_signer_test extends \advanced_testcase {
     public function test_a_freshly_signed_url_verifies(): void {
         $this->resetAfterTest();

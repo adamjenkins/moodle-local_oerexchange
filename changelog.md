@@ -3,6 +3,36 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [0.1.2] - 2026-07-23
+
+### Added
+
+- **Moderated resources** section on the moderation queue, listing everything
+  a moderator has hidden or removed, with a Restore action. Until now a
+  moderator takedown could not be reversed from anywhere in the interface.
+- **Replace the file** on a resource's owner card: re-upload a `.mbz` or data
+  file for an already-published resource. Reuses the existing upload pages in
+  an update mode, so file validation stays in one place. Metadata is not
+  editable there — only the file changes — and the type is locked both ways.
+- Japanese translations for the 82 strings that had fallen behind English
+  (profiles, badges, thumbnails, data resources, privacy metadata).
+
+### Changed
+
+- A moderator hide now writes `modhidden` rather than `hidden`. `hidden` is
+  the author's own switch; `modhidden` and `removed` are moderator states only
+  a moderator can lift. The author can still view their own moderator-hidden
+  resource and is told a moderator hid it.
+- Test classes use PHPUnit attributes (`#[CoversClass]`, `#[DataProvider]`)
+  instead of doc-comment metadata, which PHPUnit 11 deprecates and 12 drops.
+
+### Fixed
+
+- An author could un-hide a resource a moderator had hidden, silently undoing
+  the takedown. Both actions wrote the same status.
+- `trydisabledreason` is now declared in the privacy provider — it is
+  author-written free text.
+
 ## [0.1.1] - 2026-07-23
 
 ### Added

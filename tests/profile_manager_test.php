@@ -24,6 +24,7 @@
 
 namespace local_oerexchange;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use local_oerexchange\local\profile_manager;
 
 defined('MOODLE_INTERNAL') || die();
@@ -37,8 +38,8 @@ require_once($CFG->dirroot . '/local/oerexchange/tests/fixtures/racing_db_stub.p
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\local\profile_manager
  */
+#[CoversClass(profile_manager::class)]
 final class profile_manager_test extends \advanced_testcase {
     public function test_get_or_create_creates_a_profile_once(): void {
         $this->resetAfterTest();

@@ -456,6 +456,21 @@ if ($cancontrolthumbnail) {
         );
     }
 
+    // Replace the file without touching the catalogue entry. Reuses whichever
+    // upload page already knows how to validate this resource's file type,
+    // rather than adding another upload handler to this file.
+    $replaceurl = new moodle_url(
+        $resource->type === 'data'
+            ? '/local/oerexchange/share_upload_data.php'
+            : '/local/oerexchange/share_upload_mbz.php',
+        ['resourceid' => $id]
+    );
+    echo html_writer::link(
+        $replaceurl,
+        get_string('replacefile', 'local_oerexchange'),
+        ['class' => 'btn btn-outline-secondary btn-sm me-2']
+    );
+
     echo html_writer::link(
         new moodle_url('/local/oerexchange/resource.php', ['id' => $id, 'action' => 'delete']),
         get_string('resourcedelete', 'local_oerexchange'),

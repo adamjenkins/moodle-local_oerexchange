@@ -16,6 +16,8 @@
 
 namespace local_oerexchange\external;
 
+use PHPUnit\Framework\Attributes\CoversClass;
+
 /**
  * Tests for local_oerexchange_publish_resource. WS-layer coverage was added
  * on the fourth MDL Shield audit pass (2026-07-19), which also flagged (but
@@ -31,8 +33,8 @@ namespace local_oerexchange\external;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\external\publish_resource
  */
+#[CoversClass(publish_resource::class)]
 final class publish_resource_test extends \advanced_testcase {
     /**
      * Create a single-file draft area holding a fake .mbz for $userid.

@@ -16,6 +16,8 @@
 
 namespace local_oerexchange\external;
 
+use PHPUnit\Framework\Attributes\CoversClass;
+
 /**
  * Tests for local_oerexchange_search. Added on the fourth MDL Shield audit
  * pass (2026-07-19) — no WS-layer coverage existed for this function before
@@ -26,8 +28,8 @@ namespace local_oerexchange\external;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\external\search
  */
+#[CoversClass(search::class)]
 final class search_test extends \advanced_testcase {
     /**
      * Insert a catalogue resource row with the given attributes.

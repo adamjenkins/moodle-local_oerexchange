@@ -16,6 +16,7 @@
 
 namespace local_oerexchange;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use local_oerexchange\local\profile_manager;
 use local_oerexchange\local\resource_manager;
 use local_oerexchange\task\parse_backup_task;
@@ -27,8 +28,8 @@ use local_oerexchange\task\parse_backup_task;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\local\resource_manager
  */
+#[CoversClass(resource_manager::class)]
 final class resource_manager_test extends \advanced_testcase {
     public function test_can_download_unsigned_allows_published_ready(): void {
         $this->resetAfterTest();

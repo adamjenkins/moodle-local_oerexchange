@@ -56,6 +56,9 @@ class provider implements
             'creatorid' => 'privacy:metadata:local_oerexchange_resources:creatorid',
             'title' => 'privacy:metadata:local_oerexchange_resources:title',
             'timeshared' => 'privacy:metadata:local_oerexchange_resources:timeshared',
+            // Author-written free text shown publicly in place of the Try it
+            // button, so it is the author's own words and belongs here.
+            'trydisabledreason' => 'privacy:metadata:local_oerexchange_resources:trydisabledreason',
         ], 'privacy:metadata:local_oerexchange_resources');
 
         $collection->add_database_table('local_oerexchange_imports', [

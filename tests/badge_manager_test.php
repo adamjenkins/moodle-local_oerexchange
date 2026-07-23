@@ -16,6 +16,7 @@
 
 namespace local_oerexchange;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use local_oerexchange\local\badge_manager;
 
 /**
@@ -24,8 +25,8 @@ use local_oerexchange\local\badge_manager;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\local\badge_manager
  */
+#[CoversClass(badge_manager::class)]
 final class badge_manager_test extends \advanced_testcase {
     /**
      * Insert a published resource for the given user with a given download count.

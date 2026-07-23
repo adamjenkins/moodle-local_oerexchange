@@ -16,6 +16,7 @@
 
 namespace local_oerexchange;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use core\router\route_loader_interface;
 use core\tests\router\route_testcase;
 use local_oerexchange\local\profile_manager;
@@ -49,8 +50,8 @@ use local_oerexchange\route\controller\profile_controller;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\route\controller\profile_controller
  */
+#[CoversClass(profile_controller::class)]
 final class profile_controller_test extends route_testcase {
     public function test_visible_profile_renders_200_with_slug_and_bio(): void {
         $this->resetAfterTest();

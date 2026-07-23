@@ -16,6 +16,8 @@
 
 namespace local_oerexchange;
 
+use PHPUnit\Framework\Attributes\CoversClass;
+use local_oerexchange\local\parser\mbz_parser;
 use local_oerexchange\task\parse_backup_task;
 
 /**
@@ -27,9 +29,9 @@ use local_oerexchange\task\parse_backup_task;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\task\parse_backup_task
- * @covers     \local_oerexchange\local\parser\mbz_parser
  */
+#[CoversClass(mbz_parser::class)]
+#[CoversClass(parse_backup_task::class)]
 final class parse_backup_task_coverimage_test extends \advanced_testcase {
     /**
      * Insert a resource + version row and stage the given fixture .mbz into

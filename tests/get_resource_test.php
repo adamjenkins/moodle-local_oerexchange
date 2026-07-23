@@ -16,6 +16,8 @@
 
 namespace local_oerexchange\external;
 
+use PHPUnit\Framework\Attributes\CoversClass;
+
 /**
  * Tests for local_oerexchange_get_resource. Added on the fourth MDL Shield
  * audit pass (2026-07-19) — no WS-layer coverage existed for this function
@@ -25,8 +27,8 @@ namespace local_oerexchange\external;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\external\get_resource
  */
+#[CoversClass(get_resource::class)]
 final class get_resource_test extends \advanced_testcase {
     public function test_unpublished_resource_is_rejected(): void {
         global $DB;

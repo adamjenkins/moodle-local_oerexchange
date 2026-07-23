@@ -16,6 +16,7 @@
 
 namespace local_oerexchange;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use local_oerexchange\local\sandbox\playground;
 
 /**
@@ -25,8 +26,8 @@ use local_oerexchange\local\sandbox\playground;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\local\sandbox\playground
  */
+#[CoversClass(playground::class)]
 final class playground_test extends \basic_testcase {
     public function test_map_branch_picks_lowest_deployed_at_or_above_source(): void {
         $this->assertSame('5.0', playground::map_branch('4.4.2 (Build: 20250101)'));

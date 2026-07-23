@@ -36,11 +36,31 @@ require(__DIR__ . '/../../config.php');
 require_once($CFG->libdir . '/filelib.php');
 require_login();
 
-$PAGE->set_url('/local/oerexchange/share_upload_data.php');
+// Optional "replace the file of an existing resource" mode — the mirror of
+// share_upload_mbz.php's, keeping the data-file validation (extension
+// allowlist + finfo MIME sniff) in one place. See that file's comment.
+$resourceid = optional_param('resourceid', 0, PARAM_INT);
+$updating = null;
+if ($resourceid) {
+    $updating = $DB->get_record('local_oerexchange_resources', ['id' => $resourceid], '*', MUST_EXIST);
+    if (!resource_manager::user_can_edit_resource($updating, (int) $USER->id)) {
+        throw new moodle_exception('error_notyourresource', 'local_oerexchange');
+    }
+    if ($updating->type !== 'data') {
+        // Type-locked: a course/activity backup cannot become a data resource.
+        throw new moodle_exception('error_wrongupdatetype', 'local_oerexchange');
+    }
+}
+
+$pageparams = $resourceid ? ['resourceid' => $resourceid] : [];
+$PAGE->set_url('/local/oerexchange/share_upload_data.php', $pageparams);
 $PAGE->set_context(context_system::instance());
 $PAGE->set_pagelayout('standard');
-$PAGE->set_title(get_string('uploaddataheading', 'local_oerexchange'));
-$PAGE->set_heading(get_string('uploaddataheading', 'local_oerexchange'));
+$heading = $updating
+    ? get_string('replacefileheading', 'local_oerexchange', s($updating->title))
+    : get_string('uploaddataheading', 'local_oerexchange');
+$PAGE->set_title($heading);
+$PAGE->set_heading($heading);
 
 // Broad allowlist per the design's "reject dangerous types, not a narrow
 // per-subtype mapping" decision: extension AND sniffed MIME type must both be
@@ -73,6 +93,16 @@ if (data_submitted() && confirm_sesskey()) {
     $dataresourcetype = optional_param('dataresourcetype', '', PARAM_ALPHA);
 
     try {
+        if ($updating) {
+            // Metadata is carried through untouched in update mode — see
+            // share_upload_mbz.php's matching comment.
+            $title = $updating->title;
+            $summary = (string) $updating->summary;
+            $language = (string) $updating->language;
+            $tags = (string) $updating->tags;
+            $licenseshortname = $updating->licenseshortname;
+            $dataresourcetype = $updating->dataresourcetype;
+        }
         if (!in_array($dataresourcetype, ['glossary', 'questionbank', 'other'], true)) {
             throw new moodle_exception('error_invaliddataresourcetype', 'local_oerexchange');
         }
@@ -101,7 +131,7 @@ if (data_submitted() && confirm_sesskey()) {
             'filename' => $filename,
         ], $_FILES['datafile']['tmp_name']);
 
-        resource_manager::publish($draftitemid, (int) $USER->id, null, [
+        resource_manager::publish($draftitemid, (int) $USER->id, $updating ? $updating->siteid : null, [
             'type' => 'data',
             'title' => $title,
             'summary' => $summary,
@@ -109,8 +139,14 @@ if (data_submitted() && confirm_sesskey()) {
             'tags' => $tags,
             'licenseshortname' => $licenseshortname,
             'dataresourcetype' => $dataresourcetype,
-        ]);
+        ], $updating ? (int) $updating->id : null);
 
+        if ($updating) {
+            redirect(
+                new moodle_url('/local/oerexchange/resource.php', ['id' => $updating->id]),
+                get_string('replacefilequeued', 'local_oerexchange')
+            );
+        }
         redirect(new moodle_url('/local/oerexchange/index.php'), get_string('uploadsubmit', 'local_oerexchange'));
     } catch (moodle_exception $e) {
         $error = $e->getMessage();
@@ -125,42 +161,52 @@ if ($error !== null) {
 
 echo html_writer::start_tag('form', [
     'method' => 'post',
-    'action' => new moodle_url('/local/oerexchange/share_upload_data.php'),
+    'action' => new moodle_url('/local/oerexchange/share_upload_data.php', $pageparams),
     'enctype' => 'multipart/form-data',
 ]);
 echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
 
-echo html_writer::tag('label', get_string('datatypelabel', 'local_oerexchange'), ['for' => 'oerexchange-data-type']);
-echo html_writer::select(
-    [
+if ($updating) {
+    echo html_writer::tag(
+        'p',
+        get_string('replacefileintro', 'local_oerexchange', s($updating->title)),
+        ['class' => 'alert alert-info']
+    );
+} else {
+    echo html_writer::tag('label', get_string('datatypelabel', 'local_oerexchange'), ['for' => 'oerexchange-data-type']);
+    echo html_writer::select(
+        [
         'glossary' => get_string('datatype_glossary', 'local_oerexchange'),
         'questionbank' => get_string('datatype_questionbank', 'local_oerexchange'),
         'other' => get_string('datatype_other', 'local_oerexchange'),
-    ],
-    'dataresourcetype',
-    '',
-    false,
-    ['id' => 'oerexchange-data-type', 'class' => 'form-select mb-2']
-);
+        ],
+        'dataresourcetype',
+        '',
+        false,
+        ['id' => 'oerexchange-data-type', 'class' => 'form-select mb-2']
+    );
 
-echo html_writer::tag('label', get_string('titlelabel', 'local_oerexchange'), ['for' => 'oerexchange-data-title']);
-echo html_writer::empty_tag('input', [
+    echo html_writer::tag('label', get_string('titlelabel', 'local_oerexchange'), ['for' => 'oerexchange-data-title']);
+    echo html_writer::empty_tag('input', [
     'type' => 'text', 'name' => 'title', 'id' => 'oerexchange-data-title', 'class' => 'form-control mb-2', 'required' => 'required',
-]);
+    ]);
 
-echo html_writer::tag('label', get_string('summarylabel', 'local_oerexchange'), ['for' => 'oerexchange-data-summary']);
-echo html_writer::tag('textarea', '', ['name' => 'summary', 'id' => 'oerexchange-data-summary', 'class' => 'form-control mb-2']);
+    echo html_writer::tag('label', get_string('summarylabel', 'local_oerexchange'), ['for' => 'oerexchange-data-summary']);
+    echo html_writer::tag('textarea', '', [
+        'name' => 'summary', 'id' => 'oerexchange-data-summary', 'class' => 'form-control mb-2',
+    ]);
 
-echo html_writer::tag('label', get_string('licenselabelform', 'local_oerexchange'), ['for' => 'oerexchange-data-license']);
-echo html_writer::empty_tag('input', [
+    echo html_writer::tag('label', get_string('licenselabelform', 'local_oerexchange'), ['for' => 'oerexchange-data-license']);
+    echo html_writer::empty_tag('input', [
     'type' => 'text', 'name' => 'licenseshortname', 'id' => 'oerexchange-data-license', 'class' => 'form-control mb-2',
     'required' => 'required',
-]);
+    ]);
 
-echo html_writer::tag('label', get_string('tagslabel', 'local_oerexchange'), ['for' => 'oerexchange-data-tags']);
-echo html_writer::empty_tag('input', [
+    echo html_writer::tag('label', get_string('tagslabel', 'local_oerexchange'), ['for' => 'oerexchange-data-tags']);
+    echo html_writer::empty_tag('input', [
     'type' => 'text', 'name' => 'tags', 'id' => 'oerexchange-data-tags', 'class' => 'form-control mb-2',
-]);
+    ]);
+}
 
 echo html_writer::tag('label', get_string('uploaddatafile', 'local_oerexchange'), ['for' => 'oerexchange-data-file']);
 echo html_writer::empty_tag('input', [
@@ -169,7 +215,9 @@ echo html_writer::empty_tag('input', [
 ]);
 
 echo html_writer::empty_tag('input', [
-    'type' => 'submit', 'value' => get_string('uploadsubmit', 'local_oerexchange'), 'class' => 'btn btn-primary',
+    'type' => 'submit',
+    'value' => get_string($updating ? 'replacefilesubmit' : 'uploadsubmit', 'local_oerexchange'),
+    'class' => 'btn btn-primary',
 ]);
 echo html_writer::end_tag('form');
 

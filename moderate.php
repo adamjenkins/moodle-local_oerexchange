@@ -38,6 +38,7 @@ $reportid = optional_param('reportid', 0, PARAM_INT);
 $reportaction = optional_param('reportaction', '', PARAM_ALPHA);
 $hideid = optional_param('hideid', 0, PARAM_INT);
 $removeid = optional_param('removeid', 0, PARAM_INT);
+$restoreid = optional_param('restoreid', 0, PARAM_INT);
 
 if ($reportid && $reportaction && confirm_sesskey()) {
     $status = $reportaction === 'resolve' ? 'resolved' : 'dismissed';
@@ -46,11 +47,31 @@ if ($reportid && $reportaction && confirm_sesskey()) {
     redirect(new moodle_url('/local/oerexchange/moderate.php'));
 }
 if ($hideid && confirm_sesskey()) {
-    $DB->set_field('local_oerexchange_resources', 'status', 'hidden', ['id' => $hideid]);
+    // Deliberately 'modhidden', NOT 'hidden'. 'hidden' is the author's own switch, and
+    // resource_manager::set_hidden() lets an author flip that straight back to
+    // 'published' — so writing 'hidden' here let an author silently undo a
+    // moderator's takedown. A moderator hide is a separate state only a
+    // moderator can lift, via the Restore action below.
+    $DB->set_field('local_oerexchange_resources', 'status', 'modhidden', ['id' => $hideid]);
     redirect(new moodle_url('/local/oerexchange/moderate.php'));
 }
 if ($removeid && confirm_sesskey()) {
     $DB->set_field('local_oerexchange_resources', 'status', 'removed', ['id' => $removeid]);
+    redirect(new moodle_url('/local/oerexchange/moderate.php'));
+}
+if ($restoreid && confirm_sesskey()) {
+    // Until this existed, a moderator hide/remove was a one-way door: nothing
+    // in this page could reverse it, and the only thing that ever did was the
+    // author-unhide defect the 'modhidden' split above closes.
+    $target = $DB->get_record('local_oerexchange_resources', ['id' => $restoreid], 'id,status', MUST_EXIST);
+    if (in_array($target->status, ['modhidden', 'removed'], true)) {
+        $DB->update_record('local_oerexchange_resources', (object) [
+            'id' => $target->id,
+            'status' => 'published',
+            'timemodified' => time(),
+        ]);
+        \core\notification::success(get_string('resourcerestored', 'local_oerexchange'));
+    }
     redirect(new moodle_url('/local/oerexchange/moderate.php'));
 }
 
@@ -101,6 +122,43 @@ if (empty($reports)) {
             get_string('reporttype_' . $rep->type, 'local_oerexchange'),
             s($rep->details),
             $actions,
+        ];
+    }
+    echo html_writer::table($table);
+}
+
+// Everything a moderator has taken down, and the only way back. Without this
+// section a hide/remove could not be reversed from anywhere in the UI.
+echo $OUTPUT->heading(get_string('moderatedresources', 'local_oerexchange'), 3);
+[$insql, $inparams] = $DB->get_in_or_equal(['modhidden', 'removed'], SQL_PARAMS_NAMED, 'st');
+$moderated = $DB->get_records_select(
+    'local_oerexchange_resources',
+    'status ' . $insql,
+    $inparams,
+    'timemodified DESC'
+);
+if (empty($moderated)) {
+    echo html_writer::tag('p', get_string('nomoderatedresources', 'local_oerexchange'));
+} else {
+    $table = new html_table();
+    $table->head = [
+        get_string('resourcetitle', 'local_oerexchange'),
+        get_string('sitestatus', 'local_oerexchange'),
+        '',
+    ];
+    foreach ($moderated as $mod) {
+        $resurl = new moodle_url('/local/oerexchange/resource.php', ['id' => $mod->id]);
+        $restoreurl = new moodle_url('/local/oerexchange/moderate.php', [
+            'restoreid' => $mod->id, 'sesskey' => sesskey(),
+        ]);
+        $table->data[] = [
+            html_writer::link($resurl, s($mod->title)),
+            get_string('resourcestatus_' . $mod->status, 'local_oerexchange'),
+            html_writer::link(
+                $restoreurl,
+                get_string('resourcerestore', 'local_oerexchange'),
+                ['class' => 'btn btn-sm btn-outline-success']
+            ),
         ];
     }
     echo html_writer::table($table);

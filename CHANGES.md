@@ -1,3 +1,19 @@
+# Release notes — 0.1.2
+
+Completes the author-control round.
+
+A moderator's takedown is now a distinct state (`modhidden`) that an author
+cannot lift — previously a moderator hide wrote the same status as the
+author's own Hide button, so an author could silently undo it. The
+moderation queue gains a **Moderated resources** section with a Restore
+action, which is also the first way a takedown could be reversed at all.
+
+Authors can replace a published resource's file without touching its
+catalogue entry, via **Replace the file** on the resource page.
+
+Also: the Japanese language pack is complete again (82 missing strings), and
+the test suite has moved off PHPUnit's deprecated doc-comment metadata.
+
 # Release notes — 0.1.1
 
 Author control over shared resources, and sharing affordances.

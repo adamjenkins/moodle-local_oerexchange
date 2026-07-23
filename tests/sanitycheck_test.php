@@ -16,6 +16,8 @@
 
 namespace local_oerexchange\local;
 
+use PHPUnit\Framework\Attributes\CoversClass;
+
 /**
  * Negative-case tests for sanitycheck — mbz_parser_test.php already covers
  * the positive case (a real users=false backup passes); this covers the
@@ -27,8 +29,8 @@ namespace local_oerexchange\local;
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \local_oerexchange\local\sanitycheck
  */
+#[CoversClass(sanitycheck::class)]
 final class sanitycheck_test extends \advanced_testcase {
     /**
      * Builds a minimal fixture backup zip, with or without a users.xml entry.
