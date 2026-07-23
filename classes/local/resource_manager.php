@@ -242,4 +242,64 @@ class resource_manager {
         }
         return has_capability('local/oerexchange:moderate', \context_system::instance(), $userid);
     }
+
+    /**
+     * Whether $userid may see a resource's page at all.
+     *
+     * Anything published is public (the catalogue is browsable without
+     * logging in). Anything else — pending, hidden, removed — is visible only
+     * to the people who can act on it.
+     *
+     * Authors are included deliberately: before this existed, resource.php
+     * gated non-published resources on the moderator capability alone, so an
+     * author who hid their own resource was locked out of the only page that
+     * could unhide it. 'deleted' never reaches here — resource.php renders
+     * its tombstone before any access check.
+     *
+     * @param \stdClass $resource a row from local_oerexchange_resources
+     * @param int $userid 0 for a logged-out visitor
+     * @return bool
+     */
+    public static function user_can_view_resource(\stdClass $resource, int $userid): bool {
+        if ($resource->status === 'published') {
+            return true;
+        }
+        return self::user_can_edit_resource($resource, $userid);
+    }
+
+    /**
+     * Hide or unhide a resource, as its author or a moderator.
+     *
+     * Hiding flips status to 'hidden', which every consumer already honours —
+     * index.php, the search and get_resource web services, sandbox_launch.php,
+     * lib.php's pluginfile gate, the profile page's resource list and the
+     * badge task all select on status = 'published'. Unhiding returns it to
+     * 'published'.
+     *
+     * Only 'published' and 'hidden' are flipped between: a resource sitting
+     * in 'pending' (awaiting its first structural validation) or 'removed'
+     * (taken down by a moderator) must not be quietly published by an author
+     * pressing "unhide", so those are left alone.
+     *
+     * @param \stdClass $resource a row from local_oerexchange_resources
+     * @param bool $hidden true to hide, false to unhide
+     * @return bool whether the status actually changed
+     */
+    public static function set_hidden(\stdClass $resource, bool $hidden): bool {
+        global $DB;
+
+        $from = $hidden ? 'published' : 'hidden';
+        $to = $hidden ? 'hidden' : 'published';
+        if ($resource->status !== $from) {
+            return false;
+        }
+
+        $DB->update_record('local_oerexchange_resources', (object) [
+            'id' => $resource->id,
+            'status' => $to,
+            'timemodified' => time(),
+        ]);
+
+        return true;
+    }
 }

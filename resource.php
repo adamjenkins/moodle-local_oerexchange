@@ -65,7 +65,10 @@ if ($resource->status === 'deleted') {
     exit;
 }
 
-if ($resource->status !== 'published' && !has_capability('local/oerexchange:moderate', context_system::instance())) {
+// Authors are included here, not just moderators: hiding your own resource
+// must not lock you out of the only page that can unhide it. See
+// resource_manager::user_can_view_resource().
+if (!\local_oerexchange\local\resource_manager::user_can_view_resource($resource, (int) $USER->id)) {
     throw new moodle_exception('error_notfound', 'local_oerexchange');
 }
 
@@ -228,6 +231,47 @@ if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser())
     );
     \core\notification::success(get_string('thumbnailuploaded', 'local_oerexchange'));
     redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
+} else if (
+    in_array($action, ['hide', 'unhide', 'deleteconfirm'], true)
+    && confirm_sesskey() && isloggedin() && !isguestuser()
+) {
+    require_login();
+    // Same ownership/moderator gate the thumbnail editor and the owner
+    // controls below use — never a second, subtly different copy of it.
+    if (!\local_oerexchange\local\resource_manager::user_can_edit_resource($resource, (int) $USER->id)) {
+        throw new moodle_exception('error_notyourresource', 'local_oerexchange');
+    }
+
+    if ($action === 'deleteconfirm') {
+        // Tombstone rather than a row delete: files, versions, reviews and
+        // reports go, the row stays with status 'deleted' so old links (a
+        // client site's "View on Exchange" button, a shared social link)
+        // land on resource.php's friendly tombstone instead of breaking.
+        // Reuses the exact routine the GDPR full-deletion path already uses
+        // so there is only ever one definition of what deletion means here.
+        \local_oerexchange\local\profile_manager::delete_creator_resource($resource);
+
+        // That routine rolls its transaction back and swallows the exception
+        // on failure, which is right for a bulk GDPR sweep but would leave an
+        // author staring at a success message on a resource that is still
+        // there. Confirm the outcome before claiming it happened.
+        $after = $DB->get_record('local_oerexchange_resources', ['id' => $id], 'status', MUST_EXIST);
+        if ($after->status !== 'deleted') {
+            throw new moodle_exception('error_deletefailed', 'local_oerexchange');
+        }
+        \core\notification::success(get_string('resourcedeleted', 'local_oerexchange'));
+        redirect(new moodle_url('/local/oerexchange/index.php'));
+    }
+
+    $hide = ($action === 'hide');
+    if (\local_oerexchange\local\resource_manager::set_hidden($resource, $hide)) {
+        \core\notification::success(get_string($hide ? 'resourcehidden' : 'resourceunhidden', 'local_oerexchange'));
+    } else {
+        // For example "unhide" on a resource a moderator has 'removed', or
+        // one still 'pending' its first structural validation.
+        \core\notification::warning(get_string('error_statusnotflippable', 'local_oerexchange'));
+    }
+    redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
 }
 
 $version = null;
@@ -249,6 +293,25 @@ $structure = $version && $version->structurejson ? json_decode($version->structu
 $sandboxenabled = (bool) get_config('local_oerexchange', 'sandboxenabled') && get_config('local_oerexchange', 'sandboxbaseurl');
 
 echo $OUTPUT->header();
+
+// Deletion is irreversible for the author (the tombstone stays, but the
+// files, versions, reviews and reports do not), so it gets a confirmation
+// step of its own rather than a one-click link. The sesskey lives on the
+// confirm button's URL, not this one — reaching this page does nothing.
+if (
+    $action === 'delete' && isloggedin() && !isguestuser()
+    && \local_oerexchange\local\resource_manager::user_can_edit_resource($resource, (int) $USER->id)
+) {
+    echo $OUTPUT->confirm(
+        get_string('resourcedeleteconfirm', 'local_oerexchange', s($resource->title)),
+        new moodle_url('/local/oerexchange/resource.php', [
+            'id' => $id, 'action' => 'deleteconfirm', 'sesskey' => sesskey(),
+        ]),
+        new moodle_url('/local/oerexchange/resource.php', ['id' => $id])
+    );
+    echo $OUTPUT->footer();
+    exit;
+}
 
 // Created-by attribution. $resource->creatorid is 0 for a
 // tombstoned/anonymized resource, so the guard below correctly renders no
@@ -342,6 +405,48 @@ if ($coverfiles) {
 // upload form to a guest.
 $cancontrolthumbnail = isloggedin() && !isguestuser()
     && \local_oerexchange\local\resource_manager::user_can_edit_resource($resource, (int) $USER->id);
+
+// Owner controls: visibility and deletion. Same gate, same caveat — the real
+// boundary is the action handler near the top of this file.
+if ($cancontrolthumbnail) {
+    echo html_writer::start_tag('div', ['class' => 'card mb-3']);
+    echo html_writer::start_tag('div', ['class' => 'card-body']);
+    echo $OUTPUT->heading(get_string('ownercontrolsheading', 'local_oerexchange'), 5);
+
+    // Say plainly what state the resource is in — an author who hides a
+    // resource and comes back later should not have to guess why it is
+    // missing from the catalogue.
+    $statuskey = 'resourcestatus_' . $resource->status;
+    echo html_writer::tag(
+        'p',
+        get_string_manager()->string_exists($statuskey, 'local_oerexchange')
+            ? get_string($statuskey, 'local_oerexchange')
+            : s($resource->status),
+        ['class' => 'mb-2']
+    );
+
+    if (in_array($resource->status, ['published', 'hidden'], true)) {
+        $ishidden = ($resource->status === 'hidden');
+        echo html_writer::link(
+            new moodle_url('/local/oerexchange/resource.php', [
+                'id' => $id,
+                'action' => $ishidden ? 'unhide' : 'hide',
+                'sesskey' => sesskey(),
+            ]),
+            get_string($ishidden ? 'resourceunhide' : 'resourcehide', 'local_oerexchange'),
+            ['class' => 'btn btn-outline-secondary btn-sm me-2']
+        );
+    }
+
+    echo html_writer::link(
+        new moodle_url('/local/oerexchange/resource.php', ['id' => $id, 'action' => 'delete']),
+        get_string('resourcedelete', 'local_oerexchange'),
+        ['class' => 'btn btn-outline-danger btn-sm']
+    );
+    echo html_writer::end_tag('div');
+    echo html_writer::end_tag('div');
+}
+
 if ($cancontrolthumbnail) {
     $draftitemid = file_get_submitted_draft_itemid('thumbnail');
     file_prepare_draft_area(

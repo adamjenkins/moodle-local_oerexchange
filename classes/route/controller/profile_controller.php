@@ -89,9 +89,19 @@ class profile_controller {
 
         $metrics = profile_manager::get_metrics($profile->userid);
         $badges = badge_manager::get_badges_for_user($profile->userid);
-        $resources = $DB->get_records('local_oerexchange_resources', [
-            'creatorid' => $profile->userid, 'status' => 'published',
-        ], 'timeshared DESC');
+        // Visitors see published resources only. The profile's owner also
+        // sees their own hidden ones (flagged as such below) — otherwise
+        // hiding a resource would remove the only listing that leads back to
+        // the page which can unhide it.
+        $isowner = isloggedin() && !isguestuser() && (int) $USER->id === (int) $profile->userid;
+        $statuses = $isowner ? ['published', 'hidden'] : ['published'];
+        [$insql, $inparams] = $DB->get_in_or_equal($statuses, SQL_PARAMS_NAMED, 'status');
+        $resources = $DB->get_records_select(
+            'local_oerexchange_resources',
+            'creatorid = :creatorid AND status ' . $insql,
+            array_merge(['creatorid' => $profile->userid], $inparams),
+            'timeshared DESC'
+        );
 
         $fullname = fullname($user);
         // The #[route] attribute's path ('/u/{slug}') is component-relative,
@@ -292,6 +302,17 @@ class profile_controller {
                     ? get_string('typeactivity', 'local_oerexchange')
                     : get_string('typecourse', 'local_oerexchange');
                 $out .= \html_writer::tag('span', $typestring, ['class' => 'badge bg-secondary mb-1']);
+                if ($r->status === 'hidden') {
+                    // Only ever reachable by the profile's owner (see the
+                    // status filter above), so this doubles as the marker
+                    // telling them why a resource is missing from the
+                    // public catalogue.
+                    $out .= \html_writer::tag(
+                        'span',
+                        get_string('resourcestatus_hidden', 'local_oerexchange'),
+                        ['class' => 'badge bg-warning text-dark mb-1 ms-1']
+                    );
+                }
                 $out .= \html_writer::tag('h5', \html_writer::link($rurl, s($r->title)), ['class' => 'card-title']);
                 $out .= \html_writer::tag(
                     'div',
