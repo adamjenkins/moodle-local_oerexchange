@@ -92,7 +92,19 @@ foreach ($requiredplugins as $plugin) {
 }
 
 $signedmbzurl = download_signer::sign_url($version->id, playground::SIGNED_URL_TTL)->out(false);
-$blueprint = playground::build_blueprint($resource->title, $signedmbzurl, $allowedinstalls, $branch, $resource->type);
+// The trial comes up in whatever language this page is being read in, so a
+// teacher browsing the Exchange in Japanese gets a Japanese sandbox rather
+// than an English one. current_language() already resolves the whole chain
+// (user preference, ?lang=, course, site default); English needs no pack and
+// build_blueprint() emits no step for it.
+$blueprint = playground::build_blueprint(
+    $resource->title,
+    $signedmbzurl,
+    $allowedinstalls,
+    $branch,
+    $resource->type,
+    current_language()
+);
 $launchurl = playground::build_launch_url($sandboxbaseurl, $branch, $blueprint);
 
 $DB->insert_record('local_oerexchange_trials', (object) [

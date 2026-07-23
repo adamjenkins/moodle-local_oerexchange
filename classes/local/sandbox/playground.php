@@ -167,6 +167,10 @@ class playground {
      *                              never Try-it-able and must not reach this method at all; see
      *                              its caller's guard). Defaults to 'course' so any caller not
      *                              yet updated keeps today's exact restoreCourse behavior.
+     * @param string $language Moodle language code the trial should come up in — normally the
+     *                          launching user's own current_language(). '' or 'en' emits no
+     *                          language step at all (core ships English; every other language
+     *                          is a downloaded pack). An unrecognisable code is dropped.
      * @return array the blueprint structure (JSON-encode before use)
      */
     public static function build_blueprint(
@@ -174,7 +178,8 @@ class playground {
         string $signedmbzurl,
         array $allowedplugininstalls,
         string $branch = '',
-        string $resourcetype = 'course'
+        string $resourcetype = 'course',
+        string $language = ''
     ): array {
         $steps = [];
 
@@ -182,6 +187,39 @@ class playground {
             'step' => 'installMoodle',
             'options' => ['siteName' => $resourcetitle],
         ];
+        if (self::is_installable_language($language)) {
+            // A trial boots with core's English strings only; every other
+            // language lives in a pack that Moodle's own lang_installer
+            // downloads from download.moodle.org/langpack. Upstream's step
+            // handler treats a failed download as non-fatal (it catches and
+            // continues in English), so this can never cost the user their
+            // trial - see reference-clones/moodle-playground/src/blueprint/
+            // steps/moodle-language.js.
+            //
+            // setDefault is not optional in practice: the bundle's baseline
+            // snapshot bakes admin.lang='en', and a logged-in user's own lang
+            // overrides $CFG->lang, so without it the auto-logged-in admin
+            // reads English out of a pack that installed perfectly. Upstream's
+            // helper repoints pre-existing accounts for exactly this reason
+            // (helpers.js phpInstallLanguagePacks()). Note also that the
+            // snapshot sets langmenu=0 - there is no switcher inside a trial,
+            // so whatever is set here is what the user gets.
+            $steps[] = [
+                'step' => 'installLanguagePack',
+                'language' => $language,
+                'setDefault' => true,
+            ];
+        }
+
+        // Deliberately AFTER the language step. Found live 2026-07-23: with
+        // the login first, the pack downloads and installs correctly and the
+        // trial still comes up entirely in English, because Moodle serialises
+        // the whole $USER into the session at login and setDefault's update to
+        // user.lang then lands too late for that already-established session
+        // to ever read it. Installing first makes the same blueprint render
+        // Japanese - verified by booting both orderings of one blueprint.
+        // Every other step below is content, so this is the only ordering
+        // constraint the language step imposes.
         $steps[] = ['step' => 'login', 'username' => 'admin'];
 
         foreach ($allowedplugininstalls as $plugin) {
@@ -245,6 +283,30 @@ class playground {
             // course index if wrong (restoreCourse failures are non-fatal).
             'landingPage' => '/course/view.php?id=2',
         ];
+    }
+
+    /**
+     * Whether a language code is one this plugin is willing to put into a
+     * blueprint: a real Moodle language code, and not English (which core
+     * ships, so there is nothing to install).
+     *
+     * The code ends up interpolated into PHP generated inside the sandbox and
+     * into a $CFG->dataroot path (reference-clones/moodle-playground/src/
+     * blueprint/php/helpers.js phpInstallLanguagePacks()). The sandbox
+     * validates it with this same pattern before running anything, but a
+     * blueprint built here must not be the thing that carries an unvalidated
+     * code to it in the first place — so anything that isn't recognisable is
+     * dropped and the trial simply comes up in English.
+     *
+     * @param string $language
+     * @return bool
+     */
+    private static function is_installable_language(string $language): bool {
+        if ($language === '' || $language === 'en') {
+            return false;
+        }
+
+        return (bool) preg_match('/^[a-z][a-z0-9_]*$/', $language);
     }
 
     /**

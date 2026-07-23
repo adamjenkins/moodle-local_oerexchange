@@ -17,6 +17,7 @@
 namespace local_oerexchange;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use local_oerexchange\local\sandbox\playground;
 
 /**
@@ -247,6 +248,122 @@ final class playground_test extends \basic_testcase {
         $this->assertSame($explicit, $withdefault);
         $steps = array_column($withdefault['steps'], 'step');
         $this->assertContains('restoreCourse', $steps);
+    }
+
+    /**
+     * A trial boots with only core's English strings — every other language is
+     * a pack the sandbox downloads at boot (Moodle's own lang_installer, via
+     * the playground's installLanguagePack step). A teacher browsing the
+     * Exchange in Japanese should get a Japanese sandbox, so the launching
+     * user's own interface language is what gets requested.
+     */
+    public function test_build_blueprint_installs_the_launching_users_language(): void {
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course',
+            'ja'
+        );
+
+        // The step MUST precede the login step. Found live 2026-07-23: with it
+        // after login, the pack downloads and installs perfectly (both proxy
+        // fetches return 200, the boot log says "Installing language pack(s):
+        // ja") and the trial still comes up entirely in English — the admin's
+        // session was already established with lang='en', and Moodle serialises
+        // $USER into the session, so setDefault's DB update to user.lang lands
+        // too late to be read. Installing before login makes the same blueprint
+        // render Japanese. Nothing about this is visible to a step-list
+        // assertion alone, which is why the order is asserted here explicitly.
+        $steps = array_column($blueprint['steps'], 'step');
+        $this->assertSame(['installMoodle', 'installLanguagePack', 'login', 'restoreCourse'], $steps);
+
+        $langstep = $blueprint['steps'][1];
+        $this->assertSame('ja', $langstep['language']);
+        // Installing the pack is not enough on its own: the bundle's baseline
+        // snapshot bakes admin.lang='en', and a logged-in user's own lang
+        // overrides $CFG->lang, so without setDefault the auto-logged-in
+        // admin would keep seeing English strings from a pack that did
+        // install correctly.
+        $this->assertTrue($langstep['setDefault']);
+    }
+
+    public function test_build_blueprint_omits_the_language_step_for_english(): void {
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course',
+            'en'
+        );
+
+        $steps = array_column($blueprint['steps'], 'step');
+        $this->assertNotContains('installLanguagePack', $steps);
+    }
+
+    /**
+     * Backward-compat: a caller that hasn't been updated to pass $language
+     * must produce exactly today's blueprint, with no language step at all.
+     */
+    public function test_build_blueprint_omits_the_language_step_when_none_is_given(): void {
+        $withdefault = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            []
+        );
+        $explicit = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course',
+            ''
+        );
+
+        $this->assertSame($explicit, $withdefault);
+        $this->assertNotContains('installLanguagePack', array_column($withdefault['steps'], 'step'));
+    }
+
+    /**
+     * The code is interpolated into PHP generated inside the sandbox
+     * (reference-clones/moodle-playground/src/blueprint/php/helpers.js
+     * phpInstallLanguagePacks()), and into a dataroot path. The sandbox
+     * validates it too, but a blueprint this plugin builds must never be the
+     * thing that carries an unvalidated code there — an unusable code is
+     * dropped, not passed on.
+     *
+     * @param string $code
+     */
+    #[DataProvider('invalid_language_code_provider')]
+    public function test_build_blueprint_drops_a_language_code_it_cannot_vouch_for(string $code): void {
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course',
+            $code
+        );
+
+        $this->assertNotContains('installLanguagePack', array_column($blueprint['steps'], 'step'));
+    }
+
+    /**
+     * Codes that are not Moodle language codes and must never reach a blueprint.
+     *
+     * @return array<string, string[]>
+     */
+    public static function invalid_language_code_provider(): array {
+        return [
+            'quote injection' => ["ja'; echo 'pwned"],
+            'path traversal' => ['../../etc/passwd'],
+            'uppercase' => ['JA'],
+            'leading digit' => ['1ja'],
+            'hyphen (BCP 47, not a Moodle code)' => ['pt-br'],
+            'whitespace' => ['ja jp'],
+        ];
     }
 
     public function test_build_launch_url_embeds_branch_and_base64_blueprint(): void {
