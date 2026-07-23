@@ -431,6 +431,14 @@ if ($version) {
     $dlurl = new moodle_url('/local/oerexchange/download.php', ['id' => $version->id]);
     echo html_writer::link($dlurl, get_string('download', 'local_oerexchange'), ['class' => 'btn btn-outline-primary me-2']);
 }
+// Share this resource. Uses $PAGE->url rather than rebuilding the resource
+// URL so the shared link is byte-identical to the canonical one the og:url
+// tag advertises.
+echo \local_oerexchange\local\share_targets::render(
+    $PAGE->url->out(false),
+    $resource->title,
+    get_string('shareresource', 'local_oerexchange')
+);
 echo html_writer::end_tag('div');
 
 // Required plugins.

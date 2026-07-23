@@ -84,6 +84,29 @@ if ($hassiteconfig) {
         0
     ));
 
+    // Which destinations the "Share this resource" / "Share my profile"
+    // disclosures offer. Every network target is a plain link to that
+    // network's own share endpoint - no third-party script or SDK is ever
+    // loaded onto a catalogue page, so turning one on tells that network
+    // nothing about visitors who don't click it.
+    $settings->add(new admin_setting_heading(
+        'local_oerexchange/shareheading',
+        get_string('settings_shareheading', 'local_oerexchange'),
+        get_string('settings_shareheading_desc', 'local_oerexchange')
+    ));
+
+    $sharechoices = [];
+    foreach (\local_oerexchange\local\share_targets::ALL as $sharekey) {
+        $sharechoices[$sharekey] = get_string('sharetarget_' . $sharekey, 'local_oerexchange');
+    }
+    $settings->add(new admin_setting_configmulticheckbox(
+        'local_oerexchange/sharetargets',
+        get_string('settings_sharetargets', 'local_oerexchange'),
+        get_string('settings_sharetargets_desc', 'local_oerexchange'),
+        array_fill_keys(\local_oerexchange\local\share_targets::ALL, 1),
+        $sharechoices
+    ));
+
     $settings->add(new admin_setting_heading(
         'local_oerexchange/badgesheading',
         get_string('settings_badgesheading', 'local_oerexchange'),

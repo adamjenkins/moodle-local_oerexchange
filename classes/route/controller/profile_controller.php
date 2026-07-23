@@ -20,6 +20,7 @@ use core\router\require_login;
 use core\router\route;
 use local_oerexchange\local\badge_manager;
 use local_oerexchange\local\profile_manager;
+use local_oerexchange\local\share_targets;
 use local_oerexchange\router\parameters\path_profileslug;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -216,29 +217,20 @@ class profile_controller {
             get_string('profilemessage', 'local_oerexchange'),
             ['class' => 'btn btn-outline-secondary me-2']
         );
-        // Minimal share affordance (design doc: "copy-link + native Web Share
-        // API where the browser supports it — no per-network buttons").
-        $out .= \html_writer::tag('button', get_string('profileshare', 'local_oerexchange'), [
-            'type' => 'button',
-            'class' => 'btn btn-outline-secondary me-2',
-            'id' => 'oerexchange-profile-share',
-            'data-share-url' => $profileurl->out(false),
-            'data-share-title' => $fullname,
-        ]);
-        $PAGE->requires->js_init_code(
-            "(function() {
-                var btn = document.getElementById('oerexchange-profile-share');
-                if (!btn) { return; }
-                btn.addEventListener('click', function() {
-                    var url = btn.getAttribute('data-share-url');
-                    var title = btn.getAttribute('data-share-title');
-                    if (navigator.share) {
-                        navigator.share({title: title, url: url}).catch(function() {});
-                    } else if (navigator.clipboard) {
-                        navigator.clipboard.writeText(url).catch(function() {});
-                    }
-                });
-            })();"
+        // Share affordance. This was originally a single button running an
+        // inline js_init_code handler: navigator.share, else
+        // navigator.clipboard.writeText, else nothing — with no feedback on
+        // any path and an empty catch swallowing the clipboard rejection.
+        // Reproduced in Chromium 2026-07-23: navigator.share is undefined on
+        // desktop Linux, and the clipboard write then either succeeds
+        // silently or is denied silently, so the button was indistinguishable
+        // from dead. share_targets::render() replaces it with a disclosure
+        // that always contains a selectable URL, gives visible feedback, and
+        // offers whichever networks the admin enabled.
+        $out .= share_targets::render(
+            $profileurl->out(false),
+            $fullname,
+            get_string('profileshare', 'local_oerexchange')
         );
 
         $out .= $OUTPUT->heading(get_string('profileresourcesheading', 'local_oerexchange'), 4);
