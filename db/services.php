@@ -62,6 +62,14 @@ $functions = [
         'type'        => 'write',
         'ajax'        => false,
     ],
+    'local_oerexchange_get_share_status' => [
+        'classname'   => 'local_oerexchange\external\get_share_status',
+        'methodname'  => 'execute',
+        'description' => 'Current Exchange-side state of one of the caller\'s own shared resources.',
+        'type'        => 'read',
+        'ajax'        => false,
+    ],
+
     'local_oerexchange_get_config' => [
         'classname'   => 'local_oerexchange\external\get_config',
         'methodname'  => 'execute',
@@ -79,6 +87,7 @@ $services = [
             'local_oerexchange_publish_resource',
             'local_oerexchange_record_import',
             'local_oerexchange_get_config',
+            'local_oerexchange_get_share_status',
         ],
         'restrictedusers' => 0,
         'enabled' => 1,

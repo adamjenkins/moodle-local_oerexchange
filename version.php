@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_oerexchange';
-$plugin->version   = 2026072002;
+$plugin->version   = 2026072300;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass
@@ -35,5 +35,5 @@ $plugin->version   = 2026072002;
 // earlier off-by-one estimate of nine.
 $plugin->requires  = 2025041400;
 $plugin->supported = [500, 502];
-$plugin->release   = '0.1.0';
+$plugin->release   = '0.1.1';
 $plugin->maturity  = MATURITY_ALPHA;

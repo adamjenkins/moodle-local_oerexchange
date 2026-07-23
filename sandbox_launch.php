@@ -53,6 +53,13 @@ if ($resource->type === 'data') {
     throw new moodle_exception('tryitunavailable', 'local_oerexchange');
 }
 
+if (!empty($resource->trydisabled)) {
+    // The author has declined sandbox availability for this resource.
+    // resource.php shows their reason in place of the button; same
+    // defence-in-depth pattern as the data-resource check above.
+    throw new moodle_exception('tryitdisabledbyauthor', 'local_oerexchange');
+}
+
 $latest = $DB->get_records(
     'local_oerexchange_versions',
     ['resourceid' => $resource->id, 'status' => 'ready'],

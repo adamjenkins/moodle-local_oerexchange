@@ -155,6 +155,12 @@ class resource_manager {
                 $task = new parse_backup_task();
                 $task->set_custom_data(['versionid' => $versionid]);
                 \core\task\manager::queue_adhoc_task($task);
+            } else {
+                // A data resource is 'ready' the moment it is stored (there is
+                // nothing to parse), so the version it replaces can be retired
+                // right away. For course/activity resources this happens in
+                // parse_backup_task instead, once validation has succeeded.
+                self::supersede_old_versions($resourceid, $versionid);
             }
 
             $transaction->allow_commit();
@@ -241,6 +247,97 @@ class resource_manager {
             return true;
         }
         return has_capability('local/oerexchange:moderate', \context_system::instance(), $userid);
+    }
+
+    /**
+     * The one version of a resource that is currently served — the newest one
+     * that finished validating.
+     *
+     * @param int $resourceid
+     * @return \stdClass|null null while a first upload is still parsing, or if every parse failed
+     */
+    public static function get_current_version(int $resourceid): ?\stdClass {
+        global $DB;
+
+        $rows = $DB->get_records(
+            'local_oerexchange_versions',
+            ['resourceid' => $resourceid, 'status' => 'ready'],
+            'versionnumber DESC',
+            '*',
+            0,
+            1
+        );
+
+        return $rows ? reset($rows) : null;
+    }
+
+    /**
+     * Retire every version of a resource except $keepversionid: delete the
+     * stored file and mark the row 'superseded'.
+     *
+     * This is what makes "only ever one version on the Exchange" true. An
+     * update uploads into a *new* version row and only calls this once that
+     * row has actually validated, so there is never a window where the
+     * resource has nothing downloadable, and a failed update leaves the
+     * previous good version serving untouched.
+     *
+     * The rows themselves are kept on purpose. local_oerexchange_imports and
+     * local_oerexchange_trials both record which versionid was taken, and
+     * deleting the row would dangle those references; a 'superseded' row with
+     * no file keeps the history readable while every consumer that looks for
+     * status = 'ready' (resource.php, download.php via
+     * can_download_unsigned(), sandbox_launch.php) skips it automatically.
+     *
+     * @param int $resourceid
+     * @param int $keepversionid the version that must survive
+     * @return int how many versions were superseded
+     */
+    public static function supersede_old_versions(int $resourceid, int $keepversionid): int {
+        global $DB;
+
+        $stale = $DB->get_records_select(
+            'local_oerexchange_versions',
+            'resourceid = ? AND id <> ? AND status <> ?',
+            [$resourceid, $keepversionid, 'superseded'],
+            '',
+            'id'
+        );
+        if (empty($stale)) {
+            return 0;
+        }
+
+        $fs = get_file_storage();
+        $contextid = \context_system::instance()->id;
+        foreach ($stale as $version) {
+            $fs->delete_area_files($contextid, 'local_oerexchange', 'resource', $version->id);
+            $DB->set_field('local_oerexchange_versions', 'status', 'superseded', ['id' => $version->id]);
+        }
+
+        return count($stale);
+    }
+
+    /**
+     * One-off upgrade helper: apply the single-version rule to resources that
+     * already accumulated several versions under the old behaviour.
+     *
+     * @return int how many versions were superseded across all resources
+     */
+    public static function supersede_all_stale_versions(): int {
+        global $DB;
+
+        $resourceids = $DB->get_fieldset_sql(
+            'SELECT DISTINCT resourceid FROM {local_oerexchange_versions}'
+        );
+
+        $total = 0;
+        foreach ($resourceids as $resourceid) {
+            $current = self::get_current_version((int) $resourceid);
+            if ($current) {
+                $total += self::supersede_old_versions((int) $resourceid, (int) $current->id);
+            }
+        }
+
+        return $total;
     }
 
     /**

@@ -232,7 +232,7 @@ if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser())
     \core\notification::success(get_string('thumbnailuploaded', 'local_oerexchange'));
     redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
 } else if (
-    in_array($action, ['hide', 'unhide', 'deleteconfirm'], true)
+    in_array($action, ['hide', 'unhide', 'deleteconfirm', 'settrydisabled'], true)
     && confirm_sesskey() && isloggedin() && !isguestuser()
 ) {
     require_login();
@@ -261,6 +261,24 @@ if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser())
         }
         \core\notification::success(get_string('resourcedeleted', 'local_oerexchange'));
         redirect(new moodle_url('/local/oerexchange/index.php'));
+    }
+
+    if ($action === 'settrydisabled') {
+        // An unchecked checkbox posts nothing at all, so this is the "off"
+        // case as well as the "on" one.
+        $trydisabled = optional_param('trydisabled', 0, PARAM_BOOL) ? 1 : 0;
+        // PARAM_TEXT, not PARAM_RAW: this is rendered back into the page for
+        // every visitor, and is escaped with s() at the point of output too.
+        $reason = trim(optional_param('trydisabledreason', '', PARAM_TEXT));
+
+        $DB->update_record('local_oerexchange_resources', (object) [
+            'id' => $resource->id,
+            'trydisabled' => $trydisabled,
+            'trydisabledreason' => $reason !== '' ? \core_text::substr($reason, 0, 255) : null,
+            'timemodified' => time(),
+        ]);
+        \core\notification::success(get_string('trydisabledsaved', 'local_oerexchange'));
+        redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
     }
 
     $hide = ($action === 'hide');
@@ -443,6 +461,54 @@ if ($cancontrolthumbnail) {
         get_string('resourcedelete', 'local_oerexchange'),
         ['class' => 'btn btn-outline-danger btn-sm']
     );
+
+    // Author opt-out of the sandbox. Only offered where a sandbox trial is
+    // possible at all — a data resource can never be tried, so showing the
+    // control there would imply a capability that doesn't exist.
+    if ($resource->type !== 'data') {
+        echo html_writer::start_tag('form', [
+            'method' => 'post',
+            'action' => new moodle_url('/local/oerexchange/resource.php', ['id' => $id]),
+            'class' => 'mt-3',
+        ]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'settrydisabled']);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+
+        echo html_writer::start_tag('div', ['class' => 'form-check mb-2']);
+        echo html_writer::empty_tag('input', array_merge([
+            'type' => 'checkbox',
+            'class' => 'form-check-input',
+            'id' => 'oerexchange-trydisabled',
+            'name' => 'trydisabled',
+            'value' => '1',
+        ], !empty($resource->trydisabled) ? ['checked' => 'checked'] : []));
+        echo html_writer::tag('label', get_string('trydisabledlabel', 'local_oerexchange'), [
+            'class' => 'form-check-label',
+            'for' => 'oerexchange-trydisabled',
+        ]);
+        echo html_writer::end_tag('div');
+
+        echo html_writer::tag('label', get_string('trydisabledreasonlabel', 'local_oerexchange'), [
+            'class' => 'form-label small',
+            'for' => 'oerexchange-trydisabledreason',
+        ]);
+        echo html_writer::empty_tag('input', [
+            'type' => 'text',
+            'class' => 'form-control form-control-sm mb-2',
+            'id' => 'oerexchange-trydisabledreason',
+            'name' => 'trydisabledreason',
+            'maxlength' => 255,
+            'value' => (string) $resource->trydisabledreason,
+            'placeholder' => get_string('trydisabledreasonplaceholder', 'local_oerexchange'),
+        ]);
+        echo html_writer::empty_tag('input', [
+            'type' => 'submit',
+            'class' => 'btn btn-outline-secondary btn-sm',
+            'value' => get_string('trydisabledsave', 'local_oerexchange'),
+        ]);
+        echo html_writer::end_tag('form');
+    }
+
     echo html_writer::end_tag('div');
     echo html_writer::end_tag('div');
 }
@@ -513,7 +579,19 @@ $hasunreliableplugin = (bool) array_filter($pluginstatuses, fn($p) => $p['status
 
 // Action buttons.
 echo html_writer::start_tag('div', ['class' => 'mb-3']);
-if ($sandboxenabled && $version && $resource->type !== 'data') {
+if ($sandboxenabled && $version && $resource->type !== 'data' && !empty($resource->trydisabled)) {
+    // The author has switched sandbox availability off. Say so, and show
+    // their reason if they gave one, rather than silently omitting the
+    // button — a missing button reads as a broken page.
+    $reason = trim((string) $resource->trydisabledreason);
+    echo html_writer::tag(
+        'div',
+        $reason !== ''
+            ? get_string('tryitdisabledwithreason', 'local_oerexchange', s($reason))
+            : get_string('tryitdisabledbyauthor', 'local_oerexchange'),
+        ['class' => 'alert alert-info py-2 px-3 mb-2']
+    );
+} else if ($sandboxenabled && $version && $resource->type !== 'data') {
     // A 'data' resource is not a Moodle backup — there is nothing to
     // restore, so "Try it" is never offered for it (see sandbox_launch.php's
     // matching defence-in-depth check on this same endpoint's direct URL).

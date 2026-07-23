@@ -42,7 +42,9 @@
         <FIELD NAME="downloadcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="importcount" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0"/>
         <FIELD NAME="forkedfromid" TYPE="int" LENGTH="10" NOTNULL="false"/>
-        <FIELD NAME="timeshared" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="trydisabled" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" COMMENT="1 = the author has declined sandbox (Try it) availability"/>
+        <FIELD NAME="trydisabledreason" TYPE="text" NOTNULL="false" COMMENT="optional author-supplied reason shown in place of the Try it button"/>
+        <FIELD NAME="timeshared" TYPE="int" LENGTH="10" NOTNULL="true" COMMENT="when the resource was first published; never changes on update"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true"/>
       </FIELDS>
       <KEYS>
@@ -57,7 +59,7 @@
       </INDEXES>
     </TABLE>
 
-    <TABLE NAME="local_oerexchange_versions" COMMENT="One row per uploaded backup file for a resource">
+    <TABLE NAME="local_oerexchange_versions" COMMENT="Uploaded backup files for a resource. Only ONE row is ever status=ready — updating supersedes the previous one and deletes its file, keeping the row so imports/trials references never dangle">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="resourceid" TYPE="int" LENGTH="10" NOTNULL="true"/>
@@ -69,7 +71,7 @@
         <FIELD NAME="backupversion" TYPE="char" LENGTH="30" NOTNULL="false"/>
         <FIELD NAME="structurejson" TYPE="text" NOTNULL="false"/>
         <FIELD NAME="requiredplugins" TYPE="text" NOTNULL="false" COMMENT="JSON array of {type,name} non-core components found in the backup"/>
-        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="parsing" COMMENT="parsing|ready|failed"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="parsing" COMMENT="parsing|ready|failed|superseded — only one version per resource is ever ready; see resource_manager::supersede_old_versions()"/>
         <FIELD NAME="parseerror" TYPE="text" NOTNULL="false"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
       </FIELDS>

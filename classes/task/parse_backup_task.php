@@ -94,6 +94,20 @@ class parse_backup_task extends \core\task\adhoc_task {
                 );
             }
 
+            // The Exchange serves exactly one version per resource. Now that
+            // this one has validated, retire the version it replaces — file
+            // deleted, row kept as 'superseded' so imports/trials references
+            // still resolve. Deliberately here rather than at upload time: an
+            // update that fails to parse must leave the previous good version
+            // serving, not strand the resource with nothing to download.
+            $superseded = \local_oerexchange\local\resource_manager::supersede_old_versions(
+                (int) $version->resourceid,
+                $versionid
+            );
+            if ($superseded) {
+                mtrace("local_oerexchange: superseded {$superseded} older version(s) of resource {$version->resourceid}");
+            }
+
             $this->extract_cover_image($tmppath, $tmpdir, $versionid, $version->resourceid);
         } catch (\Throwable $e) {
             $this->mark_failed($versionid, $e->getMessage());

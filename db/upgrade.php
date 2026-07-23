@@ -125,5 +125,29 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026072002, 'local', 'oerexchange');
     }
 
+    if ($oldversion < 2026072300) {
+        // Author opt-out of the sandbox ("Try it"), with an optional reason
+        // shown in place of the button.
+        $table = new xmldb_table('local_oerexchange_resources');
+
+        $field = new xmldb_field('trydisabled', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'forkedfromid');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('trydisabledreason', XMLDB_TYPE_TEXT, null, null, null, null, null, 'trydisabled');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Only one version per resource is served from now on. Retire the
+        // files of any historical extra versions and mark those rows
+        // 'superseded', keeping the rows themselves so existing
+        // imports.versionid / trials.versionid references still resolve.
+        \local_oerexchange\local\resource_manager::supersede_all_stale_versions();
+
+        upgrade_plugin_savepoint(true, 2026072300, 'local', 'oerexchange');
+    }
+
     return true;
 }
