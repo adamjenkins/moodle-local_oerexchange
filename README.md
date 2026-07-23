@@ -15,6 +15,15 @@ plugin installed on their own Moodle sites.
   real Exchange account.
 - **Licensing**: Creative Commons via core's `license_manager`.
 - **Community**: adaptation-story reviews, reports, and a moderation queue.
+  A moderator's takedown is a state of its own that the author cannot lift,
+  and the queue can restore it.
+- **Author control**: authors hide, show, delete, and replace the file of
+  their own resources, and may decline sandbox availability with a reason.
+  The Exchange serves exactly one version per resource — an update supersedes
+  the previous one, keeping the catalogue entry, its link and its reviews.
+- **Sharing affordances**: share buttons on resource and profile pages, with
+  admin-configurable destinations. Every target is a plain link — no
+  third-party script is loaded onto a catalogue page.
 - **Educator profiles**: a shareable profile page per educator
   (`/local_oerexchange/u/{slug}`, bio/expertise/badges/portfolio links/metrics/
   resource grid), auto-created on first published resource. Author attribution
@@ -26,7 +35,9 @@ plugin installed on their own Moodle sites.
   `classes/local/profile_manager.php`, `classes/local/badge_manager.php`, and
   `classes/route/controller/`.
 - **Sandbox integration**: builds Moodle Playground (in-browser, WASM) trial
-  launch URLs — no server-side trial execution. See `classes/local/sandbox/`.
+  launch URLs — no server-side trial execution. A trial boots in the language
+  the visitor is reading the catalogue in, where that is not English. See
+  `classes/local/sandbox/`.
 
 ## Web services
 
@@ -38,6 +49,7 @@ Custom service `local_oerexchange` (`db/services.php`):
 | `local_oerexchange_get_resource` | site token | Full detail + structure preview |
 | `local_oerexchange_publish_resource` | personal token | Publish a share |
 | `local_oerexchange_record_import` | site token | Record a completed import |
+| `local_oerexchange_get_share_status` | personal token | Live state of one's own published resource |
 | `local_oerexchange_get_config` | site token | Advertised limits |
 
 Two bootstrap steps have no token yet, so they are plain public endpoints

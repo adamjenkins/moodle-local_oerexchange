@@ -3,6 +3,26 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [0.1.3] - 2026-07-23
+
+### Added
+
+- A sandbox trial boots in the launching visitor's own interface language:
+  the blueprint carries an `installLanguagePack` step for any non-English
+  `current_language()`, installed with `setDefault` so the trial's
+  auto-logged-in admin actually reads it. English emits no step at all.
+  A language code that is not a Moodle language code is dropped rather than
+  passed to the sandbox, which interpolates it into generated PHP and a
+  dataroot path.
+
+### Changed
+
+- The blueprint's `login` step now follows the language step rather than
+  preceding it. Installing a pack after login has no visible effect: Moodle
+  serialises `$USER` into the session at login, so the language change lands
+  too late for that session to read, and the trial renders in English
+  despite a completely successful install.
+
 ## [0.1.2] - 2026-07-23
 
 ### Added
