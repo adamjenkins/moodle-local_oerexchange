@@ -3,6 +3,27 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [0.1.4] - 2026-07-27
+
+### Added
+
+- Abandoned-courseware lifecycle, off by default. Three new admin settings
+  (enable, threshold — default 2 years, grace period — default 60 days), a
+  nightly `check_stale_resources_task`, a `stale` message provider, and two
+  new columns on the resources table (`timefresh`, `stalenotifiedtime`).
+  A stale published resource's author is warned once; updating the resource
+  or the one-click "Still fresh" button (resource-page banner, linked from
+  the warning) resets the clock; otherwise the resource is removed when the
+  grace period ends. Automatic removal writes the same restorable 'removed'
+  status a moderator's takedown uses, and a moderator restore now also
+  resets the freshness clock so a restored resource is not removed straight
+  back. Resources with no reachable author are skipped entirely.
+- Share buttons now show each destination's logo (brand icons for Mastodon,
+  Facebook, X and LinkedIn) from Moodle's bundled FontAwesome via the
+  standard icon-map callback. Icons are decorative and aria-hidden; labels
+  are unchanged. On a theme whose icon system is not FontAwesome the buttons
+  stay text-only.
+
 ## [0.1.3] - 2026-07-23
 
 ### Added

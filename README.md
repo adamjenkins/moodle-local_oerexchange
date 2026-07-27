@@ -22,8 +22,17 @@ plugin installed on their own Moodle sites.
   The Exchange serves exactly one version per resource — an update supersedes
   the previous one, keeping the catalogue entry, its link and its reviews.
 - **Sharing affordances**: share buttons on resource and profile pages, with
-  admin-configurable destinations. Every target is a plain link — no
-  third-party script is loaded onto a catalogue page.
+  admin-configurable destinations, each showing its network's logo from
+  Moodle's own bundled FontAwesome (nothing is bundled into the plugin).
+  Every target is a plain link — no third-party script is loaded onto a
+  catalogue page.
+- **Abandoned courseware** (off by default): a nightly check warns the author
+  of any published resource unmaintained past a configurable threshold
+  (default 2 years). The author can update it or press a one-click
+  "Still fresh" button; if neither happens within a configurable grace period
+  (default 60 days), the resource is removed from the catalogue — into the
+  moderation queue's restorable list, never irreversibly. Resources whose
+  author is unreachable are left for human moderators.
 - **Educator profiles**: a shareable profile page per educator
   (`/local_oerexchange/u/{slug}`, bio/expertise/badges/portfolio links/metrics/
   resource grid), auto-created on first published resource. Author attribution
