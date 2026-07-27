@@ -129,4 +129,85 @@ final class site_manager_test extends \advanced_testcase {
         $tokenrecord = $DB->get_record('external_tokens', ['token' => $newtoken]);
         $this->assertEquals($site->serviceuserid, $tokenrecord->userid);
     }
+
+    /**
+     * register.php is unauthenticated by design — a site with no token yet
+     * has nothing to authenticate with — so the only thing bounding the rows
+     * it can insert is this pair of guards (MDL Shield self-audit, class 2,
+     * 2026-07-27).
+     */
+    public function test_register_reuses_an_existing_pending_row_for_the_same_url(): void {
+        global $DB;
+
+        $first = site_manager::register('Their site', 'https://theirs.example.net', 'a@example.com');
+        $second = site_manager::register('Their site again', 'https://theirs.example.net', 'b@example.com');
+
+        $this->assertSame($first, $second, 'a repeated registration returns the pending row instead of adding one');
+        $this->assertEquals(1, $DB->count_records('local_oerexchange_sites'));
+        // The first registration's details are the ones an admin reviews —
+        // a replay must not be able to rewrite them.
+        $site = $DB->get_record('local_oerexchange_sites', ['id' => $first], '*', MUST_EXIST);
+        $this->assertSame('Their site', $site->name);
+        $this->assertSame('a@example.com', $site->contact);
+    }
+
+    public function test_register_matches_the_pending_url_case_insensitively(): void {
+        global $DB;
+
+        $first = site_manager::register('Their site', 'https://Theirs.Example.NET', 'a@example.com');
+        $second = site_manager::register('Their site', 'https://theirs.example.net', 'a@example.com');
+
+        $this->assertSame($first, $second);
+        $this->assertEquals(1, $DB->count_records('local_oerexchange_sites'));
+    }
+
+    public function test_register_adds_a_row_for_a_url_whose_only_registration_was_revoked(): void {
+        global $DB;
+
+        $first = site_manager::register('Their site', 'https://theirs.example.net', 'a@example.com');
+        $DB->set_field('local_oerexchange_sites', 'status', 'revoked', ['id' => $first]);
+
+        $second = site_manager::register('Their site', 'https://theirs.example.net', 'a@example.com');
+
+        $this->assertNotSame($first, $second, 'asking again after a revocation is a genuine new request');
+        $this->assertEquals(2, $DB->count_records('local_oerexchange_sites'));
+    }
+
+    public function test_registration_rate_exceeded_trips_only_at_the_cap(): void {
+        global $DB;
+
+        $this->assertFalse(site_manager::registration_rate_exceeded());
+
+        $now = time();
+        for ($i = 0; $i < site_manager::REGISTRATION_MAX_PER_WINDOW - 1; $i++) {
+            $DB->insert_record('local_oerexchange_sites', (object) [
+                'name' => 'S' . $i, 'url' => 'https://s' . $i . '.example.net', 'contact' => 'c@example.com',
+                'serviceuserid' => null, 'status' => 'pending', 'timecreated' => $now, 'timemodified' => $now,
+            ]);
+        }
+        $this->assertFalse(site_manager::registration_rate_exceeded(), 'one below the cap still registers');
+
+        $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'S last', 'url' => 'https://last.example.net', 'contact' => 'c@example.com',
+            'serviceuserid' => null, 'status' => 'pending', 'timecreated' => $now, 'timemodified' => $now,
+        ]);
+        $this->assertTrue(site_manager::registration_rate_exceeded());
+    }
+
+    public function test_registration_rate_ignores_rows_older_than_the_window(): void {
+        global $DB;
+
+        $stale = time() - site_manager::REGISTRATION_WINDOW - 60;
+        for ($i = 0; $i < site_manager::REGISTRATION_MAX_PER_WINDOW + 5; $i++) {
+            $DB->insert_record('local_oerexchange_sites', (object) [
+                'name' => 'S' . $i, 'url' => 'https://s' . $i . '.example.net', 'contact' => 'c@example.com',
+                'serviceuserid' => null, 'status' => 'pending', 'timecreated' => $stale, 'timemodified' => $stale,
+            ]);
+        }
+
+        $this->assertFalse(
+            site_manager::registration_rate_exceeded(),
+            'the window slides — yesterday\'s flood does not lock the door today'
+        );
+    }
 }

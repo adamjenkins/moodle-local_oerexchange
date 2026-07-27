@@ -59,6 +59,18 @@ if ($contact === '' || core_text::strlen($contact) > 255) {
     exit;
 }
 
+// This endpoint has no token to check (a site registering for the first time
+// has none yet) and NO_MOODLE_COOKIES above means no session either, so a
+// rate gate is the only thing standing between it and an unbounded row
+// insert. site_manager::register() separately reuses an existing pending row
+// for the same URL, so an honest client retrying is never the caller that
+// trips this.
+if (site_manager::registration_rate_exceeded()) {
+    http_response_code(429);
+    echo json_encode(['error' => 'too many registrations, try again later']);
+    exit;
+}
+
 $siteid = site_manager::register($name, $url, $contact);
 
 echo json_encode(['siteid' => $siteid, 'status' => 'pending']);

@@ -238,7 +238,11 @@ if ($action === 'report' && isloggedin() && !isguestuser()) {
     \core\notification::success(get_string('thumbnailuploaded', 'local_oerexchange'));
     redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
 } else if (
-    in_array($action, ['hide', 'unhide', 'deleteconfirm', 'settrydisabled', 'stillfresh'], true)
+    in_array(
+        $action,
+        ['hide', 'unhide', 'deleteconfirm', 'settrydisabled', 'stillfresh', 'addcoauthor', 'removecoauthor'],
+        true
+    )
     && isloggedin() && !isguestuser()
 ) {
     require_login();
@@ -275,6 +279,38 @@ if ($action === 'report' && isloggedin() && !isguestuser()) {
         // freshness clock forward and cancel the pending removal.
         \local_oerexchange\local\stale_manager::mark_fresh($resource);
         \core\notification::success(get_string('stillfreshsaved', 'local_oerexchange'));
+        redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
+    }
+
+    if ($action === 'addcoauthor') {
+        // PARAM_RAW_TRIMMED, not PARAM_TEXT: this is matched against
+        // user.username / user.email in a parameterized query and is never
+        // echoed back, so stripping characters out of it would only break
+        // legitimate addresses. The success notice names the resolved user,
+        // not the string that was typed.
+        $identifier = required_param('coauthoridentifier', PARAM_RAW_TRIMMED);
+        try {
+            $added = \local_oerexchange\local\coauthor_manager::add($resource, $identifier, (int) $USER->id);
+            \local_oerexchange\local\coauthor_manager::notify_added($resource, $added, $USER);
+            \core\notification::success(get_string('coauthoradded', 'local_oerexchange', fullname($added)));
+        } catch (moodle_exception $e) {
+            // A typo in a username is an ordinary mistake, not an exceptional
+            // one — send them back to the form with the reason rather than to
+            // a full-page error they have to navigate away from.
+            \core\notification::error($e->getMessage());
+        }
+        redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
+    }
+
+    if ($action === 'removecoauthor') {
+        $coauthorid = required_param('coauthorid', PARAM_INT);
+        if (\local_oerexchange\local\coauthor_manager::remove((int) $resource->id, $coauthorid)) {
+            \core\notification::success(get_string('coauthorremoved', 'local_oerexchange'));
+        } else {
+            // Already gone — a double-click, or two authors removing the same
+            // person at once. Nothing is wrong, so this is not an error.
+            \core\notification::warning(get_string('coauthornotpresent', 'local_oerexchange'));
+        }
         redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
     }
 
@@ -364,6 +400,28 @@ if (!empty($creatoruser)) {
         ? html_writer::link(\moodle_url::routed_path('/local_oerexchange/u/' . $creatorprofile->slug), s($creatorname))
         : s($creatorname);
     echo html_writer::tag('p', get_string('createdby', 'local_oerexchange', $creatorlabel));
+}
+
+// Co-authors, shown to everyone: they hold the same rights over the entry as
+// the creator, so the public attribution should say so. Same profile-linking
+// rule as the creator line above — a name always shows, and only becomes a
+// link where that person has a visible profile.
+$coauthorusers = \local_oerexchange\local\coauthor_manager::get_users((int) $resource->id);
+if ($coauthorusers) {
+    $coauthorlabels = [];
+    foreach ($coauthorusers as $coauthoruser) {
+        $coauthorprofile = \local_oerexchange\local\profile_manager::get_by_userid((int) $coauthoruser->id);
+        $coauthorlabels[] = ($coauthorprofile && $coauthorprofile->visible)
+            ? html_writer::link(
+                \moodle_url::routed_path('/local_oerexchange/u/' . $coauthorprofile->slug),
+                s(fullname($coauthoruser))
+            )
+            : s(fullname($coauthoruser));
+    }
+    echo html_writer::tag(
+        'p',
+        get_string('coauthorsline', 'local_oerexchange', implode(', ', $coauthorlabels))
+    );
 }
 
 echo html_writer::tag('p', get_string('licenselabel', 'local_oerexchange', s($resource->licenseshortname)));
@@ -564,6 +622,68 @@ if ($cancontrolthumbnail) {
         ]);
         echo html_writer::end_tag('form');
     }
+
+    // Co-authors. Everyone who can edit the resource can manage this list —
+    // there is no separate, lesser tier (coauthor_manager's docblock explains
+    // why), so a co-author can add another one. That grants nothing they do
+    // not already hold: a co-author can already replace or delete the entry
+    // outright, and the creator is not a row here, so they can never be
+    // removed by someone they added.
+    echo $OUTPUT->heading(get_string('coauthorsheading', 'local_oerexchange'), 6, 'mt-3');
+    echo html_writer::tag('p', get_string('coauthorsintro', 'local_oerexchange'), ['class' => 'small text-muted']);
+
+    if ($coauthorusers) {
+        echo html_writer::start_tag('ul', ['class' => 'list-unstyled mb-2']);
+        foreach ($coauthorusers as $coauthoruser) {
+            $removeurl = new moodle_url('/local/oerexchange/resource.php', [
+                'id' => $id,
+                'action' => 'removecoauthor',
+                'coauthorid' => $coauthoruser->id,
+                'sesskey' => sesskey(),
+            ]);
+            echo html_writer::tag(
+                'li',
+                s(fullname($coauthoruser)) . ' '
+                    . html_writer::tag('span', s($coauthoruser->email), ['class' => 'small text-muted'])
+                    . ' '
+                    . html_writer::link($removeurl, get_string('coauthorremove', 'local_oerexchange'), [
+                        'class' => 'btn btn-outline-danger btn-sm ms-2',
+                    ]),
+                ['class' => 'mb-1']
+            );
+        }
+        echo html_writer::end_tag('ul');
+    } else {
+        echo html_writer::tag('p', get_string('coauthorsnone', 'local_oerexchange'), ['class' => 'mb-2']);
+    }
+
+    echo html_writer::start_tag('form', [
+        'method' => 'post',
+        'action' => new moodle_url('/local/oerexchange/resource.php', ['id' => $id]),
+        'class' => 'd-flex gap-2 align-items-start flex-wrap',
+    ]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'addcoauthor']);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    echo html_writer::tag('label', get_string('coauthoradd', 'local_oerexchange'), [
+        'class' => 'visually-hidden',
+        'for' => 'oerexchange-coauthoridentifier',
+    ]);
+    echo html_writer::empty_tag('input', [
+        'type' => 'text',
+        'class' => 'form-control form-control-sm',
+        'style' => 'max-width:22rem;',
+        'id' => 'oerexchange-coauthoridentifier',
+        'name' => 'coauthoridentifier',
+        'maxlength' => 255,
+        'required' => 'required',
+        'placeholder' => get_string('coauthoridentifierplaceholder', 'local_oerexchange'),
+    ]);
+    echo html_writer::empty_tag('input', [
+        'type' => 'submit',
+        'class' => 'btn btn-outline-secondary btn-sm',
+        'value' => get_string('coauthoradd', 'local_oerexchange'),
+    ]);
+    echo html_writer::end_tag('form');
 
     echo html_writer::end_tag('div');
     echo html_writer::end_tag('div');

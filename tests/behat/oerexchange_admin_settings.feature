@@ -6,7 +6,14 @@ Feature: OER Exchange admin settings and anonymous browsing
 
   Scenario: The OER Exchange settings page is reachable from Site administration
     Given I log in as "admin"
-    And I navigate to "Plugins > OER Exchange > General settings" in site administration
+    # Two steps, not one path. settings.php nests this plugin's category under
+    # 'localplugins', and local_oerclient — installed alongside it on any site
+    # that runs both halves of the platform, including this one — publishes a
+    # settings page called "General settings" under the same parent. A single
+    # "... > General settings" path matched OER Client's page instead of this
+    # one, so the scenario was asserting against the wrong plugin's settings.
+    And I navigate to "Plugins > Local plugins > OER Exchange" in site administration
+    And I follow "General settings"
     Then I should see "Sandbox"
     And I should see "Anonymous access"
 

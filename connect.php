@@ -41,10 +41,10 @@ if (!$site) {
     throw new moodle_exception('error_sitenotactive', 'local_oerexchange');
 }
 
-// Prevent an open redirect: the callback must point back at the registered site.
-$sitehost = parse_url($site->url, PHP_URL_HOST);
-$callbackhost = parse_url($callback, PHP_URL_HOST);
-if (!$sitehost || !$callbackhost || strcasecmp($sitehost, $callbackhost) !== 0) {
+// Prevent an open redirect: the callback must point back at the registered
+// site, on the same scheme as well as the same host — see
+// link_manager::callback_matches_site().
+if (!link_manager::callback_matches_site($site->url, $callback)) {
     throw new moodle_exception('error_sitenotactive', 'local_oerexchange');
 }
 

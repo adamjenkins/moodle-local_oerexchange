@@ -27,6 +27,34 @@ namespace local_oerexchange\local;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class link_manager {
+    /**
+     * Whether a client-supplied callback URL may be redirected to for a given
+     * registered site — the open-redirect gate on connect.php.
+     *
+     * Both the host AND the scheme must match the site's registered URL.
+     * Matching on host alone (the behaviour before 0.1.6) let an
+     * https-registered site be handed an http:// callback, carrying the
+     * one-time link code — and so the personal WS token it is exchanged for —
+     * over plaintext.
+     *
+     * @param string $siteurl the registered site's URL
+     * @param string $callback the callback URL supplied in the request
+     * @return bool
+     */
+    public static function callback_matches_site(string $siteurl, string $callback): bool {
+        $sitehost = parse_url($siteurl, PHP_URL_HOST);
+        $callbackhost = parse_url($callback, PHP_URL_HOST);
+        $sitescheme = parse_url($siteurl, PHP_URL_SCHEME);
+        $callbackscheme = parse_url($callback, PHP_URL_SCHEME);
+
+        if (!$sitehost || !$callbackhost || !$sitescheme || !$callbackscheme) {
+            return false;
+        }
+
+        return strcasecmp($sitehost, $callbackhost) === 0
+            && strcasecmp($sitescheme, $callbackscheme) === 0;
+    }
+
     /** @var int Code validity window, seconds. */
     const TTL = 300;
 

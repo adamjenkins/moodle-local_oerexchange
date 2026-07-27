@@ -29,4 +29,5 @@ $messageproviders = [
     'review' => [],
     'report' => [],
     'stale' => [],
+    'coauthor' => [],
 ];

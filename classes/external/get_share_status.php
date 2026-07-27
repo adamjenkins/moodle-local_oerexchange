@@ -71,9 +71,12 @@ class get_share_status extends external_api {
 
         // The token is personal (minted for one Exchange user by the
         // account-linking handshake), so $USER is the linked educator. Only
-        // the creator may read this back — a registered site's token must not
-        // become a way to enumerate other people's hidden resources.
-        if ((int) $resource->creatorid !== (int) $USER->id) {
+        // someone who may edit the resource reads this back — a registered
+        // site's token must not become a way to enumerate other people's
+        // hidden resources. The shared gate, not a creatorid comparison of
+        // its own, so a co-author polling status from their own client site
+        // sees the entry they can already edit.
+        if (!resource_manager::user_can_edit_resource($resource, (int) $USER->id)) {
             throw new \moodle_exception('error_notyourresource', 'local_oerexchange');
         }
 

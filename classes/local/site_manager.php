@@ -37,17 +37,34 @@ require_once($GLOBALS['CFG']->dirroot . '/user/lib.php');
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class site_manager {
+    /** @var int Window over which new registrations are counted, seconds. */
+    const REGISTRATION_WINDOW = HOURSECS;
+
+    /** @var int Most new registrations accepted per REGISTRATION_WINDOW, site-wide. */
+    const REGISTRATION_MAX_PER_WINDOW = 30;
+
     /**
      * Register a new client site, pending admin approval. No account/token
      * exists yet — this is the one truly anonymous step in the handshake.
      *
+     * Re-registering a URL that already has a pending row returns that row
+     * instead of adding another: a client that retries (or an attacker
+     * replaying the call) must not be able to grow this table, or the
+     * moderation queue, one row per request. See also
+     * registration_rate_exceeded(), which register.php checks first.
+     *
      * @param string $name
      * @param string $url
      * @param string $contact contact email
-     * @return int the new site id
+     * @return int the site id — a new one, or the existing pending registration's
      */
     public static function register(string $name, string $url, string $contact): int {
         global $DB;
+
+        $pending = self::find_pending_registration($url);
+        if ($pending) {
+            return (int) $pending->id;
+        }
 
         $now = time();
         return (int) $DB->insert_record('local_oerexchange_sites', (object) [
@@ -59,6 +76,62 @@ class site_manager {
             'timecreated' => $now,
             'timemodified' => $now,
         ]);
+    }
+
+    /**
+     * The pending registration for this URL, if there is one. Compared
+     * case-insensitively because a URL's host is not case-sensitive and a
+     * client retrying by hand may not reproduce the original casing.
+     *
+     * Only 'pending' rows are reused: an 'active' site re-registering is a
+     * different situation (it already holds a token), and a 'revoked' one
+     * asking again is a genuine new request for an admin to judge.
+     *
+     * @param string $url
+     * @return \stdClass|null
+     */
+    public static function find_pending_registration(string $url): ?\stdClass {
+        global $DB;
+
+        $existing = $DB->get_records_select(
+            'local_oerexchange_sites',
+            $DB->sql_equal('url', ':url', false) . " AND status = :status",
+            ['url' => $url, 'status' => 'pending'],
+            'id ASC',
+            '*',
+            0,
+            1
+        );
+
+        return $existing ? reset($existing) : null;
+    }
+
+    /**
+     * Whether new registrations are arriving faster than a real deployment
+     * ever would. register.php is unauthenticated by design (a site that has
+     * never registered has no token to authenticate with), so without this a
+     * stranger could insert rows in a loop — filling the sites table and
+     * burying real requests in block_oerexchangemodqueue's pending list.
+     *
+     * Deliberately site-wide rather than per-IP: there is no IP column to key
+     * on, and adding one to log every anonymous caller's address would create
+     * a new privacy obligation to solve a housekeeping problem. The window is
+     * short enough that a flood locks new registrations out for at most an
+     * hour, and pending rows an admin has not yet acted on do not accumulate
+     * (see find_pending_registration()).
+     *
+     * @return bool
+     */
+    public static function registration_rate_exceeded(): bool {
+        global $DB;
+
+        $recent = $DB->count_records_select(
+            'local_oerexchange_sites',
+            'timecreated > ?',
+            [time() - self::REGISTRATION_WINDOW]
+        );
+
+        return $recent >= self::REGISTRATION_MAX_PER_WINDOW;
     }
 
     /**

@@ -162,6 +162,9 @@ if (empty($resources)) {
         : get_string('catalogueempty', 'local_oerexchange');
     echo $OUTPUT->notification($message, 'info');
 } else {
+    // One query for the whole page's cover images rather than one per card.
+    $coverurls = \local_oerexchange\local\cover_image::urls_for(array_keys($resources));
+
     echo html_writer::start_tag('div', ['class' => 'oerexchange-list row row-cols-1 row-cols-md-3 g-3']);
     foreach ($resources as $r) {
         $url = new moodle_url('/local/oerexchange/resource.php', ['id' => $r->id]);
@@ -178,6 +181,15 @@ if (empty($resources)) {
         }
         echo html_writer::start_tag('div', ['class' => 'col']);
         echo html_writer::start_tag('div', ['class' => 'card h-100']);
+        // The whole card leads with the cover image, so the catalogue reads as
+        // a shelf of courseware rather than a list of titles. Resources with
+        // no cover get the same-sized neutral panel, which keeps every row of
+        // the grid aligned.
+        echo html_writer::link(
+            $url,
+            \local_oerexchange\local\cover_image::card($coverurls[$r->id] ?? null),
+            ['tabindex' => '-1', 'aria-hidden' => 'true']
+        );
         echo html_writer::start_tag('div', ['class' => 'card-body']);
         echo html_writer::tag('h5', html_writer::link($url, s($r->title)), ['class' => 'card-title']);
         echo html_writer::tag('p', s(shorten_text(strip_tags($r->summary ?? ''), 140)), ['class' => 'card-text text-muted']);

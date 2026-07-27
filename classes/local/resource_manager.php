@@ -33,12 +33,14 @@ class resource_manager {
      * existing one when $resourceid is given).
      *
      * @param int $draftitemid draft area holding exactly one .mbz file
-     * @param int $creatorid Exchange-local userid
+     * @param int $creatorid Exchange-local userid: the creator of a new resource, and in
+     *                        every case the user whose draft area $draftitemid lives in
      * @param int|null $siteid the registered site the share came from, or null for a direct
      *                          upload with no client site involved
      * @param array $metadata title, summary, language, tags, licenseshortname, type, activitytype
      * @param int|null $resourceid null to create a new resource, or an existing resource's id
-     *                              (must belong to $creatorid) to add a version to it
+     *                              ($creatorid must be able to edit it — its creator, one of its
+     *                              co-authors, or a moderator) to add a version to it
      * @return array [resourceid, versionid]
      */
     public static function publish(
@@ -129,7 +131,17 @@ class resource_manager {
                 $versionnumber = 1;
             } else {
                 $resource = $DB->get_record('local_oerexchange_resources', ['id' => $resourceid], '*', MUST_EXIST);
-                if ((int) $resource->creatorid !== $creatorid) {
+                // The same gate every other author-side action uses, rather
+                // than a bare creatorid comparison: a co-author holds full
+                // parity with the creator, so they may replace the file too.
+                // (It also settles an inconsistency that predates them — the
+                // two upload pages already let a moderator through their own
+                // gate, only for this line to reject them here.)
+                //
+                // Note this does NOT change who the version is attributed to:
+                // resources.creatorid is untouched by an update, so replacing
+                // the file never transfers ownership of the entry.
+                if (!self::user_can_edit_resource($resource, $creatorid)) {
                     throw new \moodle_exception('error_notyourresource', 'local_oerexchange');
                 }
                 $versionnumber = 1 + (int) $DB->get_field_sql(
@@ -247,18 +259,22 @@ class resource_manager {
     }
 
     /**
-     * Whether $userid may edit a resource's own metadata (currently: its
-     * cover-image thumbnail) — the resource's creator, or anyone holding
-     * local/oerexchange:moderate. Shared by resource.php's editthumbnail
-     * action handler and its display gate (final whole-branch review finding
-     * 5: those two previously duplicated this check with subtly different
-     * guards).
+     * Whether $userid may edit a resource — the resource's creator, one of its
+     * co-authors, or anyone holding local/oerexchange:moderate.
+     *
+     * This is the ONE gate for every author-side action in the plugin
+     * (thumbnail, hide/unhide, delete, Try-it opt-out, freshness confirmation,
+     * file replacement, and the co-author list itself). Keeping it single is
+     * the point — final whole-branch review finding 5 was two copies of it
+     * with subtly different guards — so a co-author gets full parity with the
+     * creator by construction rather than by a list of features somebody has
+     * to remember to extend.
      *
      * $userid must be truthy AND match $resource->creatorid for the owner
      * branch — a tombstoned/anonymized resource has creatorid = 0
      * (profile_manager::delete_creator_resource()), and 0 must never match
      * as "owner" no matter what $userid is passed. In practice this method
-     * is only ever called with a real, logged-in, non-guest user's id (both
+     * is only ever called with a real, logged-in, non-guest user's id (the
      * call sites in resource.php gate on isloggedin() && !isguestuser()
      * before calling it), so $userid is never 0 itself — this guard exists
      * for defence in depth, not because a 0 caller is expected.
@@ -269,6 +285,13 @@ class resource_manager {
      */
     public static function user_can_edit_resource(\stdClass $resource, int $userid): bool {
         if ($userid && (int) $resource->creatorid === $userid) {
+            return true;
+        }
+        // Null-coalesced rather than reading ->id directly: several callers
+        // (and the existing unit tests) build a partial row holding only the
+        // fields the check needs, and is_coauthor() already treats a 0
+        // resourceid as "no".
+        if ($userid && coauthor_manager::is_coauthor((int) ($resource->id ?? 0), $userid)) {
             return true;
         }
         return has_capability('local/oerexchange:moderate', \context_system::instance(), $userid);
@@ -387,6 +410,42 @@ class resource_manager {
             return true;
         }
         return self::user_can_edit_resource($resource, $userid);
+    }
+
+    /**
+     * Whether a sandbox trial of $resourceid by $userid should be recorded, or
+     * folded into one this viewer already has from the last few minutes.
+     *
+     * sandbox_launch.php wrote a row on every hit. A trial that fails to boot
+     * invites reloading, and when the admin allows anonymous downloads that
+     * page is reachable with no session at all, so "every hit" was an
+     * unbounded, unauthenticated insert. block_oerexchangequicklinks reads
+     * only the newest trial per resource for the current user, so collapsing
+     * a burst loses nothing that is displayed.
+     *
+     * @param int $resourceid
+     * @param int|null $userid null for an anonymous viewer, whose rows are telemetry only
+     * @param int $window seconds within which an existing trial counts as the same visit
+     * @return bool
+     */
+    public static function should_record_trial(int $resourceid, ?int $userid, int $window = 300): bool {
+        global $DB;
+
+        $cutoff = time() - $window;
+
+        $recent = $userid
+            ? $DB->record_exists_select(
+                'local_oerexchange_trials',
+                'resourceid = ? AND userid = ? AND timecreated > ?',
+                [$resourceid, $userid, $cutoff]
+            )
+            : $DB->record_exists_select(
+                'local_oerexchange_trials',
+                'resourceid = ? AND userid IS NULL AND timecreated > ?',
+                [$resourceid, $cutoff]
+            );
+
+        return !$recent;
     }
 
     /**

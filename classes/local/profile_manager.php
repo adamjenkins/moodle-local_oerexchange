@@ -254,6 +254,12 @@ class profile_manager {
             $DB->delete_records('local_oerexchange_versions', ['resourceid' => $resource->id]);
             $DB->delete_records('local_oerexchange_reviews', ['resourceid' => $resource->id]);
             $DB->delete_records('local_oerexchange_reports', ['resourceid' => $resource->id]);
+            // Co-author rows go with the entry: there is nothing left to edit,
+            // and they are personal data about people other than the creator
+            // whose erasure request this is. Doing it here rather than only in
+            // the privacy provider also covers the author-facing delete on
+            // resource.php, which routes through this same routine.
+            coauthor_manager::delete_for_resource((int) $resource->id);
 
             $DB->update_record('local_oerexchange_resources', (object) [
                 'id' => $resource->id,

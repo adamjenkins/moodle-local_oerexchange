@@ -61,6 +61,24 @@
       </INDEXES>
     </TABLE>
 
+    <TABLE NAME="local_oerexchange_coauthors" COMMENT="Additional authors of a resource. A row grants its user exactly the same rights over the resource as its creator; the creator themself is never a row here (they are resources.creatorid)">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="resourceid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" COMMENT="Exchange-local userid of the co-author"/>
+        <FIELD NAME="addedby" TYPE="int" LENGTH="10" NOTNULL="true" COMMENT="Exchange-local userid who added them; 0 once that user has been through GDPR erasure"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="resourceid" TYPE="foreign" FIELDS="resourceid" REFTABLE="local_oerexchange_resources" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="resourceiduserid" UNIQUE="true" FIELDS="resourceid, userid"/>
+        <INDEX NAME="userid" UNIQUE="false" FIELDS="userid"/>
+      </INDEXES>
+    </TABLE>
+
     <TABLE NAME="local_oerexchange_versions" COMMENT="Uploaded backup files for a resource. Only ONE row is ever status=ready — updating supersedes the previous one and deletes its file, keeping the row so imports/trials references never dangle">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>

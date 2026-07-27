@@ -3,6 +3,95 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [0.1.6] - 2026-07-27
+
+### Added
+
+- **Co-authors.** An author can add further authors to a resource they have
+  shared, naming them by username or email address (both matched
+  case-insensitively; username wins when a string is one person's username
+  and another's email). New table `local_oerexchange_coauthors`
+  (`resourceid`, `userid`, `addedby`, `timecreated`) with a unique
+  `(resourceid, userid)` index.
+- A co-author holds **full parity** with the creator — file replacement,
+  thumbnail, hide/unhide, delete, Try-it opt-out, freshness confirmation,
+  and the co-author list itself. `resource_manager::user_can_edit_resource()`
+  is the single gate all of those already consulted, so admitting a
+  co-author there admits them everywhere at once. The creator is never a
+  co-author row, so nobody they add can remove them.
+- Co-authors are shown publicly on the resource page ("With ..."), linked to
+  their educator profiles where those are visible.
+- New `coauthor` message provider: the person added is told, by name, which
+  resource and who added them.
+- New `classes/local/coauthor_manager.php` and 18 unit tests covering
+  identifier resolution, the five refusal cases, parity, chain-adding,
+  revocation and the GDPR paths.
+- **Cover-image thumbnails** on `index.php` and in the `oerexchangebrowse`,
+  `oerexchangequicklinks` and `oerexchangeshares` blocks, via new
+  `classes/local/cover_image.php`. Resources with no cover get an
+  equally sized neutral panel so grids and lists stay aligned; the URL
+  lookup is a single batch query per page rather than one per item.
+  The quick links block's thumbnail is also its first-ever route to the
+  resource page.
+
+### Security / Privacy
+
+- `local_oerexchange_sites` was declared in the privacy metadata from 0.1.5
+  but appeared in no export path, no delete path and neither discovery
+  method. Both links that exist — `serviceuserid`, and `contact` matching a
+  local user's email — are now serviced. Erasure **scrubs the contact and
+  keeps the registration**: deleting the row would sever a live third-party
+  integration whose service account and token remain valid.
+- `db/uninstall.php` now deletes each registered site's service account and
+  its web service tokens. Previously both survived the uninstall with the
+  only record of which accounts were ours destroyed alongside the tables.
+  Only an account whose username still matches the `oersite_<siteid>` form
+  this plugin mints is deleted.
+- `sandbox_launch.php` is gated on the `anonymousdownload` setting. It
+  minted a 15-minute signed `.mbz` URL and base64'd it into the redirect's
+  `blueprint` parameter, readable straight out of the `Location` header, so
+  "Try it" was a two-step way around a gate that is off by default.
+  **Behaviour change**: on a default configuration an anonymous visitor
+  pressing Try it is now sent to the login page.
+- `register.php` reuses an existing pending registration for the same URL
+  (matched case-insensitively) and refuses beyond 30 new registrations per
+  hour with a `429`. Sandbox trials collapse to one row per viewer per
+  resource per five minutes. Both endpoints accept unauthenticated writes
+  and were previously unbounded.
+- `connect.php` compares the callback's scheme as well as its host
+  (`link_manager::callback_matches_site()`), so an https-registered site can
+  no longer be handed an `http://` callback carrying its one-time link code.
+- Privacy provider services the new co-authors table in both directions: a
+  user's own co-authorships are exported and erased, while grants they made
+  to *other* people survive with the `addedby` attribution scrubbed to 0 —
+  revoking a third party's editing rights is not part of this user's
+  erasure. Tombstoning a resource drops its co-author rows.
+
+### Changed
+
+- `resource_manager::publish()`'s update branch uses the shared edit gate
+  instead of a bare `creatorid` comparison. This is what lets a co-author
+  replace the file, and incidentally settles a pre-existing inconsistency
+  where both upload pages admitted a moderator only for `publish()` to
+  reject them. Replacing the file still never transfers ownership.
+- `get_share_status` (web service) uses the same shared gate, so a co-author
+  polling status from their own client site sees the entry they can edit.
+- The three Exchange blocks lay their rows out as thumbnail-left,
+  text-right.
+
+### Fixed
+
+- The co-author notification's subject used the `{$a->title}` form while the
+  caller passes a plain title, so it went out reading literally
+  `You are now a co-author of "{$a->title}"`. Caught on the live site, not
+  by the tests that existed at the time; there is now a test asserting no
+  unsubstituted placeholder survives in either the subject or the body.
+- A Behat scenario in `oerexchange_admin_settings.feature` had been asserting
+  against **OER Client's** settings page: both plugins publish a page called
+  "General settings" under Local plugins, and the single-path navigation step
+  resolved to the wrong one without failing. It now navigates to the
+  plugin's own category and follows the link from there.
+
 ## [0.1.5] - 2026-07-27
 
 ### Security / Privacy

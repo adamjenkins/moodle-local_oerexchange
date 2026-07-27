@@ -315,6 +315,98 @@ final class resource_manager_test extends \advanced_testcase {
     }
 
     /**
+     * "Replace the file" for a co-author. share_upload_mbz.php lets them
+     * through its own gate (the shared helper), so publish()'s second,
+     * independent ownership check is the one that decides whether the parity
+     * is real — it compared creatorid directly until co-authors existed.
+     */
+    public function test_publish_new_version_accepts_a_coauthor(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $creator = $this->getDataGenerator()->create_user();
+        $second = $this->getDataGenerator()->create_user(['username' => 'hanako']);
+        $this->setUser($creator);
+        set_config('maxbackupbytes', 1000, 'local_oerexchange');
+
+        [$resourceid] = resource_manager::publish(
+            $this->create_draft_file($creator->id, str_repeat('x', 50)),
+            (int) $creator->id,
+            1,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ]
+        );
+        $resource = $DB->get_record('local_oerexchange_resources', ['id' => $resourceid], '*', MUST_EXIST);
+        \local_oerexchange\local\coauthor_manager::add($resource, 'hanako', (int) $creator->id);
+
+        $this->setUser($second);
+        [, $versionid] = resource_manager::publish(
+            $this->create_draft_file($second->id, str_repeat('y', 50)),
+            (int) $second->id,
+            1,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ],
+            $resourceid
+        );
+
+        $this->assertTrue($DB->record_exists('local_oerexchange_versions', ['id' => $versionid]));
+        $this->assertSame(
+            (int) $creator->id,
+            (int) $DB->get_field('local_oerexchange_resources', 'creatorid', ['id' => $resourceid], MUST_EXIST),
+            'a co-author replacing the file must not become the creator of the entry'
+        );
+    }
+
+    /**
+     * The other half of the same gate: somebody who is neither creator, nor
+     * co-author, nor moderator still cannot add a version.
+     */
+    public function test_publish_new_version_rejects_an_unrelated_user(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $creator = $this->getDataGenerator()->create_user();
+        $stranger = $this->getDataGenerator()->create_user();
+        $this->setUser($creator);
+        set_config('maxbackupbytes', 1000, 'local_oerexchange');
+
+        [$resourceid] = resource_manager::publish(
+            $this->create_draft_file($creator->id, str_repeat('x', 50)),
+            (int) $creator->id,
+            1,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ]
+        );
+        $versionsbefore = $DB->count_records('local_oerexchange_versions', ['resourceid' => $resourceid]);
+
+        $this->setUser($stranger);
+        try {
+            resource_manager::publish(
+                $this->create_draft_file($stranger->id, str_repeat('y', 50)),
+                (int) $stranger->id,
+                1,
+                [
+                    'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                    'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+                ],
+                $resourceid
+            );
+            $this->fail('an unrelated user must not be able to add a version');
+        } catch (\moodle_exception $e) {
+            $this->assertSame(
+                $versionsbefore,
+                $DB->count_records('local_oerexchange_versions', ['resourceid' => $resourceid])
+            );
+        }
+    }
+
+    /**
      * FINDING (Task 2, client-attribution/data-resource plan): a brand-new
      * course/activity resource must start 'pending', not 'published' —
      * closing the gap where a resource was publicly listed before
@@ -463,5 +555,75 @@ final class resource_manager_test extends \advanced_testcase {
             'filename' => 'test.mbz',
         ], $contents);
         return $draftitemid;
+    }
+
+    /**
+     * sandbox_launch.php wrote a trials row on every hit, including from
+     * anonymous visitors when the admin allows anonymous downloads — an
+     * unbounded, unauthenticated insert (MDL Shield self-audit, class 2,
+     * 2026-07-27).
+     */
+    public function test_should_record_trial_is_true_for_a_first_visit(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+
+        $this->assertTrue(resource_manager::should_record_trial(1, (int) $user->id));
+    }
+
+    public function test_should_record_trial_collapses_a_repeat_within_the_window(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+
+        $DB->insert_record('local_oerexchange_trials', (object) [
+            'resourceid' => 1, 'versionid' => 1, 'userid' => $user->id,
+            'moodlebranch' => '502', 'timecreated' => time() - 60,
+        ]);
+
+        $this->assertFalse(resource_manager::should_record_trial(1, (int) $user->id));
+    }
+
+    public function test_should_record_trial_is_true_again_once_the_window_passes(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+
+        $DB->insert_record('local_oerexchange_trials', (object) [
+            'resourceid' => 1, 'versionid' => 1, 'userid' => $user->id,
+            'moodlebranch' => '502', 'timecreated' => time() - 600,
+        ]);
+
+        $this->assertTrue(resource_manager::should_record_trial(1, (int) $user->id));
+    }
+
+    public function test_should_record_trial_separates_viewers_and_resources(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $other = $this->getDataGenerator()->create_user();
+
+        $DB->insert_record('local_oerexchange_trials', (object) [
+            'resourceid' => 1, 'versionid' => 1, 'userid' => $user->id,
+            'moodlebranch' => '502', 'timecreated' => time() - 60,
+        ]);
+
+        $this->assertTrue(resource_manager::should_record_trial(1, (int) $other->id), 'another viewer still records');
+        $this->assertTrue(resource_manager::should_record_trial(2, (int) $user->id), 'another resource still records');
+    }
+
+    public function test_should_record_trial_dedupes_anonymous_visits_separately_from_logged_in_ones(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+
+        // An anonymous row must not suppress a logged-in viewer's row, or
+        // vice versa: the quicklinks block reads only userid-matched rows.
+        $DB->insert_record('local_oerexchange_trials', (object) [
+            'resourceid' => 1, 'versionid' => 1, 'userid' => null,
+            'moodlebranch' => '502', 'timecreated' => time() - 60,
+        ]);
+
+        $this->assertFalse(resource_manager::should_record_trial(1, null), 'a second anonymous hit is folded in');
+        $this->assertTrue(resource_manager::should_record_trial(1, (int) $user->id), 'a logged-in viewer is unaffected');
     }
 }

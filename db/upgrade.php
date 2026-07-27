@@ -207,5 +207,30 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026072700, 'local', 'oerexchange');
     }
 
+    if ($oldversion < 2026072702) {
+        // Co-authors: additional users who hold exactly the same rights over a
+        // resource as its creator. Nothing to migrate — every existing
+        // resource simply has no co-authors, which is the same state a new
+        // one starts in.
+        $table = new xmldb_table('local_oerexchange_coauthors');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('resourceid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('addedby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_key('resourceid', XMLDB_KEY_FOREIGN, ['resourceid'], 'local_oerexchange_resources', ['id']);
+        // Unique so a double-submitted "Add co-author" cannot seat the same
+        // person twice — coauthor_manager::add() checks first, but the index
+        // is what makes it true under concurrency.
+        $table->add_index('resourceiduserid', XMLDB_INDEX_UNIQUE, ['resourceid', 'userid']);
+        $table->add_index('userid', XMLDB_INDEX_NOTUNIQUE, ['userid']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_plugin_savepoint(true, 2026072702, 'local', 'oerexchange');
+    }
+
     return true;
 }

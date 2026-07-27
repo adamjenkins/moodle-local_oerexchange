@@ -21,6 +21,14 @@ plugin installed on their own Moodle sites.
   their own resources, and may decline sandbox availability with a reason.
   The Exchange serves exactly one version per resource — an update supersedes
   the previous one, keeping the catalogue entry, its link and its reviews.
+- **Co-authors**: an author can name further authors on anything they have
+  shared, by username or email address, from the resource page. A co-author
+  gets **the same rights as the creator** — replacing the file, the
+  thumbnail, hiding, deleting, the Try-it opt-out, freshness confirmation,
+  and adding or removing co-authors themselves. The creator is not a
+  co-author record, so nobody they add can remove them. Everyone added is
+  notified and is credited publicly on the resource page. See
+  `classes/local/coauthor_manager.php`.
 - **Sharing affordances**: share buttons on resource and profile pages, with
   admin-configurable destinations, each showing its network's logo from
   Moodle's own bundled FontAwesome (nothing is bundled into the plugin).
@@ -65,6 +73,19 @@ Two bootstrap steps have no token yet, so they are plain public endpoints
 rather than WS functions: `register.php` (site registration) and
 `link_consume.php` (exchange a one-time code for the freshly minted personal
 token, from the `connect.php` account-linking handshake).
+
+Because `register.php` cannot authenticate its caller, it is bounded two
+ways: registering a URL that already has a pending row returns that row
+instead of adding another (so a client retrying is harmless), and new
+registrations site-wide are capped per hour, answering `429` beyond that.
+
+## Anonymous access
+
+Browsing the catalogue and viewing a resource page work without logging in.
+Downloading a resource's `.mbz` does not, unless **Allow anonymous download**
+is turned on — and that setting governs **Try it** as well, because a sandbox
+trial downloads the `.mbz` itself to boot. With the setting off, an anonymous
+visitor who clicks Try it is sent to the login page.
 
 A "site key" issued on approval **is a real core web service token**, minted
 against a dedicated, non-interactive Moodle account created for that site

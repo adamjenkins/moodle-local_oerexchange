@@ -23,18 +23,57 @@
  */
 
 /**
- * Purge stored files under this plugin's own component — core's DB-table
- * cleanup on uninstall does not know about our system-context filearea
- * files (resource backups, mirrored allowlist ZIPs).
+ * Purge what core's own uninstall cleanup cannot see:
+ *
+ * 1. Stored files under this plugin's component — core drops our tables but
+ *    knows nothing about our system-context fileareas (resource backups,
+ *    mirrored allowlist ZIPs, cover images).
+ * 2. The dedicated service accounts and web-service tokens minted per
+ *    registered site (site_manager::create_service_account()). These live in
+ *    core's own {user} / {external_tokens} tables, so dropping
+ *    {local_oerexchange_sites} would strand one undeletable-looking account
+ *    per site — with a live token — and lose the only record of which
+ *    accounts were ours. Core runs this hook BEFORE drop_plugin_tables()
+ *    (lib/adminlib.php: the uninstall lib is required at line ~180, tables go
+ *    at ~240), which is what makes reading the sites table here valid.
  *
  * @return bool
  */
 function xmldb_local_oerexchange_uninstall() {
+    global $DB;
+
     $fs = get_file_storage();
     $contextid = context_system::instance()->id;
     $fs->delete_area_files($contextid, 'local_oerexchange', 'resource');
     $fs->delete_area_files($contextid, 'local_oerexchange', 'allowlist');
     $fs->delete_area_files($contextid, 'local_oerexchange', 'coverimage');
+
+    if ($DB->get_manager()->table_exists('local_oerexchange_sites')) {
+        $sites = $DB->get_records_select(
+            'local_oerexchange_sites',
+            'serviceuserid IS NOT NULL',
+            null,
+            '',
+            'id, serviceuserid'
+        );
+        foreach ($sites as $site) {
+            $DB->delete_records('external_tokens', ['userid' => $site->serviceuserid]);
+
+            $serviceuser = \core_user::get_user((int) $site->serviceuserid);
+            // Only ever delete an account that still looks like one we minted
+            // (create_service_account() names them 'oersite_<siteid>'). If an
+            // admin has since repurposed the row, or the id now points at a
+            // real person, leaving the account alone is the safe failure —
+            // an orphaned account is recoverable, a deleted person is not.
+            if (
+                $serviceuser
+                && empty($serviceuser->deleted)
+                && $serviceuser->username === 'oersite_' . $site->id
+            ) {
+                delete_user($serviceuser);
+            }
+        }
+    }
 
     return true;
 }

@@ -38,6 +38,22 @@ $PAGE->set_context(context_system::instance());
 if (!get_config('local_oerexchange', 'sandboxenabled')) {
     throw new moodle_exception('tryitunavailable', 'local_oerexchange');
 }
+
+// A trial boots by fetching the resource's .mbz itself, so this endpoint
+// mints a short-lived SIGNED download URL below and hands it to the browser
+// inside the redirect's own query string (build_launch_url() base64-encodes
+// the blueprint). Anyone who can reach this page can therefore read a working
+// .mbz URL straight out of the Location header — which made "Try it" a
+// two-step way around download.php's login gate whenever anonymousdownload
+// was off (its default). Apply the same gate here rather than leaving the
+// admin setting advisory.
+if (!get_config('local_oerexchange', 'anonymousdownload') && (!isloggedin() || isguestuser())) {
+    require_login(null, false);
+    if (isguestuser()) {
+        // A guest session is not a real account — same stance as connect.php.
+        redirect(get_login_url());
+    }
+}
 $sandboxbaseurl = get_config('local_oerexchange', 'sandboxbaseurl');
 if (empty($sandboxbaseurl)) {
     throw new moodle_exception('tryitunavailable', 'local_oerexchange');
@@ -107,12 +123,18 @@ $blueprint = playground::build_blueprint(
 );
 $launchurl = playground::build_launch_url($sandboxbaseurl, $branch, $blueprint);
 
-$DB->insert_record('local_oerexchange_trials', (object) [
-    'resourceid' => $resource->id,
-    'versionid' => $version->id,
-    'userid' => isloggedin() && !isguestuser() ? $USER->id : null,
-    'moodlebranch' => $branch,
-    'timecreated' => time(),
-]);
+// One row per viewer per resource per five minutes, not one per hit — see
+// resource_manager::should_record_trial() for why.
+$trialuserid = isloggedin() && !isguestuser() ? (int) $USER->id : null;
+
+if (\local_oerexchange\local\resource_manager::should_record_trial((int) $resource->id, $trialuserid)) {
+    $DB->insert_record('local_oerexchange_trials', (object) [
+        'resourceid' => $resource->id,
+        'versionid' => $version->id,
+        'userid' => $trialuserid,
+        'moodlebranch' => $branch,
+        'timecreated' => time(),
+    ]);
+}
 
 redirect($launchurl);

@@ -112,4 +112,49 @@ final class link_manager_test extends \advanced_testcase {
         $record = $DB->get_record('local_oerexchange_linkcodes', ['code' => $code]);
         $this->assertSame('expired', $record->status);
     }
+
+    /**
+     * connect.php's open-redirect gate. Until 0.1.6 it compared only the
+     * host, so an https-registered site could be handed an http:// callback
+     * and the one-time link code would cross the network in the clear
+     * (MDL Shield self-audit, class 1, 2026-07-27).
+     */
+    public function test_callback_matches_site_accepts_the_registered_origin(): void {
+        $this->assertTrue(link_manager::callback_matches_site(
+            'https://client.example.net',
+            'https://client.example.net/local/oerclient/connect_callback.php?state=abc'
+        ));
+    }
+
+    public function test_callback_matches_site_ignores_host_case(): void {
+        $this->assertTrue(link_manager::callback_matches_site(
+            'https://Client.Example.NET',
+            'https://client.example.net/local/oerclient/connect_callback.php'
+        ));
+    }
+
+    public function test_callback_matches_site_rejects_another_host(): void {
+        $this->assertFalse(link_manager::callback_matches_site(
+            'https://client.example.net',
+            'https://attacker.example.com/collect.php'
+        ));
+    }
+
+    public function test_callback_matches_site_rejects_a_downgraded_scheme(): void {
+        $this->assertFalse(link_manager::callback_matches_site(
+            'https://client.example.net',
+            'http://client.example.net/local/oerclient/connect_callback.php'
+        ));
+    }
+
+    public function test_callback_matches_site_rejects_a_schemeless_or_relative_callback(): void {
+        $this->assertFalse(link_manager::callback_matches_site(
+            'https://client.example.net',
+            '//attacker.example.com/collect.php'
+        ));
+        $this->assertFalse(link_manager::callback_matches_site(
+            'https://client.example.net',
+            '/local/oerclient/connect_callback.php'
+        ));
+    }
 }

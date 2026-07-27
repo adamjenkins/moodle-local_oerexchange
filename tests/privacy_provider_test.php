@@ -431,4 +431,280 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
         $this->assertSame(0, (int) $hiddenresource->creatorid);
         $this->assertSame('', (string) $hiddenresource->title);
     }
+
+    /**
+     * The site-registration table was declared in get_metadata() from 0.1.5
+     * but serviced by nothing — the MDL Shield "declare == service" class,
+     * same shape as local_forumcare's declared-but-never-exported column.
+     * These six tests are the regression net for that.
+     */
+    public function test_get_contexts_for_userid_finds_user_via_site_contact_email_only(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user(['email' => 'registrar@example.com']);
+        $DB->insert_record('local_oerexchange_sites', (object) [
+            // Deliberately different casing: an email is not case-sensitive
+            // and a registrant retyping it must still be found.
+            'name' => 'Their site', 'url' => 'https://theirs.example.net', 'contact' => 'Registrar@Example.com',
+            'serviceuserid' => null, 'status' => 'pending', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+
+        $contextlist = provider::get_contexts_for_userid($user->id);
+        $this->assertNotEmpty($contextlist->get_contextids());
+    }
+
+    public function test_get_contexts_for_userid_finds_user_via_service_account_only(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $serviceuser = $this->getDataGenerator()->create_user();
+        $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'Their site', 'url' => 'https://theirs.example.net', 'contact' => 'someone.else@example.com',
+            'serviceuserid' => $serviceuser->id, 'status' => 'active', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+
+        $contextlist = provider::get_contexts_for_userid($serviceuser->id);
+        $this->assertNotEmpty($contextlist->get_contextids());
+    }
+
+    public function test_get_contexts_for_userid_ignores_unrelated_registrations(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user(['email' => 'nobody@example.com']);
+        $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'Their site', 'url' => 'https://theirs.example.net', 'contact' => 'someone.else@example.com',
+            'serviceuserid' => null, 'status' => 'pending', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+
+        $contextlist = provider::get_contexts_for_userid($user->id);
+        $this->assertEmpty($contextlist->get_contextids());
+    }
+
+    public function test_get_users_in_context_includes_site_contact_and_service_account(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $contactuser = $this->getDataGenerator()->create_user(['email' => 'registrar@example.com']);
+        $serviceuser = $this->getDataGenerator()->create_user();
+        $stranger = $this->getDataGenerator()->create_user(['email' => 'stranger@example.com']);
+        $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'Their site', 'url' => 'https://theirs.example.net', 'contact' => 'Registrar@Example.com',
+            'serviceuserid' => $serviceuser->id, 'status' => 'active', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+
+        $userlist = new userlist(\context_system::instance(), 'local_oerexchange');
+        provider::get_users_in_context($userlist);
+        $found = $userlist->get_userids();
+
+        $this->assertContains((int) $contactuser->id, $found);
+        $this->assertContains((int) $serviceuser->id, $found);
+        $this->assertNotContains((int) $stranger->id, $found);
+    }
+
+    public function test_export_includes_site_registration(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user(['email' => 'registrar@example.com']);
+        $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'Their site', 'url' => 'https://theirs.example.net', 'contact' => 'registrar@example.com',
+            'serviceuserid' => null, 'status' => 'pending', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+
+        $this->setUser($user);
+        writer::reset();
+        provider::export_user_data(
+            new approved_contextlist($user, 'local_oerexchange', [\context_system::instance()->id])
+        );
+
+        $data = writer::with_context(\context_system::instance())->get_data([get_string('pluginname', 'local_oerexchange')]);
+        $this->assertNotEmpty($data->siteregistrations);
+        $this->assertSame('Their site', $data->siteregistrations[0]['name']);
+        $this->assertSame('registrar@example.com', $data->siteregistrations[0]['contact']);
+    }
+
+    public function test_delete_data_for_user_scrubs_contact_but_keeps_the_registration(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user(['email' => 'registrar@example.com']);
+        $serviceuser = $this->getDataGenerator()->create_user();
+        $siteid = $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'Their site', 'url' => 'https://theirs.example.net', 'contact' => 'Registrar@Example.com',
+            'serviceuserid' => $serviceuser->id, 'status' => 'active', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+
+        provider::delete_data_for_user(
+            new approved_contextlist($user, 'local_oerexchange', [\context_system::instance()->id])
+        );
+
+        $site = $DB->get_record('local_oerexchange_sites', ['id' => $siteid], '*', MUST_EXIST);
+        $this->assertSame('', $site->contact, 'the contact email is erased');
+        $this->assertSame(
+            'active',
+            $site->status,
+            'the registration itself survives — severing a live integration is not ours to do'
+        );
+        $this->assertEquals(
+            $serviceuser->id,
+            $site->serviceuserid,
+            'the service-account link survives, or the token could never be revoked'
+        );
+    }
+
+    public function test_delete_data_for_all_users_in_context_scrubs_every_contact(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $siteid = $DB->insert_record('local_oerexchange_sites', (object) [
+            // A contact belonging to nobody with an account here: still
+            // personal data, and this path is "erase everyone".
+            'name' => 'Their site', 'url' => 'https://theirs.example.net', 'contact' => 'stranger@example.com',
+            'serviceuserid' => null, 'status' => 'active', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+
+        provider::delete_data_for_all_users_in_context(\context_system::instance());
+
+        $site = $DB->get_record('local_oerexchange_sites', ['id' => $siteid], '*', MUST_EXIST);
+        $this->assertSame('', $site->contact);
+        $this->assertSame('active', $site->status);
+    }
+
+    /**
+     * A co-author holds editing rights over somebody else's resource, and the
+     * row saying so names them — declared in get_metadata(), so it has to be
+     * discoverable, exportable and erasable. A declared-but-unserviced table
+     * is exactly the defect the 2026-07-27 audit closed for
+     * local_oerexchange_sites; this is the same contract for the new table.
+     */
+    public function test_get_contexts_for_userid_finds_a_coauthor(): void {
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user();
+        $second = $this->getDataGenerator()->create_user(['username' => 'hanako']);
+        $resource = $this->make_coauthored_resource($creator, 'hanako');
+
+        $this->assertNotEmpty(
+            provider::get_contexts_for_userid($second->id)->get_contextids(),
+            'the co-author is discoverable'
+        );
+        $this->assertNotEmpty(
+            provider::get_contexts_for_userid($creator->id)->get_contextids(),
+            'so is the person who added them'
+        );
+        $this->assertSame(
+            [],
+            provider::get_contexts_for_userid($this->getDataGenerator()->create_user()->id)->get_contextids(),
+            'an unrelated user is not'
+        );
+        $this->assertNotEmpty($resource);
+    }
+
+    public function test_get_users_in_context_includes_coauthors_and_their_granter(): void {
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user();
+        $second = $this->getDataGenerator()->create_user(['username' => 'hanako']);
+        $this->make_coauthored_resource($creator, 'hanako');
+
+        $userlist = new userlist(\context_system::instance(), 'local_oerexchange');
+        provider::get_users_in_context($userlist);
+        $userids = array_map('intval', $userlist->get_userids());
+
+        $this->assertContains((int) $second->id, $userids);
+        $this->assertContains((int) $creator->id, $userids);
+        $this->assertNotContains(0, $userids, 'the scrubbed-granter sentinel is not a user id');
+    }
+
+    public function test_export_includes_coauthored_resources(): void {
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user();
+        $second = $this->getDataGenerator()->create_user(['username' => 'hanako']);
+        $resource = $this->make_coauthored_resource($creator, 'hanako');
+
+        provider::export_user_data(new approved_contextlist(
+            $second,
+            'local_oerexchange',
+            [\context_system::instance()->id]
+        ));
+
+        $data = writer::with_context(\context_system::instance())
+            ->get_data([get_string('pluginname', 'local_oerexchange')]);
+        $this->assertCount(1, $data->coauthoredresources);
+        $this->assertSame((int) $resource->id, (int) $data->coauthoredresources[0]['resourceid']);
+    }
+
+    public function test_delete_for_userid_drops_own_coauthorship_but_keeps_grants_made(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user();
+        $departing = $this->getDataGenerator()->create_user(['username' => 'departing']);
+        $stayer = $this->getDataGenerator()->create_user(['username' => 'stayer']);
+        $resource = $this->make_coauthored_resource($creator, 'departing');
+        \local_oerexchange\local\coauthor_manager::add($resource, 'stayer', (int) $departing->id);
+
+        provider::delete_data_for_user(new approved_contextlist(
+            $departing,
+            'local_oerexchange',
+            [\context_system::instance()->id]
+        ));
+
+        $this->assertFalse($DB->record_exists('local_oerexchange_coauthors', ['userid' => $departing->id]));
+        $this->assertTrue(
+            $DB->record_exists('local_oerexchange_coauthors', ['userid' => $stayer->id, 'addedby' => 0]),
+            "a third party's editing rights survive, with the granter scrubbed"
+        );
+    }
+
+    /**
+     * Tombstoning a resource takes its co-author rows with it — there is
+     * nothing left to edit, and they name people other than the creator whose
+     * erasure request it was.
+     */
+    public function test_deleting_the_creator_removes_the_coauthor_rows(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->create_user(['username' => 'hanako']);
+        $resource = $this->make_coauthored_resource($creator, 'hanako');
+
+        provider::delete_data_for_user(new approved_contextlist(
+            $creator,
+            'local_oerexchange',
+            [\context_system::instance()->id]
+        ));
+
+        $this->assertSame('deleted', $DB->get_field(
+            'local_oerexchange_resources',
+            'status',
+            ['id' => $resource->id],
+            MUST_EXIST
+        ));
+        $this->assertFalse($DB->record_exists('local_oerexchange_coauthors', ['resourceid' => $resource->id]));
+    }
+
+    /**
+     * Build a published resource owned by $creator with $identifier seated as
+     * a co-author.
+     *
+     * @param \stdClass $creator
+     * @param string $identifier username of the co-author to add
+     * @return \stdClass the resource row
+     */
+    protected function make_coauthored_resource(\stdClass $creator, string $identifier): \stdClass {
+        global $DB;
+
+        $now = time();
+        $resourceid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'Co-authored course', 'summary' => '',
+            'language' => '', 'tags' => '', 'licenseshortname' => 'cc-4.0',
+            'activitytype' => null, 'courseformat' => null, 'creatorid' => $creator->id,
+            'siteid' => null, 'status' => 'published', 'downloadcount' => 0, 'importcount' => 0,
+            'forkedfromid' => null, 'timeshared' => $now, 'timemodified' => $now,
+        ]);
+        $resource = $DB->get_record('local_oerexchange_resources', ['id' => $resourceid], '*', MUST_EXIST);
+        \local_oerexchange\local\coauthor_manager::add($resource, $identifier, (int) $creator->id);
+
+        return $resource;
+    }
 }
