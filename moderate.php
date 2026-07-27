@@ -52,11 +52,22 @@ if ($hideid && confirm_sesskey()) {
     // 'published' — so writing 'hidden' here let an author silently undo a
     // moderator's takedown. A moderator hide is a separate state only a
     // moderator can lift, via the Restore action below.
-    $DB->set_field('local_oerexchange_resources', 'status', 'modhidden', ['id' => $hideid]);
+    //
+    // Only takedown-able states may be taken down: a 'deleted' tombstone
+    // (scrubbed, files gone) or an already-moderated row must not be pulled
+    // into the takedown/restore cycle, where Restore would "publish" a husk.
+    $target = $DB->get_record('local_oerexchange_resources', ['id' => $hideid], 'id,status', MUST_EXIST);
+    if (in_array($target->status, ['published', 'hidden', 'pending'], true)) {
+        $DB->set_field('local_oerexchange_resources', 'status', 'modhidden', ['id' => $hideid]);
+    }
     redirect(new moodle_url('/local/oerexchange/moderate.php'));
 }
 if ($removeid && confirm_sesskey()) {
-    $DB->set_field('local_oerexchange_resources', 'status', 'removed', ['id' => $removeid]);
+    // Same status guard as the hide branch above.
+    $target = $DB->get_record('local_oerexchange_resources', ['id' => $removeid], 'id,status', MUST_EXIST);
+    if (in_array($target->status, ['published', 'hidden', 'pending'], true)) {
+        $DB->set_field('local_oerexchange_resources', 'status', 'removed', ['id' => $removeid]);
+    }
     redirect(new moodle_url('/local/oerexchange/moderate.php'));
 }
 if ($restoreid && confirm_sesskey()) {
@@ -64,7 +75,14 @@ if ($restoreid && confirm_sesskey()) {
     // in this page could reverse it, and the only thing that ever did was the
     // author-unhide defect the 'modhidden' split above closes.
     $target = $DB->get_record('local_oerexchange_resources', ['id' => $restoreid], 'id,status', MUST_EXIST);
-    if (in_array($target->status, ['modhidden', 'removed'], true)) {
+    if (
+        in_array($target->status, ['modhidden', 'removed'], true)
+            && !\local_oerexchange\local\resource_manager::get_current_version((int) $target->id)
+    ) {
+        // Publishing a resource with nothing servable would list a husk in
+        // the catalogue; say so instead of silently "restoring" it.
+        \core\notification::warning(get_string('error_restorenoversion', 'local_oerexchange'));
+    } else if (in_array($target->status, ['modhidden', 'removed'], true)) {
         $DB->update_record('local_oerexchange_resources', (object) [
             'id' => $target->id,
             'status' => 'published',
@@ -124,7 +142,8 @@ if (empty($reports)) {
                 ['class' => 'btn btn-sm btn-outline-danger']
             );
         $table->data[] = [
-            $resource ? html_writer::link($resurl, s($resource->title)) : '(deleted)',
+            $resource ? html_writer::link($resurl, s($resource->title))
+                : get_string('resourcedeletedplaceholder', 'local_oerexchange'),
             get_string('reporttype_' . $rep->type, 'local_oerexchange'),
             s($rep->details),
             $actions,
@@ -176,12 +195,16 @@ if (empty($failed)) {
     echo html_writer::tag('p', get_string('nofailedparses', 'local_oerexchange'));
 } else {
     $table = new html_table();
-    $table->head = [get_string('resourcetitle', 'local_oerexchange'), 'Error'];
+    $table->head = [
+        get_string('resourcetitle', 'local_oerexchange'),
+        get_string('failedparseerror', 'local_oerexchange'),
+    ];
     foreach ($failed as $v) {
         $resource = $DB->get_record('local_oerexchange_resources', ['id' => $v->resourceid]);
         $resurl = new moodle_url('/local/oerexchange/resource.php', ['id' => $v->resourceid]);
         $table->data[] = [
-            $resource ? html_writer::link($resurl, s($resource->title)) : '(deleted)',
+            $resource ? html_writer::link($resurl, s($resource->title))
+                : get_string('resourcedeletedplaceholder', 'local_oerexchange'),
             s($v->parseerror),
         ];
     }

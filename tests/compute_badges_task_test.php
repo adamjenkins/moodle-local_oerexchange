@@ -58,6 +58,8 @@ final class compute_badges_task_test extends \advanced_testcase {
         ]);
 
         $task = new compute_badges_task();
+        // The task mtraces a line per award; expected output, not risky-test noise.
+        $this->expectOutputRegex('/awarded trusted_contributor/');
         $task->execute();
 
         $this->assertSame([badge_manager::BADGE_TRUSTED_CONTRIBUTOR], badge_manager::get_badges_for_user($qualifies->id));

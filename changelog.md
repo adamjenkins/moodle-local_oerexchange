@@ -3,6 +3,50 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [0.1.5] - 2026-07-27
+
+### Security / Privacy
+
+- Privacy metadata now declares `local_oerexchange_sites` (its `contact`
+  column is a person's email address, regardless of it mapping to no local
+  account).
+- `delete_data_for_all_users_in_context()` now deletes every user-keyed
+  row and tombstones every attributed resource (it was an unconditional
+  no-op, silently retaining profiles, badges, reviews and reports through
+  an approved delete-all request). The tombstoned catalogue skeleton
+  survives by design.
+- License shortnames are validated against core's license manager and
+  titles are checked non-empty server-side on every publish path (WS,
+  .mbz upload, data upload).
+- The data-upload MIME sniff is per extension: the flat shared list let
+  `application/octet-stream` neutralise the check for every type, so any
+  binary renamed to `.pdf` passed.
+- Account-link codes are claimed with an atomic conditional UPDATE —
+  two concurrent requests could previously both consume the same code.
+- `register.php` validates url/contact lengths (and name multibyte-aware)
+  before insert instead of dying on a DB-level error.
+
+### Fixed
+
+- Moderation: hide/remove only applies to `published`/`hidden`/`pending`
+  resources — a `deleted` tombstone could previously be taken down and
+  then "restored" to published as a scrubbed, fileless husk. Restore now
+  warns and refuses when the resource has no validated version to serve.
+- The abandoned-courseware removal pass re-checks that the author is
+  still reachable, matching the warning pass: an author deleted during
+  the grace period leaves removal to a human moderator (new pinning test).
+- Cover images follow the resource page's own access rule (creator or
+  moderator for non-published) — authors saw a broken image on their own
+  hidden/pending resources.
+- Report/review/thumbnail/owner actions throw on a missing or expired
+  sesskey instead of silently discarding the submitted text.
+- The 2026072300 upgrade step no longer calls the plugin's own API
+  (inlined with identical behaviour); `install.xml`'s VERSION attribute
+  updated; a dead duplicate query removed from `get_resource`; thumbnail
+  alt text no longer double-escapes; the badges task test no longer
+  reports risky output; two hard-coded strings ('Error', '(deleted)') are
+  now translated (EN+JA).
+
 ## [0.1.4] - 2026-07-27
 
 ### Added

@@ -66,12 +66,18 @@ final class check_stale_resources_task_test extends \advanced_testcase {
         return $DB->get_record('local_oerexchange_resources', ['id' => $id], '*', MUST_EXIST);
     }
 
-    /** Switch the feature on with its default threshold and grace. */
+    /**
+     * Switch the feature on with its default threshold and grace.
+     */
     protected function enable(): void {
         set_config('staleenabled', 1, 'local_oerexchange');
     }
 
-    /** @return int a timefresh value safely past the default threshold */
+    /**
+     * A timefresh value safely past the default threshold.
+     *
+     * @return int
+     */
     protected function longago(): int {
         return time() - stale_manager::DEFAULT_THRESHOLD - DAYSECS;
     }
@@ -175,7 +181,7 @@ final class check_stale_resources_task_test extends \advanced_testcase {
 
         $this->assertSame(1, $summary['removed']);
         $row = $DB->get_record('local_oerexchange_resources', ['id' => $resource->id], '*', MUST_EXIST);
-        // 'removed' — the same takedown status a moderator writes — so the
+        // Status 'removed' — the same takedown a moderator writes — so the
         // moderation page's "Moderated resources" list offers Restore on it.
         $this->assertSame('removed', $row->status);
 
@@ -357,6 +363,38 @@ final class check_stale_resources_task_test extends \advanced_testcase {
      * removal only ever touches 'published' rows, so a takedown or author
      * hide that happened during the grace period is respected.
      */
+    /**
+     * Boundary 2 of the lifecycle holds at removal time, not just at
+     * warning time: if the author's account is deleted during the grace
+     * period, the resource becomes authorless and automatic removal backs
+     * off — that call belongs to a human moderator.
+     */
+    public function test_a_resource_whose_author_vanished_mid_grace_is_not_auto_removed(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->enable();
+
+        $creator = $this->getDataGenerator()->create_user();
+        $resource = $this->make_resource(
+            (int) $creator->id,
+            'published',
+            $this->longago(),
+            time() - stale_manager::DEFAULT_GRACE - DAYSECS
+        );
+        $DB->set_field('user', 'deleted', 1, ['id' => $creator->id]);
+
+        $sink = $this->redirectMessages();
+        $summary = stale_manager::run_checks();
+        $sink->close();
+
+        $this->assertSame(0, $summary['removed']);
+        $this->assertSame(0, $sink->count());
+        $this->assertSame(
+            'published',
+            $DB->get_field('local_oerexchange_resources', 'status', ['id' => $resource->id])
+        );
+    }
+
     public function test_a_resource_hidden_during_the_grace_period_is_not_touched_by_the_removal_pass(): void {
         global $DB;
         $this->resetAfterTest();

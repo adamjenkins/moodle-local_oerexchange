@@ -91,12 +91,20 @@ class link_manager {
         $token = $record->token;
         $userid = (int) $record->userid;
 
-        // Clear the token from storage immediately — it has now been handed off.
-        $DB->update_record('local_oerexchange_linkcodes', (object) [
-            'id' => $record->id,
-            'status' => 'used',
-            'token' => '',
-        ]);
+        // Atomic single-use claim: two concurrent requests could both read
+        // the 'pending' row above before either wrote 'used', handing the
+        // token out twice. The conditional UPDATE lets exactly one request
+        // win; the loser sees no pending row left and gets the same error a
+        // straight replay would. Clearing the token in the same statement
+        // removes it from storage the moment it is handed off.
+        $DB->execute(
+            "UPDATE {local_oerexchange_linkcodes} SET status = 'used', token = '' WHERE id = ? AND status = 'pending'",
+            [$record->id]
+        );
+        $claimed = $DB->get_record('local_oerexchange_linkcodes', ['id' => $record->id], 'id,status,token', MUST_EXIST);
+        if ($claimed->token !== '' || $claimed->status !== 'used') {
+            throw new \moodle_exception('error_linkcodeused', 'local_oerexchange');
+        }
 
         return (object) ['token' => $token, 'userid' => $userid];
     }

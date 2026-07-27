@@ -71,15 +71,22 @@ $PAGE->set_heading($heading);
 /** @var string[] Allowed file extensions for a data-resource upload. */
 const ALLOWED_DATA_EXTENSIONS = ['xml', 'csv', 'json', 'zip', 'pdf', 'h5p'];
 
-/** @var string[] Allowed sniffed MIME types for a data-resource upload. */
+/**
+ * Allowed sniffed MIME types PER extension. A flat shared list would let
+ * 'application/octet-stream' (needed only for zip containers finfo can't
+ * classify) neutralise the sniff for every extension — any binary renamed
+ * to .pdf would have passed.
+ *
+ * @var array<string, string[]>
+ */
 const ALLOWED_DATA_MIMETYPES = [
-    'text/xml', 'application/xml',
-    'text/csv',
-    'application/json',
-    'application/zip',
-    'application/pdf',
+    'xml' => ['text/xml', 'application/xml'],
+    'csv' => ['text/csv', 'text/plain'],
+    'json' => ['application/json', 'text/plain'],
+    'zip' => ['application/zip', 'application/octet-stream'],
+    'pdf' => ['application/pdf'],
     // H5P files are zip containers under the hood.
-    'application/octet-stream',
+    'h5p' => ['application/zip', 'application/octet-stream'],
 ];
 
 $error = null;
@@ -115,7 +122,10 @@ if (data_submitted() && confirm_sesskey()) {
         $finfo = new finfo(FILEINFO_MIME_TYPE);
         $sniffedmime = $finfo->file($_FILES['datafile']['tmp_name']);
 
-        if (!in_array($extension, ALLOWED_DATA_EXTENSIONS, true) || !in_array($sniffedmime, ALLOWED_DATA_MIMETYPES, true)) {
+        if (
+            !in_array($extension, ALLOWED_DATA_EXTENSIONS, true)
+                || !in_array($sniffedmime, ALLOWED_DATA_MIMETYPES[$extension] ?? [], true)
+        ) {
             throw new moodle_exception('error_invaliddatafiletype', 'local_oerexchange');
         }
 

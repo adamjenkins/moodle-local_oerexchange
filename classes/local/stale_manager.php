@@ -149,10 +149,18 @@ class stale_manager {
         // still past the threshold. Only 'published' rows: an author hide or
         // moderator takedown during the grace period already took the
         // resource off the catalogue, and this janitor must not overwrite
-        // that more specific state.
-        $toremove = $DB->get_records_select(
-            'local_oerexchange_resources',
-            "status = 'published' AND stalenotifiedtime > 0 AND stalenotifiedtime <= ? AND timefresh <= ?",
+        // that more specific state. The live-author join mirrors pass 3 —
+        // boundary 2 above holds at removal time too, not just at warning
+        // time: an author whose account was deleted DURING the grace period
+        // leaves the resource authorless, and authorless removal stays a
+        // human moderator's call.
+        $toremove = $DB->get_records_sql(
+            "SELECT r.*
+               FROM {local_oerexchange_resources} r
+               JOIN {user} u ON u.id = r.creatorid AND u.deleted = 0
+              WHERE r.status = 'published' AND r.creatorid > 0
+                    AND r.stalenotifiedtime > 0 AND r.stalenotifiedtime <= ?
+                    AND r.timefresh <= ?",
             [$gracebefore, $stalebefore]
         );
         foreach ($toremove as $resource) {

@@ -67,6 +67,22 @@ class resource_manager {
         $now = time();
         $isnewresource = ($resourceid === null);
 
+        if ($isnewresource) {
+            // Server-side validation shared by every publish path (WS,
+            // .mbz upload page, data upload page): a client-side 'required'
+            // attribute is not a guarantee, and the license field is
+            // rendered/filtered all over the catalogue, so only shortnames
+            // core's license manager actually knows may enter it.
+            if (trim((string) $metadata['title']) === '') {
+                throw new \moodle_exception('error_notitle', 'local_oerexchange');
+            }
+            global $CFG;
+            require_once($CFG->libdir . '/licenselib.php');
+            if (!\license_manager::get_license_by_shortname($metadata['licenseshortname'])) {
+                throw new \moodle_exception('error_invalidlicense', 'local_oerexchange');
+            }
+        }
+
         // Everything below — the resource/version rows, moving the file into
         // permanent storage, and queuing the parse task — must land atomically.
         // Without this boundary, a failure part-way through (file_save_draft_area_files()

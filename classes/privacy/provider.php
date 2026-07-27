@@ -52,6 +52,16 @@ class provider implements
             'timecreated' => 'privacy:metadata:local_oerexchange_reports:timecreated',
         ], 'privacy:metadata:local_oerexchange_reports');
 
+        // Site-registration rows carry a contact person's email (plus the
+        // site name/url an admin typed). The contact usually maps to no
+        // Moodle account on this site, but personal data must be declared
+        // regardless of whether it is user-linked.
+        $collection->add_database_table('local_oerexchange_sites', [
+            'name' => 'privacy:metadata:local_oerexchange_sites:name',
+            'url' => 'privacy:metadata:local_oerexchange_sites:url',
+            'contact' => 'privacy:metadata:local_oerexchange_sites:contact',
+        ], 'privacy:metadata:local_oerexchange_sites');
+
         $collection->add_database_table('local_oerexchange_resources', [
             'creatorid' => 'privacy:metadata:local_oerexchange_resources:creatorid',
             'title' => 'privacy:metadata:local_oerexchange_resources:title',
@@ -221,9 +231,34 @@ class provider implements
 
     #[\Override]
     public static function delete_data_for_all_users_in_context(\context $context): void {
-        // Never wipe the whole catalogue as a side effect of one user's request —
-        // per-user deletion below is the only supported path for this plugin.
-        return;
+        global $DB;
+
+        if (!$context instanceof \context_system) {
+            return;
+        }
+
+        // Note "all users in this context" is every user on the site here — so
+        // this deletes every user-keyed row and tombstones every attributed
+        // resource, exactly as the per-user path does, just for everyone at
+        // once. What deliberately SURVIVES is the tombstoned catalogue
+        // skeleton itself (status='deleted' rows with scrubbed metadata and
+        // no files), so existing inbound links degrade gracefully instead of
+        // 404ing — the same stance delete_for_userid() takes. Until 0.1.5
+        // this method was a total no-op, which quietly retained every
+        // profile, badge, review and report through an approved
+        // delete-all-users request.
+        $ownresources = $DB->get_records_select('local_oerexchange_resources', 'creatorid <> 0');
+        foreach ($ownresources as $resource) {
+            \local_oerexchange\local\profile_manager::delete_creator_resource($resource);
+        }
+
+        $DB->delete_records('local_oerexchange_profiles');
+        $DB->delete_records('local_oerexchange_badges');
+        $DB->delete_records('local_oerexchange_reviews');
+        $DB->delete_records('local_oerexchange_reports');
+        $DB->delete_records('local_oerexchange_imports');
+        $DB->delete_records('local_oerexchange_trials');
+        $DB->delete_records('local_oerexchange_linkcodes');
     }
 
     #[\Override]

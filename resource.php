@@ -73,8 +73,11 @@ if (!\local_oerexchange\local\resource_manager::user_can_view_resource($resource
 }
 
 // Handle report/review submission.
-if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser()) {
+if ($action === 'report' && isloggedin() && !isguestuser()) {
     require_login();
+    // Throw on a missing/expired sesskey rather than silently falling
+    // through to page rendering and discarding the user's typed report.
+    require_sesskey();
     $type = required_param('reporttype', PARAM_ALPHA);
     // Re-validate against the same set the <select> on this page actually
     // offers - PARAM_ALPHA alone accepts any alphabetic string, and an
@@ -99,8 +102,10 @@ if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser())
     ]);
     \core\notification::success(get_string('reportsubmitted', 'local_oerexchange'));
     redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
-} else if ($action === 'review' && confirm_sesskey() && isloggedin() && !isguestuser()) {
+} else if ($action === 'review' && isloggedin() && !isguestuser()) {
     require_login();
+    // Same rationale as the report branch above.
+    require_sesskey();
     $DB->insert_record('local_oerexchange_reviews', (object) [
         'resourceid' => $resource->id,
         'userid' => $USER->id,
@@ -130,8 +135,9 @@ if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser())
     }
     \core\notification::success(get_string('reviewsubmitted', 'local_oerexchange'));
     redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
-} else if ($action === 'editthumbnail' && confirm_sesskey() && isloggedin() && !isguestuser()) {
+} else if ($action === 'editthumbnail' && isloggedin() && !isguestuser()) {
     require_login();
+    require_sesskey();
     // Shared with the display gate below (local_oerexchange\local\resource_manager::
     // user_can_edit_resource() docblock) — final whole-branch review finding 5:
     // this used to be a second, slightly-differently-guarded copy of the same
@@ -233,9 +239,10 @@ if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser())
     redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
 } else if (
     in_array($action, ['hide', 'unhide', 'deleteconfirm', 'settrydisabled', 'stillfresh'], true)
-    && confirm_sesskey() && isloggedin() && !isguestuser()
+    && isloggedin() && !isguestuser()
 ) {
     require_login();
+    require_sesskey();
     // Same ownership/moderator gate the thumbnail editor and the owner
     // controls below use — never a second, subtly different copy of it.
     if (!\local_oerexchange\local\resource_manager::user_can_edit_resource($resource, (int) $USER->id)) {
@@ -414,7 +421,9 @@ if ($coverfiles) {
     );
     echo html_writer::empty_tag('img', [
         'src' => $coverurl->out(false),
-        'alt' => get_string('thumbnailalt', 'local_oerexchange', s($resource->title)),
+        // No s() here: html_writer escapes attribute values itself, so
+        // pre-escaping double-encoded any & or quotes in the title.
+        'alt' => get_string('thumbnailalt', 'local_oerexchange', $resource->title),
         'class' => 'img-fluid mb-3', 'style' => 'max-height:200px;',
     ]);
 }

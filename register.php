@@ -41,9 +41,21 @@ $name = required_param('name', PARAM_TEXT);
 $url = required_param('url', PARAM_URL);
 $contact = required_param('contact', PARAM_EMAIL);
 
-if (strlen($name) < 2 || strlen($name) > 255) {
+if (core_text::strlen($name) < 2 || core_text::strlen($name) > 255) {
     http_response_code(400);
     echo json_encode(['error' => 'invalid name']);
+    exit;
+}
+// Both url and contact land in 255-char columns; overlong values previously
+// reached insert_record and produced a DB-level 500.
+if ($url === '' || core_text::strlen($url) > 255) {
+    http_response_code(400);
+    echo json_encode(['error' => 'invalid url']);
+    exit;
+}
+if ($contact === '' || core_text::strlen($contact) > 255) {
+    http_response_code(400);
+    echo json_encode(['error' => 'invalid contact']);
     exit;
 }
 

@@ -84,7 +84,12 @@ function local_oerexchange_pluginfile($course, $cm, $context, $filearea, $args, 
     if (!$resource) {
         return false;
     }
-    if ($resource->status !== 'published' && !has_capability('local/oerexchange:moderate', $context)) {
+    // The same gate resource.php itself uses (published = public; otherwise
+    // the creator or a moderator) — the previous published-or-moderator rule
+    // was stricter than the page's, so an author viewing their own hidden or
+    // pending resource got its page but a broken cover image.
+    global $USER;
+    if (!\local_oerexchange\local\resource_manager::user_can_view_resource($resource, (int) $USER->id)) {
         return false;
     }
 

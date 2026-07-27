@@ -144,7 +144,41 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         // files of any historical extra versions and mark those rows
         // 'superseded', keeping the rows themselves so existing
         // imports.versionid / trials.versionid references still resolve.
-        \local_oerexchange\local\resource_manager::supersede_all_stale_versions();
+        //
+        // Inlined (not a call into the plugin's own classes): upgrade steps
+        // must never depend on the plugin API of the version being upgraded
+        // TO — a future rename of that method would break every site
+        // upgrading through this version. This is the exact logic
+        // resource_manager::supersede_all_stale_versions() performed when
+        // this step shipped.
+        $fs = get_file_storage();
+        $syscontextid = context_system::instance()->id;
+        $resourceids = $DB->get_fieldset_sql('SELECT DISTINCT resourceid FROM {local_oerexchange_versions}');
+        foreach ($resourceids as $resourceid) {
+            $current = $DB->get_records(
+                'local_oerexchange_versions',
+                ['resourceid' => $resourceid, 'status' => 'ready'],
+                'versionnumber DESC',
+                'id',
+                0,
+                1
+            );
+            if (!$current) {
+                continue;
+            }
+            $keepid = (int) reset($current)->id;
+            $stale = $DB->get_records_select(
+                'local_oerexchange_versions',
+                'resourceid = ? AND id <> ? AND status <> ?',
+                [$resourceid, $keepid, 'superseded'],
+                '',
+                'id'
+            );
+            foreach ($stale as $version) {
+                $fs->delete_area_files($syscontextid, 'local_oerexchange', 'resource', $version->id);
+                $DB->set_field('local_oerexchange_versions', 'status', 'superseded', ['id' => $version->id]);
+            }
+        }
 
         upgrade_plugin_savepoint(true, 2026072300, 'local', 'oerexchange');
     }

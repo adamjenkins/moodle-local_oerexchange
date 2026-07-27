@@ -68,24 +68,16 @@ class get_resource extends external_api {
             $creatorprofileurl = \moodle_url::routed_path('/local_oerexchange/u/' . $creatorprofile->slug)->out(false);
         }
 
-        $version = $DB->get_record(
+        // The latest ready version, or false when none has validated yet.
+        $latest = $DB->get_records(
             'local_oerexchange_versions',
             ['resourceid' => $resource->id, 'status' => 'ready'],
+            'versionnumber DESC',
             '*',
-            IGNORE_MULTIPLE
+            0,
+            1
         );
-        // If more than one ready version exists, prefer the latest.
-        if ($version) {
-            $latest = $DB->get_records(
-                'local_oerexchange_versions',
-                ['resourceid' => $resource->id, 'status' => 'ready'],
-                'versionnumber DESC',
-                '*',
-                0,
-                1
-            );
-            $version = reset($latest);
-        }
+        $version = $latest ? reset($latest) : false;
 
         $reviews = $DB->get_records(
             'local_oerexchange_reviews',
