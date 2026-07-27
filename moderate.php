@@ -70,6 +70,12 @@ if ($restoreid && confirm_sesskey()) {
             'status' => 'published',
             'timemodified' => time(),
         ]);
+        // A restore is a human judgment that the resource belongs back on
+        // the catalogue, so it also winds the abandoned-courseware clock
+        // forward — otherwise a resource the janitor removed would come back
+        // still carrying its expired grace clock and be removed again on the
+        // next cron run.
+        \local_oerexchange\local\stale_manager::mark_fresh($target);
         \core\notification::success(get_string('resourcerestored', 'local_oerexchange'));
     }
     redirect(new moodle_url('/local/oerexchange/moderate.php'));

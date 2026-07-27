@@ -107,6 +107,8 @@ class resource_manager {
                     'forkedfromid' => $metadata['forkedfromid'] ?? null,
                     'timeshared' => $now,
                     'timemodified' => $now,
+                    // The abandoned-courseware clock starts at first publish.
+                    'timefresh' => $now,
                 ]);
                 $versionnumber = 1;
             } else {
@@ -118,13 +120,20 @@ class resource_manager {
                     'SELECT MAX(versionnumber) FROM {local_oerexchange_versions} WHERE resourceid = ?',
                     [$resourceid]
                 );
-                // Bump only timemodified with a targeted UPDATE. Writing the whole
+                // Bump only the timestamps with a targeted UPDATE. Writing the whole
                 // $resource object back (update_record) would re-persist the
                 // downloadcount/importcount values read above, clobbering any atomic
                 // "col = col + 1" increment committed concurrently by get_resource or
                 // record_import — the exact lost-update the atomic increments exist
-                // to prevent.
-                $DB->set_field('local_oerexchange_resources', 'timemodified', $now, ['id' => $resourceid]);
+                // to prevent. A new version is an update in the abandoned-courseware
+                // sense, so it also winds the freshness clock forward and cancels
+                // any pending stale removal.
+                $DB->execute(
+                    'UPDATE {local_oerexchange_resources}
+                        SET timemodified = ?, timefresh = ?, stalenotifiedtime = 0
+                      WHERE id = ?',
+                    [$now, $now, $resourceid]
+                );
             }
 
             $isdataresource = ($metadata['type'] === 'data');

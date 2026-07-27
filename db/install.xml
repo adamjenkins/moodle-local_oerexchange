@@ -46,6 +46,8 @@
         <FIELD NAME="trydisabledreason" TYPE="text" NOTNULL="false" COMMENT="optional author-supplied reason shown in place of the Try it button"/>
         <FIELD NAME="timeshared" TYPE="int" LENGTH="10" NOTNULL="true" COMMENT="when the resource was first published; never changes on update"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timefresh" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="last moment the resource was known fresh: set on publish, on every new version, and by the author's Still fresh confirmation — the abandoned-courseware clock"/>
+        <FIELD NAME="stalenotifiedtime" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="when the stale warning was sent to the author; 0 = not currently flagged. Every writer of timefresh resets this to 0"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>

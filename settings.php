@@ -137,6 +137,35 @@ if ($hassiteconfig) {
         PARAM_FLOAT
     ));
 
+    $settings->add(new admin_setting_heading(
+        'local_oerexchange/staleheading',
+        get_string('settings_staleheading', 'local_oerexchange'),
+        get_string('settings_staleheading_desc', 'local_oerexchange')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_oerexchange/staleenabled',
+        get_string('settings_staleenabled', 'local_oerexchange'),
+        get_string('settings_staleenabled_desc', 'local_oerexchange'),
+        0
+    ));
+
+    $settings->add(new admin_setting_configduration(
+        'local_oerexchange/stalethreshold',
+        get_string('settings_stalethreshold', 'local_oerexchange'),
+        get_string('settings_stalethreshold_desc', 'local_oerexchange'),
+        \local_oerexchange\local\stale_manager::DEFAULT_THRESHOLD,
+        WEEKSECS
+    ));
+
+    $settings->add(new admin_setting_configduration(
+        'local_oerexchange/stalegrace',
+        get_string('settings_stalegrace', 'local_oerexchange'),
+        get_string('settings_stalegrace_desc', 'local_oerexchange'),
+        \local_oerexchange\local\stale_manager::DEFAULT_GRACE,
+        DAYSECS
+    ));
+
     $ADMIN->add('local_oerexchange_category', new admin_externalpage(
         'local_oerexchange_managesites',
         get_string('managesitestitle', 'local_oerexchange'),

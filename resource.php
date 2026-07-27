@@ -232,7 +232,7 @@ if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser())
     \core\notification::success(get_string('thumbnailuploaded', 'local_oerexchange'));
     redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
 } else if (
-    in_array($action, ['hide', 'unhide', 'deleteconfirm', 'settrydisabled'], true)
+    in_array($action, ['hide', 'unhide', 'deleteconfirm', 'settrydisabled', 'stillfresh'], true)
     && confirm_sesskey() && isloggedin() && !isguestuser()
 ) {
     require_login();
@@ -261,6 +261,14 @@ if ($action === 'report' && confirm_sesskey() && isloggedin() && !isguestuser())
         }
         \core\notification::success(get_string('resourcedeleted', 'local_oerexchange'));
         redirect(new moodle_url('/local/oerexchange/index.php'));
+    }
+
+    if ($action === 'stillfresh') {
+        // The one-click answer to the abandoned-courseware warning: wind the
+        // freshness clock forward and cancel the pending removal.
+        \local_oerexchange\local\stale_manager::mark_fresh($resource);
+        \core\notification::success(get_string('stillfreshsaved', 'local_oerexchange'));
+        redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
     }
 
     if ($action === 'settrydisabled') {
@@ -442,6 +450,30 @@ if ($cancontrolthumbnail) {
             : s($resource->status),
         ['class' => 'mb-2']
     );
+
+    // The abandoned-courseware warning, mirrored from the notification so an
+    // author who lands here (its link points at this page) sees the deadline
+    // and the one-click way out side by side. Only while the flag is live —
+    // resetting it (this button, an update) removes the banner too.
+    if (
+        (int) $resource->stalenotifiedtime > 0 && $resource->status === 'published'
+            && \local_oerexchange\local\stale_manager::enabled()
+    ) {
+        echo html_writer::start_tag('div', ['class' => 'alert alert-warning']);
+        echo html_writer::tag('p', get_string('stalebanner', 'local_oerexchange', (object) [
+            'flagged' => userdate((int) $resource->stalenotifiedtime),
+            'deadline' => userdate(\local_oerexchange\local\stale_manager::removal_deadline($resource)),
+        ]));
+        echo $OUTPUT->single_button(
+            new moodle_url('/local/oerexchange/resource.php', [
+                'id' => $id, 'action' => 'stillfresh', 'sesskey' => sesskey(),
+            ]),
+            get_string('stillfresh', 'local_oerexchange'),
+            'post',
+            ['type' => 'primary']
+        );
+        echo html_writer::end_tag('div');
+    }
 
     if (in_array($resource->status, ['published', 'hidden'], true)) {
         $ishidden = ($resource->status === 'hidden');

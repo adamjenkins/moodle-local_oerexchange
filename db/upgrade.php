@@ -149,5 +149,29 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026072300, 'local', 'oerexchange');
     }
 
+    if ($oldversion < 2026072700) {
+        // Abandoned-courseware lifecycle: a freshness clock per resource and
+        // the flag recording that a stale warning went out to the author.
+        $table = new xmldb_table('local_oerexchange_resources');
+
+        $field = new xmldb_field('timefresh', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'timemodified');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('stalenotifiedtime', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'timefresh');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Existing rows start their freshness clock from timemodified — the
+        // best signal we have of when they last changed. timeshared would be
+        // unfairly old for anything updated since first publication (it never
+        // changes on update by design).
+        $DB->execute('UPDATE {local_oerexchange_resources} SET timefresh = timemodified WHERE timefresh = 0');
+
+        upgrade_plugin_savepoint(true, 2026072700, 'local', 'oerexchange');
+    }
+
     return true;
 }

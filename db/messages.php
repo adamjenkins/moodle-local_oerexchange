@@ -28,4 +28,5 @@ $messageproviders = [
     'import' => [],
     'review' => [],
     'report' => [],
+    'stale' => [],
 ];
