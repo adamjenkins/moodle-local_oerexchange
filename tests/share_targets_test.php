@@ -138,6 +138,52 @@ final class share_targets_test extends \advanced_testcase {
     }
 
     /**
+     * Every share target maps to a Moodle-bundled FontAwesome icon (brand
+     * logos for the networks) via the standard icon-map callback — never a
+     * bundled copy of FontAwesome or shipped brand artwork.
+     */
+    public function test_every_target_has_a_fontawesome_icon_mapping(): void {
+        global $CFG;
+        $this->resetAfterTest();
+        require_once($CFG->dirroot . '/local/oerexchange/lib.php');
+
+        $map = local_oerexchange_get_fontawesome_icon_map();
+
+        foreach (share_targets::ALL as $key) {
+            $this->assertArrayHasKey('local_oerexchange:sharetarget_' . $key, $map, "no icon mapped for {$key}");
+            $this->assertMatchesRegularExpression('/\bfa-/', $map['local_oerexchange:sharetarget_' . $key]);
+        }
+        // The four networks must show their own logos, not generic glyphs.
+        $this->assertSame('fa-brands fa-mastodon', $map['local_oerexchange:sharetarget_mastodon']);
+        $this->assertSame('fa-brands fa-facebook', $map['local_oerexchange:sharetarget_facebook']);
+        $this->assertSame('fa-brands fa-x-twitter', $map['local_oerexchange:sharetarget_x']);
+        $this->assertSame('fa-brands fa-linkedin', $map['local_oerexchange:sharetarget_linkedin']);
+    }
+
+    /**
+     * The rendered buttons carry the logo as a decorative icon next to the
+     * label: the icon must be aria-hidden (the text label does the talking)
+     * and the label text must survive unchanged.
+     */
+    public function test_share_buttons_carry_the_service_logo_beside_the_label(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $html = share_targets::render('https://example.com/r/9', 'A resource', 'Share this');
+
+        $this->assertStringContainsString('fa-mastodon', $html);
+        $this->assertStringContainsString('fa-x-twitter', $html);
+        $this->assertStringContainsString('fa-facebook', $html);
+        $this->assertStringContainsString('fa-envelope', $html);
+        // Decorative, never announced: rendered via pix_icon with an empty
+        // alt, which emits aria-hidden="true".
+        $this->assertStringContainsString('aria-hidden="true"', $html);
+        // Labels are still there for everyone.
+        $this->assertStringContainsString(get_string('sharetarget_mastodon', 'local_oerexchange'), $html);
+        $this->assertStringContainsString(get_string('sharetarget_facebook', 'local_oerexchange'), $html);
+    }
+
+    /**
      * The setting's checkbox labels and the rendered buttons read from the
      * same lang keys, so a missing one is a broken UI on both. Catch it here
      * rather than as a debugging notice on a live page.

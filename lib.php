@@ -25,6 +25,26 @@
  */
 
 /**
+ * Maps this plugin's icon names onto Moodle's bundled FontAwesome (6.7.2 as
+ * of Moodle 5.2), so the share buttons show each network's own logo without
+ * this plugin shipping any icon artwork or a FontAwesome copy of its own.
+ *
+ * @return array<string, string> 'component:iconname' => FontAwesome classes
+ */
+function local_oerexchange_get_fontawesome_icon_map() {
+    return [
+        'local_oerexchange:sharetarget_copylink' => 'fa-solid fa-link',
+        'local_oerexchange:sharetarget_nativeshare' => 'fa-solid fa-share-nodes',
+        'local_oerexchange:sharetarget_mastodon' => 'fa-brands fa-mastodon',
+        'local_oerexchange:sharetarget_facebook' => 'fa-brands fa-facebook',
+        'local_oerexchange:sharetarget_x' => 'fa-brands fa-x-twitter',
+        'local_oerexchange:sharetarget_linkedin' => 'fa-brands fa-linkedin',
+        'local_oerexchange:sharetarget_email' => 'fa-solid fa-envelope',
+        'local_oerexchange:sharetarget_sms' => 'fa-solid fa-comment-sms',
+    ];
+}
+
+/**
  * Serves files from the local_oerexchange file areas via pluginfile.php.
  *
  * Only the 'coverimage' area (parse_backup_task, resourceid-keyed, stored

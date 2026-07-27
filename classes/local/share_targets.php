@@ -148,7 +148,7 @@ class share_targets {
      * @return string HTML
      */
     public static function render(string $shareurl, string $title, string $summarylabel): string {
-        global $PAGE;
+        global $OUTPUT, $PAGE;
 
         $targets = self::build($shareurl, $title);
         if (empty($targets)) {
@@ -156,6 +156,14 @@ class share_targets {
         }
 
         $PAGE->requires->js_call_amd('local_oerexchange/share', 'init');
+
+        // Each network's logo, from Moodle's own bundled FontAwesome (mapped
+        // in lib.php) — but only when the active icon system actually IS
+        // FontAwesome. On an image-icon theme, pix_icon would go looking for
+        // pix/ files this plugin deliberately does not ship (bundling brand
+        // artwork is exactly what the FontAwesome approach avoids), so there
+        // the buttons simply stay text-only.
+        $usefontawesome = \core\output\icon_system::instance() instanceof \core\output\icon_system_fontawesome;
 
         $inputid = \html_writer::random_id('oerexchange-share-url-');
 
@@ -186,6 +194,11 @@ class share_targets {
 
         $out .= \html_writer::start_tag('div', ['class' => 'd-flex flex-wrap gap-2']);
         foreach ($targets as $target) {
+            // Decorative logo beside the label: empty alt makes pix_icon
+            // emit aria-hidden="true", so screen readers hear only the label.
+            $label = $usefontawesome
+                ? $OUTPUT->pix_icon('sharetarget_' . $target['key'], '', 'local_oerexchange') . $target['label']
+                : $target['label'];
             if ($target['href'] === null) {
                 $attrs = [
                     'type' => 'button',
@@ -197,9 +210,9 @@ class share_targets {
                     // mostly mobile — share.js reveals it when supported.
                     $attrs['hidden'] = 'hidden';
                 }
-                $out .= \html_writer::tag('button', $target['label'], $attrs);
+                $out .= \html_writer::tag('button', $label, $attrs);
             } else {
-                $out .= \html_writer::link($target['href'], $target['label'], [
+                $out .= \html_writer::link($target['href'], $label, [
                     'class' => 'btn btn-outline-secondary btn-sm',
                     'target' => '_blank',
                     // Using noopener/noreferrer: never hand the target site a
