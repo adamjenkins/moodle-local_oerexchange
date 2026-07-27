@@ -3,6 +3,36 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [0.1.7] - 2026-07-27
+
+### Security
+
+- **An author could delete a resource out from under a moderator.** The
+  `deleteconfirm` action was gated on `user_can_edit_resource()` alone and
+  never consulted `$resource->status`, while
+  `profile_manager::delete_creator_resource()` deletes the resource's
+  `local_oerexchange_reports` rows and sets status `deleted`. The subject of
+  a complaint could therefore destroy the complaint and the takedown record
+  together, after which the entry appeared in neither of `moderate.php`'s
+  lists (open reports; `status IN (modhidden, removed)`). Pre-existing for
+  the creator, and widened by 0.1.6: an author whose resource was under
+  moderation could add co-authors to it, each inheriting the same ability.
+  Found by `/moodle-shield-audit` (class 1b) against 0.1.6, and reproduced
+  before fixing.
+- New `resource_manager::user_can_delete_resource()` and
+  `resource_manager::MODERATOR_HELD_STATUSES`. Authors and co-authors are
+  refused on `modhidden`/`removed`; moderators are not. This is the
+  delete-shaped half of the rule `set_hidden()` already enforced for
+  visibility (2026-07-23 author-control round), which had covered hiding but
+  not deletion.
+- The Delete button is replaced by an explanation rather than silently
+  omitted, and the action handler refuses a directly-POSTed
+  `deleteconfirm` independently of the UI.
+- **GDPR erasure is deliberately NOT routed through the new gate.**
+  `delete_creator_resource()` itself is unguarded and the privacy provider
+  keeps calling it directly, so a moderated resource is still tombstoned by
+  an approved erasure request. Covered by its own test.
+
 ## [0.1.6] - 2026-07-27
 
 ### Added

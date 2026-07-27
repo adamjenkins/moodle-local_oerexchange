@@ -254,6 +254,14 @@ if ($action === 'report' && isloggedin() && !isguestuser()) {
     }
 
     if ($action === 'deleteconfirm') {
+        // Deleting is the one author-side action that is NOT available while a
+        // moderator is holding the resource — it would take the open reports
+        // and the takedown record with it. See
+        // resource_manager::user_can_delete_resource().
+        if (!\local_oerexchange\local\resource_manager::user_can_delete_resource($resource, (int) $USER->id)) {
+            throw new moodle_exception('error_deleteundermoderation', 'local_oerexchange');
+        }
+
         // Tombstone rather than a row delete: files, versions, reviews and
         // reports go, the row stays with status 'deleted' so old links (a
         // client site's "View on Exchange" button, a shared social link)
@@ -369,7 +377,7 @@ echo $OUTPUT->header();
 // confirm button's URL, not this one — reaching this page does nothing.
 if (
     $action === 'delete' && isloggedin() && !isguestuser()
-    && \local_oerexchange\local\resource_manager::user_can_edit_resource($resource, (int) $USER->id)
+    && \local_oerexchange\local\resource_manager::user_can_delete_resource($resource, (int) $USER->id)
 ) {
     echo $OUTPUT->confirm(
         get_string('resourcedeleteconfirm', 'local_oerexchange', s($resource->title)),
@@ -570,11 +578,22 @@ if ($cancontrolthumbnail) {
         ['class' => 'btn btn-outline-secondary btn-sm me-2']
     );
 
-    echo html_writer::link(
-        new moodle_url('/local/oerexchange/resource.php', ['id' => $id, 'action' => 'delete']),
-        get_string('resourcedelete', 'local_oerexchange'),
-        ['class' => 'btn btn-outline-danger btn-sm']
-    );
+    // No Delete button while a moderator is holding this resource. Say why
+    // rather than silently omitting it — a missing control reads as a broken
+    // page, and the status line above already tells them a moderator acted.
+    if (\local_oerexchange\local\resource_manager::user_can_delete_resource($resource, (int) $USER->id)) {
+        echo html_writer::link(
+            new moodle_url('/local/oerexchange/resource.php', ['id' => $id, 'action' => 'delete']),
+            get_string('resourcedelete', 'local_oerexchange'),
+            ['class' => 'btn btn-outline-danger btn-sm']
+        );
+    } else {
+        echo html_writer::tag(
+            'p',
+            get_string('resourcedeleteundermoderation', 'local_oerexchange'),
+            ['class' => 'small text-muted mt-2 mb-0']
+        );
+    }
 
     // Author opt-out of the sandbox. Only offered where a sandbox trial is
     // possible at all — a data resource can never be tried, so showing the

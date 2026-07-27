@@ -15,8 +15,10 @@ plugin installed on their own Moodle sites.
   real Exchange account.
 - **Licensing**: Creative Commons via core's `license_manager`.
 - **Community**: adaptation-story reviews, reports, and a moderation queue.
-  A moderator's takedown is a state of its own that the author cannot lift,
-  and the queue can restore it.
+  A moderator's takedown is a state of its own that the author cannot lift
+  **or delete** — while a resource is held, its author and co-authors keep
+  every other control but cannot remove it, so a complaint and the record of
+  the takedown survive the person they are about. The queue can restore it.
 - **Author control**: authors hide, show, delete, and replace the file of
   their own resources, and may decline sandbox availability with a reason.
   The Exchange serves exactly one version per resource — an update supersedes

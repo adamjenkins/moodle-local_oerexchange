@@ -22,14 +22,17 @@ use local_oerexchange\local\resource_manager;
 
 /**
  * Tests for coauthor_manager: resolving a username/email to the right
- * account, the four ways an add is refused, and the parity a co-author row
- * grants through resource_manager::user_can_edit_resource().
+ * account, the ways an add is refused, and the parity a co-author row grants
+ * through resource_manager::user_can_edit_resource() — including the one
+ * action that parity deliberately does NOT extend to,
+ * resource_manager::user_can_delete_resource() on a moderated resource.
  *
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(coauthor_manager::class)]
+#[CoversClass(resource_manager::class)]
 final class coauthor_manager_test extends \advanced_testcase {
     /**
      * Insert a catalogue row directly — publish() needs a real .mbz in a
@@ -333,6 +336,143 @@ final class coauthor_manager_test extends \advanced_testcase {
         $this->assertStringContainsString('Tomoko Teacher', $messages[0]->fullmessage);
         $this->assertStringNotContainsString('{$a', $messages[0]->fullmessage, 'unsubstituted placeholder');
         $this->assertSame((int) $second->id, (int) $messages[0]->useridto);
+    }
+
+    /**
+     * MDL Shield self-audit finding 1 (2026-07-27). The delete action was
+     * gated on user_can_edit_resource() alone, so an author — and, once
+     * co-authors existed, anyone they added — could delete a resource a
+     * moderator had taken down. delete_creator_resource() deletes the
+     * resource's report rows and flips it to 'deleted', so the subject of a
+     * complaint could destroy the complaint AND the takedown record, and the
+     * entry vanished from both of moderate.php's lists.
+     *
+     * @param string $status a status only a moderator may set
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('moderator_held_status_provider')]
+    public function test_a_coauthor_cannot_delete_a_resource_under_moderation(string $status): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $creator = $this->getDataGenerator()->create_user();
+        $second = $this->getDataGenerator()->create_user(['username' => 'hanako']);
+        $resource = $this->make_resource((int) $creator->id);
+        coauthor_manager::add($resource, 'hanako', (int) $creator->id);
+
+        $DB->set_field('local_oerexchange_resources', 'status', $status, ['id' => $resource->id]);
+        $resource = $DB->get_record('local_oerexchange_resources', ['id' => $resource->id], '*', MUST_EXIST);
+
+        // Both still hold every other author right — this is not a general
+        // lockout, only the one action that destroys moderation evidence.
+        $this->assertTrue(resource_manager::user_can_edit_resource($resource, (int) $creator->id));
+        $this->assertTrue(resource_manager::user_can_edit_resource($resource, (int) $second->id));
+
+        $this->assertFalse(
+            resource_manager::user_can_delete_resource($resource, (int) $creator->id),
+            "the creator must not delete a {$status} resource"
+        );
+        $this->assertFalse(
+            resource_manager::user_can_delete_resource($resource, (int) $second->id),
+            "a co-author must not delete a {$status} resource"
+        );
+    }
+
+    /**
+     * The statuses only a moderator may set.
+     *
+     * @return array<string, array{string}>
+     */
+    public static function moderator_held_status_provider(): array {
+        return [
+            'moderator takedown' => ['modhidden'],
+            'moderator or stale removal' => ['removed'],
+        ];
+    }
+
+    /**
+     * The moderator holding the resource can still delete it — the gate
+     * restricts the author side, it does not make moderated content
+     * permanent.
+     */
+    public function test_a_moderator_can_still_delete_a_resource_under_moderation(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $creator = $this->getDataGenerator()->create_user();
+        $moderator = $this->getDataGenerator()->create_user();
+        role_assign(
+            $DB->get_field('role', 'id', ['shortname' => 'manager']),
+            $moderator->id,
+            \context_system::instance()->id
+        );
+        $resource = $this->make_resource((int) $creator->id);
+        $DB->set_field('local_oerexchange_resources', 'status', 'modhidden', ['id' => $resource->id]);
+        $resource = $DB->get_record('local_oerexchange_resources', ['id' => $resource->id], '*', MUST_EXIST);
+
+        $this->assertTrue(resource_manager::user_can_delete_resource($resource, (int) $moderator->id));
+    }
+
+    /**
+     * The ordinary case is untouched: nothing about co-authorship or the new
+     * gate stops an author deleting a resource nobody has moderated.
+     */
+    public function test_delete_is_unaffected_for_a_resource_nobody_has_moderated(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $creator = $this->getDataGenerator()->create_user();
+        $second = $this->getDataGenerator()->create_user(['username' => 'hanako']);
+        $stranger = $this->getDataGenerator()->create_user();
+        $resource = $this->make_resource((int) $creator->id);
+        coauthor_manager::add($resource, 'hanako', (int) $creator->id);
+
+        foreach (['published', 'hidden', 'pending'] as $status) {
+            $DB->set_field('local_oerexchange_resources', 'status', $status, ['id' => $resource->id]);
+            $row = $DB->get_record('local_oerexchange_resources', ['id' => $resource->id], '*', MUST_EXIST);
+            $this->assertTrue(
+                resource_manager::user_can_delete_resource($row, (int) $creator->id),
+                "creator, status={$status}"
+            );
+            $this->assertTrue(
+                resource_manager::user_can_delete_resource($row, (int) $second->id),
+                "co-author, status={$status}"
+            );
+            $this->assertFalse(
+                resource_manager::user_can_delete_resource($row, (int) $stranger->id),
+                "unrelated user, status={$status}"
+            );
+        }
+    }
+
+    /**
+     * A person's right to erasure is not suspended by their content being
+     * under moderation, so the GDPR path deliberately does NOT consult the
+     * new gate — profile_manager::delete_creator_resource() is called
+     * directly by the privacy provider and must still tombstone a moderated
+     * resource.
+     */
+    public function test_gdpr_erasure_still_removes_a_moderated_resource(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $creator = $this->getDataGenerator()->create_user();
+        $resource = $this->make_resource((int) $creator->id);
+        $DB->set_field('local_oerexchange_resources', 'status', 'modhidden', ['id' => $resource->id]);
+
+        \local_oerexchange\privacy\provider::delete_data_for_user(
+            new \core_privacy\local\request\approved_contextlist(
+                $creator,
+                'local_oerexchange',
+                [\context_system::instance()->id]
+            )
+        );
+
+        $this->assertSame('deleted', $DB->get_field(
+            'local_oerexchange_resources',
+            'status',
+            ['id' => $resource->id],
+            MUST_EXIST
+        ));
     }
 
     public function test_delete_for_resource_clears_every_row(): void {

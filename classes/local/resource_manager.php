@@ -29,6 +29,20 @@ use local_oerexchange\task\parse_backup_task;
  */
 class resource_manager {
     /**
+     * The statuses only a moderator may put a resource into, and only a
+     * moderator may take it out of.
+     *
+     * 'modhidden' is a takedown, 'removed' is a removal (by a moderator, or
+     * by the automatic abandoned-courseware sweep). Both are deliberately
+     * distinct from the author's own 'hidden' so that an author-facing
+     * control can never undo a moderation decision — see
+     * dev-docs/oer-platform/AUTHOR-CONTROL-COMPLETION-DESIGN.md §1.
+     *
+     * @var string[]
+     */
+    const MODERATOR_HELD_STATUSES = ['modhidden', 'removed'];
+
+    /**
      * Publish a draft-area backup as a resource (new, or a new version of an
      * existing one when $resourceid is given).
      *
@@ -292,6 +306,40 @@ class resource_manager {
         // fields the check needs, and is_coauthor() already treats a 0
         // resourceid as "no".
         if ($userid && coauthor_manager::is_coauthor((int) ($resource->id ?? 0), $userid)) {
+            return true;
+        }
+        return has_capability('local/oerexchange:moderate', \context_system::instance(), $userid);
+    }
+
+    /**
+     * Whether $userid may delete a resource outright.
+     *
+     * Everyone who can edit it, EXCEPT while a moderator is holding it: an
+     * author (or a co-author they added) must not be able to delete a
+     * resource that has been taken down or removed. Deleting it runs
+     * profile_manager::delete_creator_resource(), which deletes the
+     * resource's report rows and flips it to 'deleted' — so the subject of a
+     * complaint could destroy both the complaint and the record that a
+     * takedown ever happened, and the entry would vanish from both of
+     * moderate.php's lists (open reports, and status IN modhidden/removed).
+     *
+     * This is the delete-shaped half of the same rule set_hidden() already
+     * enforces for visibility: the author's own control may not reverse a
+     * moderator's. A moderator may still delete, and the GDPR erasure path is
+     * deliberately NOT routed through here — a person's right to erasure is
+     * not suspended by their content being under moderation, so
+     * delete_creator_resource() itself stays unguarded and the privacy
+     * provider keeps calling it directly.
+     *
+     * @param \stdClass $resource a row from local_oerexchange_resources
+     * @param int $userid
+     * @return bool
+     */
+    public static function user_can_delete_resource(\stdClass $resource, int $userid): bool {
+        if (!self::user_can_edit_resource($resource, $userid)) {
+            return false;
+        }
+        if (!in_array($resource->status, self::MODERATOR_HELD_STATUSES, true)) {
             return true;
         }
         return has_capability('local/oerexchange:moderate', \context_system::instance(), $userid);
