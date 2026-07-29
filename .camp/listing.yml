@@ -1,0 +1,58 @@
+# camp listing manifest — descriptive content for your plugin's page.
+# Edit freely and commit; camp ingests this file at each tagged release.
+# Schema: https://camp-registry.org/schema/listing.schema.json
+name: "OER Exchange"
+summary: "The central catalogue and API plugin for the OER Exchange platform, an open-educational-resources sharing platform built on Moodle."
+description: |
+  Runs on the dedicated Exchange site. Teachers share and import through the
+  companion `local_oerclient` plugin installed on their own Moodle sites.
+
+  - **Catalogue** — publish, browse, search and structure-preview the courses
+    and activities shared from client sites, before anyone imports them.
+  - **Identity** — site registration with administrator approval for client
+    sites, plus a personal account-linking handshake, so that shares and
+    reviews are attributed to a real Exchange account.
+  - **Licensing** — Creative Commons, through core's `license_manager`. An
+    administrator chooses which licences sharing may use (the CC set by
+    default); the choice is enforced on every publish path and advertised to
+    client sites.
+  - **Community** — adaptation-story reviews, reports and a moderation queue. A
+    moderator's takedown is a state of its own that the author can neither lift
+    nor delete, so a complaint and the record of it survive the person it is
+    about; the queue can restore the resource.
+  - **Author control** — authors hide, show, delete and replace the file of
+    their own resources, and may decline sandbox availability with a reason.
+    The Exchange serves exactly one version per resource: an update supersedes
+    the previous one, keeping the catalogue entry, its link and its reviews.
+  - **Co-authors** — an author can name further authors by username or email
+    address, each holding the same rights as the creator. Everyone added is
+    notified, and is credited publicly on the resource page.
+  - **Educator profiles** — a shareable profile page per educator (bio,
+    expertise, badges, portfolio links, metrics and a resource grid), created
+    automatically on their first published resource, with author attribution
+    and an editable thumbnail on every resource.
+  - **Abandoned courseware** (off by default) — a nightly check warns the author
+    of any published resource left unmaintained past a configurable threshold
+    (default two years). They can update it, or press a one-click "Still fresh"
+    button; if neither happens within a configurable grace period (default 60
+    days) the resource leaves the catalogue into the moderation queue's
+    restorable list, never irreversibly.
+  - **Sandbox integration** — builds Moodle Playground (in-browser, WASM) trial
+    launch URLs, so a visitor can try a resource before importing it. Nothing
+    is executed server-side.
+
+  Client sites talk to the Exchange through a custom web service of six
+  functions, split between a per-site token and each teacher's personal token.
+
+  Privacy is implemented through the full Moodle privacy API, including a
+  deletion path that genuinely removes a departing user's shared courseware
+  rather than anonymising it, leaving a tombstone so that existing links
+  degrade gracefully instead of breaking.
+labels:
+  - fully-free
+links:
+  docs: https://github.com/adamjenkins/moodle-local_oerexchange#readme
+  issues: https://github.com/adamjenkins/moodle-local_oerexchange/issues
+# screenshots:
+#   - path: .camp/screenshots/overview.png
+#     caption: Main view
