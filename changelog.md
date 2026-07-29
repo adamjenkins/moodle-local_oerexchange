@@ -3,6 +3,16 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.0.1] - 2026-07-29
+
+### Changed
+
+- The camp release-publishing workflow now uses the registry's current
+  tokenless template (OIDC trusted publishing, camp-tools v0.2.35). The
+  previous template pinned camp-tools v0.2.25, whose index-entry schema
+  predates the registry's `source-repo-id` field, so publication of v1.0.0
+  could not succeed. No change to the plugin itself.
+
 ## [1.0.0] - 2026-07-29
 
 First stable release. `$plugin->maturity` is now `MATURITY_STABLE`.
