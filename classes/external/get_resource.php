@@ -106,6 +106,8 @@ class get_resource extends external_api {
             );
         }
 
+        $coverurl = \local_oerexchange\local\cover_image::url_for((int) $resource->id);
+
         return [
             'id' => (int) $resource->id,
             'type' => $resource->type,
@@ -122,6 +124,7 @@ class get_resource extends external_api {
             'timeshared' => (int) $resource->timeshared,
             'creatorname' => $creatorname,
             'creatorprofileurl' => $creatorprofileurl,
+            'coverimageurl' => $coverurl !== null ? $coverurl->out(false) : '',
             'versionid' => $version ? (int) $version->id : -1,
             'moodleversion' => $version->moodleversion ?? '',
             'structurejson' => $version->structurejson ?? '',
@@ -153,6 +156,7 @@ class get_resource extends external_api {
             'timeshared' => new external_value(PARAM_INT, 'Unix timestamp'),
             'creatorname' => new external_value(PARAM_TEXT, 'Creator display name'),
             'creatorprofileurl' => new external_value(PARAM_RAW, 'Creator profile URL, or empty string if none/hidden'),
+            'coverimageurl' => new external_value(PARAM_RAW, 'Cover image URL, or empty string if none'),
             'versionid' => new external_value(PARAM_INT, 'Latest ready version id, or -1 if none ready yet'),
             'moodleversion' => new external_value(PARAM_TEXT, 'Moodle release the backup was made from'),
             'structurejson' => new external_value(PARAM_RAW, 'JSON structure preview'),

@@ -151,6 +151,40 @@ final class search_test extends \advanced_testcase {
         $this->assertNotSame('', $result['results'][0]['creatorname']);
     }
 
+    public function test_search_results_include_coverimageurl_when_a_cover_exists(): void {
+        $this->resetAfterTest();
+        $this->setUser($this->getDataGenerator()->create_user());
+
+        $resourceid = $this->create_resource('Covered one');
+        // Same fixture shape as cover_image_test: component local_oerexchange,
+        // filearea coverimage, itemid = resourceid, system context.
+        get_file_storage()->create_file_from_string([
+            'contextid' => \context_system::instance()->id,
+            'component' => 'local_oerexchange',
+            'filearea' => 'coverimage',
+            'itemid' => $resourceid,
+            'filepath' => '/',
+            'filename' => 'cover.png',
+        ], 'not really a png, but the file API does not care');
+
+        $result = search::execute();
+
+        $expected = \local_oerexchange\local\cover_image::url_for($resourceid)->out(false);
+        $this->assertSame($expected, $result['results'][0]['coverimageurl']);
+        $this->assertStringContainsString('cover.png', $result['results'][0]['coverimageurl']);
+    }
+
+    public function test_search_results_have_empty_coverimageurl_when_no_cover_exists(): void {
+        $this->resetAfterTest();
+        $this->setUser($this->getDataGenerator()->create_user());
+
+        $this->create_resource('Bare one');
+
+        $result = search::execute();
+
+        $this->assertSame('', $result['results'][0]['coverimageurl']);
+    }
+
     public function test_search_batches_creator_lookups_not_per_result(): void {
         global $DB;
         $this->resetAfterTest();

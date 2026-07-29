@@ -184,6 +184,54 @@ final class get_resource_test extends \advanced_testcase {
         $this->assertSame('', $result['creatorprofileurl']);
     }
 
+    public function test_coverimageurl_is_returned_when_a_cover_exists(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setUser($this->getDataGenerator()->create_user());
+
+        $resourceid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'Covered one', 'summary' => '', 'language' => '', 'tags' => '',
+            'licenseshortname' => 'cc-4.0', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => 2, 'siteid' => 1, 'status' => 'published',
+            'downloadcount' => 0, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => time(), 'timemodified' => time(),
+        ]);
+        // Same fixture shape as cover_image_test: component local_oerexchange,
+        // filearea coverimage, itemid = resourceid, system context.
+        get_file_storage()->create_file_from_string([
+            'contextid' => \context_system::instance()->id,
+            'component' => 'local_oerexchange',
+            'filearea' => 'coverimage',
+            'itemid' => $resourceid,
+            'filepath' => '/',
+            'filename' => 'cover.png',
+        ], 'not really a png, but the file API does not care');
+
+        $result = get_resource::execute($resourceid);
+
+        $expected = \local_oerexchange\local\cover_image::url_for($resourceid)->out(false);
+        $this->assertSame($expected, $result['coverimageurl']);
+        $this->assertStringContainsString('cover.png', $result['coverimageurl']);
+    }
+
+    public function test_coverimageurl_is_empty_when_no_cover_exists(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setUser($this->getDataGenerator()->create_user());
+
+        $resourceid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'Bare one', 'summary' => '', 'language' => '', 'tags' => '',
+            'licenseshortname' => 'cc-4.0', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => 2, 'siteid' => 1, 'status' => 'published',
+            'downloadcount' => 0, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => time(), 'timemodified' => time(),
+        ]);
+
+        $result = get_resource::execute($resourceid);
+
+        $this->assertSame('', $result['coverimageurl']);
+    }
+
     public function test_creatorprofileurl_is_a_real_url_when_creators_profile_is_visible(): void {
         global $DB;
         $this->resetAfterTest();

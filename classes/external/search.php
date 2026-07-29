@@ -123,6 +123,10 @@ class search extends external_api {
         $creators = $creatorids ? $DB->get_records_list('user', 'id', $creatorids) : [];
         $creatorprofiles = profile_manager::get_by_userids($creatorids);
 
+        // One query for the whole page's cover images, same rationale as the
+        // creator batch above — urls_for() exists so this never becomes an N+1.
+        $coverurls = \local_oerexchange\local\cover_image::urls_for(array_map(fn($r) => (int) $r->id, $records));
+
         $results = [];
         foreach ($records as $r) {
             $creatorid = (int) $r->creatorid;
@@ -149,6 +153,7 @@ class search extends external_api {
                 'timeshared' => (int) $r->timeshared,
                 'creatorname' => $creatorname,
                 'creatorprofileurl' => $creatorprofileurl,
+                'coverimageurl' => isset($coverurls[(int) $r->id]) ? $coverurls[(int) $r->id]->out(false) : '',
             ];
         }
 
@@ -177,6 +182,7 @@ class search extends external_api {
                 'timeshared' => new external_value(PARAM_INT, 'Unix timestamp'),
                 'creatorname' => new external_value(PARAM_TEXT, 'Creator display name'),
                 'creatorprofileurl' => new external_value(PARAM_RAW, 'Creator profile URL, or empty string if none/hidden'),
+                'coverimageurl' => new external_value(PARAM_RAW, 'Cover image URL, or empty string if none'),
             ])),
         ]);
     }
