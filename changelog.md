@@ -3,6 +3,55 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.0.0] - 2026-07-29
+
+First stable release. `$plugin->maturity` is now `MATURITY_STABLE`.
+
+### Added
+
+- **Allowed licences admin setting** (`allowedlicenses`). A multicheckbox of
+  the site's *enabled* licences (`license_manager::get_active_licenses_as_array()`),
+  defaulting to the six Creative Commons 4.0 licences, with the same strict
+  `=== false` unset-vs-empty rule as `sharetargets` — unticking every box
+  means "no licence may be chosen", not "restore the default".
+- `local_oerexchange\local\allowed_licenses`: the one place that resolves the
+  allowed list, the dropdown menu, and the preselected licence.
+- Licence preselection, first-allowed-wins: the user's remembered
+  `filepicker_recentlicense` (only under `$CFG->rememberuserlicensepref`),
+  then `$CFG->sitedefaultlicense`, then CC BY-SA. A successful share writes
+  the same preference back, so this plugin's forms and core's filepicker
+  share one memory.
+- `coverimageurl` on the `search` and `get_resource` web services, so client
+  sites can render the same cover images the catalogue shows.
+- A neutral default thumbnail panel for resources with no cover image, on
+  `index.php` and everywhere `cover_image::listitem()`/`card()` is used, so
+  lists and cards keep their alignment.
+- The settings heading links out to `tool_licensemanager`'s page, built via
+  `\tool_licensemanager\helper::get_licensemanager_url()`.
+
+### Changed
+
+- The licence field on `share_upload_mbz.php` and `share_upload_data.php` is a
+  dropdown of exactly the allowed list; it was a free-text input, unlike the
+  client's form.
+- `get_config`'s `acceptedlicenses` advertises the allowed list. It previously
+  returned `get_licenses()`, which included licences the site had *disabled*.
+
+### Security
+
+- `resource_manager::publish()` refuses a licence that is not on the allowed
+  list (`error_licensenotallowed`, distinct from `error_invalidlicense`), so
+  the `publish_resource` web-service path client sites use is covered and not
+  just the interactive forms. **New resources only** — updates and file
+  replacements carry the stored licence through, so tightening the list never
+  strands an existing resource.
+
+### Privacy
+
+- The privacy provider now implements `user_preference_provider`, declaring
+  and exporting `filepicker_recentlicense`. The plugin writes that core-owned
+  preference and no core provider declares it.
+
 ## [0.1.7] - 2026-07-27
 
 ### Security
