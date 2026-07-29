@@ -95,16 +95,19 @@ final class cover_image_test extends \advanced_testcase {
     }
 
     /**
-     * A resource with no cover still gets a same-sized panel, so a grid of
-     * cards keeps its rows aligned instead of stepping up and down.
+     * A resource with no cover still gets a same-sized image — the platform's
+     * default thumbnail — so a grid of cards keeps its rows aligned instead
+     * of stepping up and down.
      */
-    public function test_both_shapes_render_a_placeholder_when_there_is_no_image(): void {
+    public function test_both_shapes_render_the_default_thumbnail_when_there_is_no_image(): void {
         $this->resetAfterTest();
 
         foreach ([cover_image::card(null), cover_image::listitem(null)] as $html) {
-            $this->assertStringNotContainsString('<img', $html);
-            $this->assertStringContainsString('oerexchange-thumb-empty', $html);
-            $this->assertStringContainsString('aria-hidden="true"', $html);
+            $this->assertStringContainsString('<img', $html);
+            $this->assertStringContainsString('defaultthumbnail', $html);
+            $this->assertStringContainsString('oerexchange-thumb-default', $html);
+            // Decorative, like the real covers: the title link is adjacent.
+            $this->assertStringContainsString('alt=""', $html);
         }
 
         $this->assertStringContainsString((string) cover_image::CARD_HEIGHT . 'px', cover_image::card(null));

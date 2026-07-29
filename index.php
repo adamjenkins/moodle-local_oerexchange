@@ -183,8 +183,8 @@ if (empty($resources)) {
         echo html_writer::start_tag('div', ['class' => 'card h-100']);
         // The whole card leads with the cover image, so the catalogue reads as
         // a shelf of courseware rather than a list of titles. Resources with
-        // no cover get the same-sized neutral panel, which keeps every row of
-        // the grid aligned.
+        // no cover get the same-sized default thumbnail, which keeps every
+        // row of the grid aligned.
         echo html_writer::link(
             $url,
             \local_oerexchange\local\cover_image::card($coverurls[$r->id] ?? null),

@@ -30,7 +30,9 @@ namespace local_oerexchange\local;
  *
  * Both the lookup and the markup live here on purpose: the catalogue page and
  * the three Exchange blocks all draw the same two shapes, and four copies of
- * "img, or a neutral box if there is no image" is how they drift apart.
+ * "img, or the default thumbnail if there is no image" is how they drift
+ * apart. A resource whose author added no cover draws the platform's default
+ * thumbnail (pix/defaultthumbnail.jpg) at the same size.
  *
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -119,25 +121,23 @@ class cover_image {
      *
      * Always returns markup, even with no image: a grid where only some cards
      * carry a picture lands each row's text at a different height, which
-     * reads as a broken page rather than as "this one has no cover".
+     * reads as a broken page rather than as "this one has no cover". A
+     * resource with no custom cover draws the platform's default thumbnail
+     * at the same size.
      *
      * @param \moodle_url|null $url from url_for()/urls_for()
      * @return string HTML
      */
     public static function card(?\moodle_url $url): string {
-        $style = 'height:' . self::CARD_HEIGHT . 'px;object-fit:cover;';
+        global $OUTPUT;
 
-        if ($url === null) {
-            return \html_writer::div('', 'oerexchange-thumb oerexchange-thumb-empty card-img-top bg-light border-bottom', [
-                'style' => $style,
-                'aria-hidden' => 'true',
-            ]);
-        }
+        $isdefault = $url === null;
+        $src = $isdefault ? $OUTPUT->image_url('defaultthumbnail', 'local_oerexchange')->out(false) : $url->out(false);
 
         return \html_writer::empty_tag('img', [
-            'src' => $url->out(false),
-            'class' => 'oerexchange-thumb card-img-top',
-            'style' => $style,
+            'src' => $src,
+            'class' => 'oerexchange-thumb card-img-top' . ($isdefault ? ' oerexchange-thumb-default' : ''),
+            'style' => 'height:' . self::CARD_HEIGHT . 'px;object-fit:cover;',
             'loading' => 'lazy',
             // Deliberately empty: every call site puts the resource's title
             // immediately next to this image as a link, so alt text here
@@ -149,23 +149,22 @@ class cover_image {
     /**
      * The small square thumbnail beside a resource in a block's list.
      *
+     * A resource with no custom cover draws the platform's default thumbnail
+     * at the same size, for the same row-alignment reason as card().
+     *
      * @param \moodle_url|null $url from url_for()/urls_for()
      * @return string HTML
      */
     public static function listitem(?\moodle_url $url): string {
-        $style = 'width:' . self::LIST_SIZE . 'px;height:' . self::LIST_SIZE . 'px;object-fit:cover;';
+        global $OUTPUT;
 
-        if ($url === null) {
-            return \html_writer::div('', 'oerexchange-thumb oerexchange-thumb-empty rounded bg-light border flex-shrink-0', [
-                'style' => $style,
-                'aria-hidden' => 'true',
-            ]);
-        }
+        $isdefault = $url === null;
+        $src = $isdefault ? $OUTPUT->image_url('defaultthumbnail', 'local_oerexchange')->out(false) : $url->out(false);
 
         return \html_writer::empty_tag('img', [
-            'src' => $url->out(false),
-            'class' => 'oerexchange-thumb rounded flex-shrink-0',
-            'style' => $style,
+            'src' => $src,
+            'class' => 'oerexchange-thumb rounded flex-shrink-0' . ($isdefault ? ' oerexchange-thumb-default' : ''),
+            'style' => 'width:' . self::LIST_SIZE . 'px;height:' . self::LIST_SIZE . 'px;object-fit:cover;',
             'loading' => 'lazy',
             // Empty for the same reason as card(): the title is right there.
             'alt' => '',
