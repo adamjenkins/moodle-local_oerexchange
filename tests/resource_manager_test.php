@@ -108,6 +108,78 @@ final class resource_manager_test extends \advanced_testcase {
         $this->assertGreaterThan(0, $versionid);
     }
 
+    public function test_publish_rejects_a_licence_off_the_allowed_list(): void {
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+
+        // Core knows 'allrightsreserved', but it is not in the CC default set.
+        try {
+            resource_manager::publish($this->create_draft_file($user->id, 'x'), (int) $user->id, 1, [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'allrightsreserved', 'activitytype' => null,
+            ]);
+            $this->fail('a licence off the allowed list must be rejected');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('error_licensenotallowed', $e->errorcode);
+        }
+    }
+
+    public function test_publish_accepts_a_licence_the_admin_added_to_the_list(): void {
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+
+        set_config('allowedlicenses', 'allrightsreserved', 'local_oerexchange');
+
+        [$resourceid] = resource_manager::publish($this->create_draft_file($user->id, 'x'), (int) $user->id, 1, [
+            'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+            'tags' => '', 'licenseshortname' => 'allrightsreserved', 'activitytype' => null,
+        ]);
+
+        $this->assertGreaterThan(0, $resourceid);
+    }
+
+    /**
+     * Restricting the list must only affect future shares: a resource
+     * published under a licence the admin later removed still accepts new
+     * versions (file replacement, client re-share) under its stored licence.
+     */
+    public function test_publish_new_version_carries_a_now_disallowed_licence_through(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+
+        [$resourceid] = resource_manager::publish($this->create_draft_file($user->id, 'x'), (int) $user->id, 1, [
+            'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+            'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+        ]);
+
+        set_config('allowedlicenses', 'cc-sa-4.0', 'local_oerexchange');
+
+        [$resourceid2, $v2] = resource_manager::publish(
+            $this->create_draft_file($user->id, 'y'),
+            (int) $user->id,
+            1,
+            [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ],
+            $resourceid
+        );
+
+        $this->assertSame($resourceid, $resourceid2);
+        $this->assertGreaterThan(0, $v2);
+        $this->assertSame(
+            'cc-4.0',
+            $DB->get_field('local_oerexchange_resources', 'licenseshortname', ['id' => $resourceid])
+        );
+    }
+
     public function test_publish_new_version_increments_number_without_disturbing_counts(): void {
         global $DB;
         $this->resetAfterTest();

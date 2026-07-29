@@ -13,7 +13,11 @@ plugin installed on their own Moodle sites.
 - **Identity**: site registration (with admin approval) for client sites, plus
   a personal account-linking handshake so shares/reviews are attributed to a
   real Exchange account.
-- **Licensing**: Creative Commons via core's `license_manager`.
+- **Licensing**: Creative Commons via core's `license_manager`. An admin
+  chooses which licences sharing may use (Allowed licences setting; the CC
+  set by default) — enforced on every publish path and advertised to client
+  sites, with the licence dropdown preselecting the sharer's remembered
+  choice, the site default licence, or CC BY-SA, in that order.
 - **Community**: adaptation-story reviews, reports, and a moderation queue.
   A moderator's takedown is a state of its own that the author cannot lift
   **or delete** — while a resource is held, its author and co-authors keep

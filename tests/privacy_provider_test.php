@@ -43,6 +43,39 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
         $this->assertContains('local_oerexchange_linkcodes', $tables);
     }
 
+    public function test_get_metadata_declares_the_remembered_licence_preference(): void {
+        $collection = new \core_privacy\local\metadata\collection('local_oerexchange');
+        $collection = provider::get_metadata($collection);
+
+        $names = array_map(
+            fn($item) => method_exists($item, 'get_name') ? $item->get_name() : null,
+            $collection->get_collection()
+        );
+        $this->assertContains('filepicker_recentlicense', $names);
+    }
+
+    public function test_export_user_preferences_includes_the_remembered_licence_when_set(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        set_user_preference('filepicker_recentlicense', 'cc-sa-4.0', $user->id);
+
+        provider::export_user_preferences((int) $user->id);
+
+        $writer = \core_privacy\local\request\writer::with_context(\context_system::instance());
+        $prefs = $writer->get_user_preferences('local_oerexchange');
+        $this->assertSame('cc-sa-4.0', $prefs->filepicker_recentlicense->value);
+    }
+
+    public function test_export_user_preferences_writes_nothing_when_the_preference_is_unset(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+
+        provider::export_user_preferences((int) $user->id);
+
+        $writer = \core_privacy\local\request\writer::with_context(\context_system::instance());
+        $this->assertEmpty((array) $writer->get_user_preferences('local_oerexchange'));
+    }
+
     public function test_get_contexts_for_userid_finds_user_via_linkcodes_only(): void {
         global $DB;
         $this->resetAfterTest();

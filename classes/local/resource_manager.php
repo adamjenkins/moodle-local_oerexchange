@@ -97,6 +97,15 @@ class resource_manager {
             if (!\license_manager::get_license_by_shortname($metadata['licenseshortname'])) {
                 throw new \moodle_exception('error_invalidlicense', 'local_oerexchange');
             }
+            // Known to core is necessary but no longer sufficient: the admin
+            // decides which licences sharing may use (allowedlicenses
+            // setting, CC set until saved). New resources only — an update
+            // or file replacement carries the stored licence through above,
+            // and tightening the list must never strand what is already
+            // published.
+            if (!allowed_licenses::is_allowed($metadata['licenseshortname'])) {
+                throw new \moodle_exception('error_licensenotallowed', 'local_oerexchange');
+            }
         }
 
         // Everything below — the resource/version rows, moving the file into

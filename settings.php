@@ -107,6 +107,35 @@ if ($hassiteconfig) {
         $sharechoices
     ));
 
+    // Which licences courseware may be shared under. Enforced server-side in
+    // resource_manager::publish() (so the web-service publish path a client
+    // site uses is covered too, not just this site's own upload forms) and
+    // advertised to clients via get_config's acceptedlicenses. Choices are
+    // the licences enabled in this site's own licence manager; until first
+    // save the Creative Commons set applies (a multicheckbox renders
+    // all-unticked until then regardless of this default — the runtime
+    // fallback in allowed_licenses::shortnames() is what makes the default
+    // real). Restricting the list only affects future shares: published
+    // resources keep the licence they were shared under.
+    $settings->add(new admin_setting_heading(
+        'local_oerexchange/licensesheading',
+        get_string('settings_licensesheading', 'local_oerexchange'),
+        get_string(
+            'settings_licensesheading_desc',
+            'local_oerexchange',
+            \tool_licensemanager\helper::get_licensemanager_url()->out(false)
+        )
+    ));
+
+    require_once($CFG->libdir . '/licenselib.php');
+    $settings->add(new admin_setting_configmulticheckbox(
+        'local_oerexchange/allowedlicenses',
+        get_string('settings_allowedlicenses', 'local_oerexchange'),
+        get_string('settings_allowedlicenses_desc', 'local_oerexchange'),
+        array_fill_keys(\local_oerexchange\local\allowed_licenses::CC_SHORTNAMES, 1),
+        license_manager::get_active_licenses_as_array()
+    ));
+
     $settings->add(new admin_setting_heading(
         'local_oerexchange/badgesheading',
         get_string('settings_badgesheading', 'local_oerexchange'),

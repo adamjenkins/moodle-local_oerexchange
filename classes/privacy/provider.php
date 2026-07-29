@@ -34,7 +34,8 @@ use core_privacy\local\request\writer;
 class provider implements
     \core_privacy\local\metadata\provider,
     \core_privacy\local\request\core_userlist_provider,
-    \core_privacy\local\request\plugin\provider {
+    \core_privacy\local\request\plugin\provider,
+    \core_privacy\local\request\user_preference_provider {
     #[\Override]
     public static function get_metadata(collection $collection): collection {
         $collection->add_database_table('local_oerexchange_reviews', [
@@ -121,7 +122,35 @@ class provider implements
             'timeawarded' => 'privacy:metadata:local_oerexchange_badges:timeawarded',
         ], 'privacy:metadata:local_oerexchange_badges');
 
+        // Core's own filepicker preference, which the direct-upload share
+        // forms both read (to preselect the licence dropdown) and write (on a
+        // successful share) whenever the site's "Remember user licence
+        // preference" setting is on. Declared here because no core provider
+        // declares it and this plugin is a writer of it.
+        $collection->add_user_preference(
+            'filepicker_recentlicense',
+            'privacy:metadata:preference:filepicker_recentlicense'
+        );
+
         return $collection;
+    }
+
+    /**
+     * Export the remembered-licence preference for a user, when set.
+     *
+     * @param int $userid the user to export for
+     */
+    #[\Override]
+    public static function export_user_preferences(int $userid): void {
+        $recentlicense = get_user_preferences('filepicker_recentlicense', null, $userid);
+        if ($recentlicense !== null) {
+            writer::export_user_preference(
+                'local_oerexchange',
+                'filepicker_recentlicense',
+                $recentlicense,
+                get_string('privacy:metadata:preference:filepicker_recentlicense', 'local_oerexchange')
+            );
+        }
     }
 
     #[\Override]

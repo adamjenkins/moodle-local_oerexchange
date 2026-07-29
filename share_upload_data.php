@@ -24,6 +24,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+use local_oerexchange\local\allowed_licenses;
 use local_oerexchange\local\resource_manager;
 
 require(__DIR__ . '/../../config.php');
@@ -157,6 +158,9 @@ if (data_submitted() && confirm_sesskey()) {
                 get_string('replacefilequeued', 'local_oerexchange')
             );
         }
+        // Only an actual choice is remembered — update mode carries the
+        // stored licence through without asking.
+        allowed_licenses::remember($licenseshortname);
         redirect(new moodle_url('/local/oerexchange/index.php'), get_string('uploadsubmit', 'local_oerexchange'));
     } catch (moodle_exception $e) {
         $error = $e->getMessage();
@@ -207,10 +211,14 @@ if ($updating) {
     ]);
 
     echo html_writer::tag('label', get_string('licenselabelform', 'local_oerexchange'), ['for' => 'oerexchange-data-license']);
-    echo html_writer::empty_tag('input', [
-    'type' => 'text', 'name' => 'licenseshortname', 'id' => 'oerexchange-data-license', 'class' => 'form-control mb-2',
-    'required' => 'required',
-    ]);
+    // Same allowed-licence dropdown as share_upload_mbz.php — see its comment.
+    echo html_writer::select(
+        allowed_licenses::menu(),
+        'licenseshortname',
+        allowed_licenses::default_shortname() ?? '',
+        false,
+        ['id' => 'oerexchange-data-license', 'class' => 'form-select mb-2']
+    );
 
     echo html_writer::tag('label', get_string('tagslabel', 'local_oerexchange'), ['for' => 'oerexchange-data-tags']);
     echo html_writer::empty_tag('input', [

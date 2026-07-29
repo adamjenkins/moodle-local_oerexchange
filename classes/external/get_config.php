@@ -46,20 +46,18 @@ class get_config extends external_api {
      * @return array
      */
     public static function execute(): array {
-        global $CFG;
-
         self::validate_parameters(self::execute_parameters(), []);
         self::validate_context(\context_system::instance());
 
-        require_once($CFG->libdir . '/licenselib.php');
-
         $maxbytes = (int) get_config('local_oerexchange', 'maxbackupbytes') ?: (500 * 1024 * 1024);
-        $licenses = \license_manager::get_licenses();
 
         return [
             'maxbackupbytes' => $maxbytes,
             'sandboxenabled' => (bool) get_config('local_oerexchange', 'sandboxenabled'),
-            'acceptedlicenses' => implode(',', $licenses ? array_keys($licenses) : []),
+            // The admin's allowed list, not every licence this site knows:
+            // publish_resource rejects anything off this list, so this is
+            // what a client can safely offer in its own share form.
+            'acceptedlicenses' => implode(',', \local_oerexchange\local\allowed_licenses::shortnames()),
         ];
     }
 

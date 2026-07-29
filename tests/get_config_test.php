@@ -38,8 +38,11 @@ final class get_config_test extends \advanced_testcase {
 
         $this->assertSame(500 * 1024 * 1024, $result['maxbackupbytes']);
         $this->assertFalse($result['sandboxenabled']);
-        $this->assertIsString($result['acceptedlicenses']);
-        $this->assertNotSame('', $result['acceptedlicenses'], 'core always ships at least the default licenses');
+        $this->assertSame(
+            \local_oerexchange\local\allowed_licenses::default_setting(),
+            $result['acceptedlicenses'],
+            'until the admin saves the setting, the CC set is what clients may offer'
+        );
     }
 
     public function test_execute_reflects_configured_settings(): void {
@@ -48,10 +51,16 @@ final class get_config_test extends \advanced_testcase {
 
         set_config('maxbackupbytes', 12345, 'local_oerexchange');
         set_config('sandboxenabled', 1, 'local_oerexchange');
+        set_config('allowedlicenses', 'cc-sa-4.0,public', 'local_oerexchange');
 
         $result = get_config::execute();
 
         $this->assertSame(12345, $result['maxbackupbytes']);
         $this->assertTrue($result['sandboxenabled']);
+        $this->assertSame(
+            'cc-sa-4.0,public',
+            $result['acceptedlicenses'],
+            'the admin-restricted list, not every licence the site knows, is what gets advertised'
+        );
     }
 }
