@@ -144,6 +144,147 @@ final class parse_backup_task_test extends \advanced_testcase {
         $this->assertSame('failed', $version->status);
     }
 
+    /**
+     * Build a backup that is structurally valid — so
+     * get_backup_information_from_mbz() succeeds and the sanity check is
+     * actually reached — but which ships a populated users.xml, so it is
+     * refused by sanitycheck's second (independent) check.
+     *
+     * Repacked with Moodle's OWN backup packer rather than a plain zip/tar:
+     * the .mbz format carries an archive index the packer writes itself, and
+     * a hand-rolled repack is rejected upstream as a malformed archive —
+     * which would make this test pass for the wrong reason.
+     *
+     * @return string absolute path to the built .mbz
+     */
+    protected function build_backup_containing_user_data(): string {
+        $packer = get_file_packer('application/vnd.moodle.backup');
+        $extracted = make_request_directory() . '/extracted';
+        check_dir_exists($extracted);
+        $packer->extract_to_pathname(__DIR__ . '/fixtures/course_no_userdata.mbz', $extracted);
+
+        file_put_contents(
+            $extracted . '/users.xml',
+            '<?xml version="1.0" encoding="UTF-8"?>' . "\n"
+                . '<users><user id="5"><username>canary</username>'
+                . '<email>canary@students.invalid</email></user></users>'
+        );
+
+        $files = [];
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($extracted, \FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($iterator as $file) {
+            if (!$file->isFile()) {
+                continue;
+            }
+            $relative = ltrim(str_replace($extracted, '', $file->getPathname()), '/');
+            if ($relative === '.ARCHIVE_INDEX') {
+                // The packer writes its own.
+                continue;
+            }
+            $files[$relative] = $file->getPathname();
+        }
+
+        $path = make_request_directory() . '/with_userdata.mbz';
+        $packer->archive_to_pathname($files, $path);
+
+        return $path;
+    }
+
+    /**
+     * Replace a staged version's stored file with the one at $path.
+     *
+     * @param int $versionid
+     * @param string $path
+     * @param string $filename
+     */
+    protected function restage_file(int $versionid, string $path, string $filename): void {
+        global $DB;
+
+        $fs = get_file_storage();
+        $context = \context_system::instance();
+        $fs->delete_area_files($context->id, 'local_oerexchange', 'resource', $versionid);
+        $fs->create_file_from_pathname([
+            'contextid' => $context->id,
+            'component' => 'local_oerexchange',
+            'filearea' => 'resource',
+            'itemid' => $versionid,
+            'filepath' => '/',
+            'filename' => $filename,
+        ], $path);
+        $DB->set_field('local_oerexchange_versions', 'filename', $filename, ['id' => $versionid]);
+    }
+
+    public function test_execute_purges_the_uploaded_file_when_it_contains_user_data(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        [$resourceid, $versionid] = $this->stage_version('course_no_userdata.mbz', 'pending', 'course');
+        $this->restage_file($versionid, $this->build_backup_containing_user_data(), 'with_userdata.mbz');
+
+        // Precondition: the file really is stored before the task runs,
+        // otherwise "it is gone afterwards" would prove nothing.
+        $this->assertNotNull(\local_oerexchange\local\resource_manager::get_version_file($versionid));
+
+        $task = new parse_backup_task();
+        $task->set_custom_data(['versionid' => $versionid]);
+        $task->execute();
+
+        $version = $DB->get_record('local_oerexchange_versions', ['id' => $versionid]);
+        $this->assertSame('failed', $version->status);
+        $this->assertStringContainsString(
+            get_string('error_sanitycheckfailed', 'local_oerexchange'),
+            $version->parseerror
+        );
+        // The reason must also say the file is gone — an author told only
+        // "rejected" would reasonably assume their students' data is still
+        // sitting on the Exchange.
+        $this->assertStringContainsString(
+            get_string('sanitycheckfilediscarded', 'local_oerexchange'),
+            $version->parseerror
+        );
+
+        // The point of the fix: the rejected upload is not retained.
+        $this->assertNull(\local_oerexchange\local\resource_manager::get_version_file($versionid));
+
+        // The resource itself survives as a pending row carrying the reason.
+        $this->assertSame(
+            'pending',
+            $DB->get_field('local_oerexchange_resources', 'status', ['id' => $resourceid])
+        );
+    }
+
+    public function test_execute_keeps_the_file_when_the_backup_is_merely_unreadable(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        // A corrupt .mbz holds nothing that needs minimising, and keeping it
+        // is what lets a moderator diagnose the failure — so this failure
+        // path must NOT purge.
+        [, $versionid] = $this->stage_version('course_no_userdata.mbz', 'pending', 'course');
+        $corrupt = make_request_directory() . '/corrupt.mbz';
+        file_put_contents($corrupt, 'not a backup at all');
+        $this->restage_file($versionid, $corrupt, 'corrupt.mbz');
+
+        $task = new parse_backup_task();
+        $task->set_custom_data(['versionid' => $versionid]);
+        $task->execute();
+
+        // Core's zip layer reports the unreadable archive through debugging()
+        // on its way to throwing; consume it so it is an asserted part of
+        // this scenario rather than an unexplained notice.
+        $this->assertDebuggingCalled();
+
+        $version = $DB->get_record('local_oerexchange_versions', ['id' => $versionid]);
+        $this->assertSame('failed', $version->status);
+        $this->assertStringNotContainsString(
+            get_string('sanitycheckfilediscarded', 'local_oerexchange'),
+            (string) $version->parseerror
+        );
+        $this->assertNotNull(\local_oerexchange\local\resource_manager::get_version_file($versionid));
+    }
+
     public function test_execute_does_not_touch_already_published_resource_status(): void {
         global $DB;
         $this->resetAfterTest();

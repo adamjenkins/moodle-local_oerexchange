@@ -205,7 +205,10 @@ if (empty($failed)) {
         $table->data[] = [
             $resource ? html_writer::link($resurl, s($resource->title))
                 : get_string('resourcedeletedplaceholder', 'local_oerexchange'),
-            s($v->parseerror),
+            // Moderators see the full stored text — only the internal
+            // author-safe marker is stripped, since it is plumbing rather
+            // than part of the message.
+            s(\local_oerexchange\local\resource_manager::raw_parse_error($v->parseerror)),
         ];
     }
     echo html_writer::table($table);

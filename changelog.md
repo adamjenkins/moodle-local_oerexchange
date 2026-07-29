@@ -51,6 +51,31 @@ First stable release. `$plugin->maturity` is now `MATURITY_STABLE`.
 - The privacy provider now implements `user_preference_provider`, declaring
   and exporting `filepicker_recentlicense`. The plugin writes that core-owned
   preference and no core provider declares it.
+- **A backup rejected for containing user data is now deleted, not retained.**
+  `parse_backup_task::mark_failed()` takes a `$purgefile` flag, set only on
+  the sanity-check path, and the stored reason tells the author the file is
+  gone. Previously the upload stayed in the `resource` filearea indefinitely —
+  moderator-readable, for a resource that could never be published — which
+  left precisely the student data the check exists to exclude sitting on the
+  Exchange. An ordinary parse failure (corrupt or unreadable archive) still
+  keeps its file: nothing there needs minimising, and it is what lets a
+  moderator diagnose the failure.
+
+### Fixed
+
+- **The author is told why an upload was rejected.** `versions.parseerror` was
+  rendered only in `moderate.php`'s failed-parses list, so the one person who
+  could act on it — the author or a co-author — saw nothing but "Pending" and
+  could not learn that their backup had been refused. `resource.php` now shows
+  the reason to anyone who may edit the resource. It reports the **newest**
+  version rather than only a pending one, so a rejected "Replace the file" is
+  surfaced too; that case previously left a published resource silently
+  serving its old file.
+- **A client site can discover a rejection.** `get_share_status` gained
+  `versionstatus` and `versionerror` (both `VALUE_OPTIONAL`), reporting the
+  newest upload's state and, when it failed, why. A publish is acknowledged
+  before validation runs, so without these a client is told the share
+  succeeded and can never find out otherwise.
 
 ## [0.1.7] - 2026-07-27
 

@@ -29,6 +29,22 @@ use local_oerexchange\local\sanitycheck;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class parse_backup_task extends \core\task\adhoc_task {
+    /**
+     * Prefix marking a stored parse error as safe to show the resource's
+     * author and to send to a client site.
+     *
+     * Most parse failures are core exception messages, and those are NOT
+     * safe: a real one on this platform reads "Backup is missing XML file:
+     * /srv/lms/moodledata/temp/backup/info_from_mbz_.../moodle_backup.xml",
+     * disclosing the server's filesystem layout. That was harmless while
+     * `parseerror` was rendered only in the moderation queue, and stopped
+     * being harmless the moment authors and client sites could read it — so
+     * only messages this plugin composed itself carry the marker, and
+     * everything else is replaced by a generic notice at the point of
+     * display. Moderators still see the raw text.
+     */
+    public const AUTHOR_SAFE_MARKER = '[author-safe] ';
+
     #[\Override]
     public function execute() {
         global $DB;
@@ -54,7 +70,18 @@ class parse_backup_task extends \core\task\adhoc_task {
 
         try {
             if (!sanitycheck::passes($tmppath)) {
-                $this->mark_failed($versionid, get_string('error_sanitycheckfailed', 'local_oerexchange'));
+                // Purge the upload as well as refusing it — see mark_failed().
+                // The stored reason carries both halves: why it was refused,
+                // and that the file itself is gone, so the author is not left
+                // wondering whether their students' data is still sitting on
+                // the Exchange.
+                $this->mark_failed(
+                    $versionid,
+                    self::AUTHOR_SAFE_MARKER
+                        . get_string('error_sanitycheckfailed', 'local_oerexchange')
+                        . ' ' . get_string('sanitycheckfilediscarded', 'local_oerexchange'),
+                    true
+                );
                 return;
             }
 
@@ -166,9 +193,34 @@ class parse_backup_task extends \core\task\adhoc_task {
      *
      * @param int $versionid
      * @param string $error
+     * @param bool $purgefile whether to delete the uploaded file as well as
+     *                        recording the failure — true only where the file
+     *                        is rejected BECAUSE of what it contains
      */
-    protected function mark_failed(int $versionid, string $error): void {
+    protected function mark_failed(int $versionid, string $error, bool $purgefile = false): void {
         global $DB;
+
+        // A backup rejected for carrying user data is the one file that must
+        // not be kept: retaining it would leave student names, email
+        // addresses, submissions and grades sitting in the Exchange's filedir
+        // indefinitely — readable by any moderator, for a resource that can
+        // never be published — which is precisely the disclosure the sanity
+        // check exists to prevent. Deleting it costs the uploader nothing
+        // they cannot redo (re-export without user data and upload again),
+        // and the version row survives carrying the reason, so the moderation
+        // queue still records that it happened.
+        //
+        // Deliberately NOT done for other parse failures: a corrupt or
+        // unreadable .mbz holds nothing that needs minimising, and keeping it
+        // is what lets a moderator work out what went wrong.
+        if ($purgefile) {
+            get_file_storage()->delete_area_files(
+                \context_system::instance()->id,
+                'local_oerexchange',
+                'resource',
+                $versionid
+            );
+        }
 
         $DB->update_record('local_oerexchange_versions', (object) [
             'id' => $versionid,

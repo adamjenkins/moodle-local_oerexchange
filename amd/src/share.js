@@ -94,6 +94,12 @@ const nativeShare = async(url, title) => {
 const mastodonShare = async(url, title) => {
     const remembered = window.localStorage ? window.localStorage.getItem(MASTODON_INSTANCE_KEY) : '';
     const prompt = await getString('sharemastodonprompt', 'local_oerexchange');
+    // Deliberate prompt: Mastodon is federated, so the instance host can only
+    // come from the user, and this fires on an explicit button press rather
+    // than on page load. A core/modal would be nicer, but would turn a
+    // one-field question into an asynchronous flow that loses the click
+    // context; revisit if this ever grows past a single field.
+    // eslint-disable-next-line no-alert
     const answer = window.prompt(prompt, remembered || 'mastodon.social');
     if (!answer) {
         return;
@@ -130,7 +136,7 @@ export const init = () => {
         const url = region.dataset.shareUrl;
         const title = region.dataset.shareTitle || '';
 
-        // navigator.share only exists on some browsers (mostly mobile), so
+        // Navigator.share only exists on some browsers (mostly mobile), so
         // the button ships hidden and is revealed only where it will work.
         const native = region.querySelector('[data-action="oerexchange-share-nativeshare"]');
         if (native && navigator.share) {

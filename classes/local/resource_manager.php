@@ -264,6 +264,48 @@ class resource_manager {
     }
 
     /**
+     * The version of a stored parse error that may be shown to a resource's
+     * author, or sent to a client site.
+     *
+     * One gate for both display paths (resource.php and the get_share_status
+     * web service) so they can never drift apart. Only errors this plugin
+     * composed itself are passed through — core exception text routinely
+     * carries absolute server paths, which authors have no business seeing.
+     * Everything else becomes a generic notice; the raw text stays readable
+     * to moderators in the moderation queue.
+     *
+     * @param string|null $parseerror the stored versions.parseerror
+     * @return string author-safe message, or '' when there is nothing to say
+     */
+    public static function author_facing_parse_error(?string $parseerror): string {
+        $parseerror = (string) $parseerror;
+        if ($parseerror === '') {
+            return '';
+        }
+
+        $marker = \local_oerexchange\task\parse_backup_task::AUTHOR_SAFE_MARKER;
+        if (str_starts_with($parseerror, $marker)) {
+            return substr($parseerror, strlen($marker));
+        }
+
+        return get_string('error_uploadfailedgeneric', 'local_oerexchange');
+    }
+
+    /**
+     * A stored parse error with the author-safe marker removed, for
+     * moderator-facing display — they see everything, but not the plumbing.
+     *
+     * @param string|null $parseerror
+     * @return string
+     */
+    public static function raw_parse_error(?string $parseerror): string {
+        $marker = \local_oerexchange\task\parse_backup_task::AUTHOR_SAFE_MARKER;
+        $parseerror = (string) $parseerror;
+
+        return str_starts_with($parseerror, $marker) ? substr($parseerror, strlen($marker)) : $parseerror;
+    }
+
+    /**
      * Whether a version's file may be downloaded by a plain logged-in session
      * (i.e. without a valid signed URL). Signed downloads bypass this check
      * entirely (they carry their own short-lived authorization). This is the

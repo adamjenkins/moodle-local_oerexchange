@@ -23,6 +23,14 @@ plugin installed on their own Moodle sites.
   **or delete** — while a resource is held, its author and co-authors keep
   every other control but cannot remove it, so a complaint and the record of
   the takedown survive the person they are about. The queue can restore it.
+- **No user data, and the author is told**: every uploaded backup is checked
+  server-side for user data before it can be published — the backup's own
+  recorded setting *and* an independent inspection of its `users.xml`, so a
+  client that lies is caught too. A backup carrying user data is refused, the
+  uploaded file is **deleted** rather than retained, and the reason is shown
+  to the author on their own resource page and reported to their client site.
+  A merely corrupt backup is kept for a moderator to diagnose, and authors see
+  a generic message for it — internal error text can name server paths.
 - **Author control**: authors hide, show, delete, and replace the file of
   their own resources, and may decline sandbox availability with a reason.
   The Exchange serves exactly one version per resource — an update supersedes

@@ -30,8 +30,26 @@ Because the plugin now writes core's `filepicker_recentlicense` user
 preference — which no core privacy provider declares — the privacy provider
 gained a `user_preference_provider` declaration and export for it.
 
-Verified before release: 306 PHPUnit tests green, both Behat scenarios green,
-phpcs and moodlecheck clean, and a live end-to-end run on a real two-site
-deployment confirming that a shared course reaches the Exchange carrying no
-user data at all, and that a backup exported *with* user data is refused on
-every publish path.
+**A rejected upload no longer fails silently, and is no longer kept.** A live
+privacy verification of the whole platform found that the sanity check did its
+job — a backup carrying user data never reaches the catalogue — but that the
+person who made the mistake was never told. The reason was recorded on the
+version row and rendered only in the moderation queue, so an author saw an
+upload that stayed "Pending" forever with no way to learn why, and no way to
+act on the advice the message itself contained. Worse, the rejected file was
+retained indefinitely, leaving exactly the student data the check exists to
+keep out sitting in the Exchange's file storage.
+
+Now: the reason appears on the author's own resource page (theirs and their
+co-authors', for the newest upload, so a rejected *replacement* is reported
+too); a backup refused for carrying user data is **deleted**, and the stored
+reason says so; and `get_share_status` reports the newest upload's state and
+its rejection reason, so a client site can tell its teacher rather than
+showing a share as published that the Exchange has actually refused. A
+backup that is merely corrupt is still kept, deliberately — it holds nothing
+that needs minimising, and keeping it is what lets a moderator diagnose it.
+
+Verified before release: 313 PHPUnit tests green, phpcs clean, and a live
+end-to-end run on a real two-site deployment confirming that a shared course
+reaches the Exchange carrying no user data at all, and that a backup exported
+*with* user data is refused on every publish path.

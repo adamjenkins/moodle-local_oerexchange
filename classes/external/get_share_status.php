@@ -82,11 +82,36 @@ class get_share_status extends external_api {
 
         $version = resource_manager::get_current_version((int) $resource->id);
 
+        // The newest version, whatever its state — NOT the served one. A
+        // publish is acknowledged before it has been validated (parsing is an
+        // adhoc task), so a client site is told its share succeeded and can
+        // then never find out that the Exchange refused the file a minute
+        // later. Reporting the newest version's state and, when it failed,
+        // the reason, is what lets the client tell the teacher. Without it
+        // the only readable copy of that reason lives on the Exchange's
+        // moderation page, which a teacher on a client site cannot see.
+        $newest = $DB->get_records(
+            'local_oerexchange_versions',
+            ['resourceid' => (int) $resource->id],
+            'versionnumber DESC, id DESC',
+            '*',
+            0,
+            1
+        );
+        $newest = $newest ? reset($newest) : null;
+
         return [
             'resourceid' => (int) $resource->id,
             'title' => $resource->title,
             'status' => $resource->status,
             'visible' => ($resource->status === 'published'),
+            'versionstatus' => $newest ? $newest->status : '',
+            // Author-safe only — this crosses the network to another site and
+            // is shown to a teacher there. Raw core exception text carries
+            // absolute server paths.
+            'versionerror' => ($newest && $newest->status === 'failed')
+                ? resource_manager::author_facing_parse_error($newest->parseerror)
+                : '',
             'timeshared' => (int) $resource->timeshared,
             // The served version's timecreated is when the copy the Exchange
             // is actually handing out was uploaded — a truer "last updated"
@@ -109,6 +134,16 @@ class get_share_status extends external_api {
             'title' => new external_value(PARAM_TEXT, 'Current title on the Exchange'),
             'status' => new external_value(PARAM_ALPHA, 'published|pending|hidden|removed|deleted'),
             'visible' => new external_value(PARAM_BOOL, 'Whether it currently appears in the catalogue'),
+            'versionstatus' => new external_value(
+                PARAM_ALPHA,
+                'State of the most recent upload: parsing|ready|failed|superseded, or empty if none',
+                VALUE_OPTIONAL
+            ),
+            'versionerror' => new external_value(
+                PARAM_RAW,
+                'Why the most recent upload was rejected, empty unless versionstatus is failed',
+                VALUE_OPTIONAL
+            ),
             'timeshared' => new external_value(PARAM_INT, 'When it was first published'),
             'timeupdated' => new external_value(PARAM_INT, 'When the served copy was last uploaded'),
             'downloadcount' => new external_value(PARAM_INT, 'Times downloaded'),

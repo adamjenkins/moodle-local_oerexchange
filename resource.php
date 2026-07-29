@@ -526,6 +526,46 @@ if ($cancontrolthumbnail) {
         ['class' => 'mb-2']
     );
 
+    // Why an upload never appeared. Until now the parse failure was recorded
+    // on the version row and rendered ONLY in moderate.php's failed-parses
+    // list, so the person who actually made the mistake — the author or a
+    // co-author — saw nothing but "Pending" and had no way to learn that
+    // their backup had been refused, let alone why. That is the worst case
+    // for the sanity check in particular: its message tells you exactly how
+    // to fix the problem ("Re-export it with user data excluded"), and the
+    // one person who could act on it was the one person who could not read
+    // it.
+    //
+    // The newest version is used rather than only the pending case, so a
+    // rejected "Replace the file" is reported too — there the resource stays
+    // published on its previous file and the failure would otherwise be
+    // completely silent.
+    $newestversion = $DB->get_records(
+        'local_oerexchange_versions',
+        ['resourceid' => $resource->id],
+        'versionnumber DESC, id DESC',
+        '*',
+        0,
+        1
+    );
+    $newestversion = $newestversion ? reset($newestversion) : null;
+    if ($newestversion && $newestversion->status === 'failed' && $newestversion->parseerror) {
+        // Never the raw stored text: core exception messages carry absolute
+        // server paths. See resource_manager::author_facing_parse_error().
+        $authormessage = \local_oerexchange\local\resource_manager::author_facing_parse_error(
+            $newestversion->parseerror
+        );
+        echo html_writer::tag(
+            'div',
+            html_writer::tag(
+                'strong',
+                get_string('uploadrejectedheading', 'local_oerexchange')
+            )
+                . html_writer::tag('div', s($authormessage), ['class' => 'mt-1']),
+            ['class' => 'alert alert-danger py-2 px-3 mb-2']
+        );
+    }
+
     // The abandoned-courseware warning, mirrored from the notification so an
     // author who lands here (its link points at this page) sees the deadline
     // and the one-click way out side by side. Only while the flag is live —
