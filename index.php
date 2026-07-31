@@ -191,8 +191,19 @@ if (empty($resources)) {
             ['tabindex' => '-1', 'aria-hidden' => 'true']
         );
         echo html_writer::start_tag('div', ['class' => 'card-body']);
-        echo html_writer::tag('h5', html_writer::link($url, s($r->title)), ['class' => 'card-title']);
-        echo html_writer::tag('p', s(shorten_text(strip_tags($r->summary ?? ''), 140)), ['class' => 'card-text text-muted']);
+        $title = format_string($r->title, true, ['context' => context_system::instance()]);
+        echo html_writer::tag('h5', html_writer::link($url, $title), ['class' => 'card-title']);
+        // Filter first (multilang collapses to one language), then strip tags
+        // and decode entities via content_to_text(), then shorten, then
+        // escape exactly once — same order block_oerexchangebrowse.php uses
+        // for its card summaries, which fixed a double-escape from
+        // strip_tags() + s() on pre-encoded entities.
+        $summaryfiltered = format_text($r->summary ?? '', FORMAT_HTML, ['context' => context_system::instance()]);
+        echo html_writer::tag(
+            'p',
+            s(shorten_text(content_to_text($summaryfiltered, FORMAT_HTML), 140)),
+            ['class' => 'card-text text-muted']
+        );
         echo html_writer::tag('div', $typelabel . ' · ' . s($r->licenseshortname), ['class' => 'small text-muted']);
         echo html_writer::tag(
             'div',

@@ -458,7 +458,11 @@ if ($resource->forkedfromid) {
     }
 }
 
-echo html_writer::tag('div', format_text($resource->summary ?? '', FORMAT_PLAIN), ['class' => 'mb-3']);
+echo html_writer::tag(
+    'div',
+    format_text($resource->summary ?? '', FORMAT_HTML, ['context' => context_system::instance()]),
+    ['class' => 'mb-3']
+);
 
 // Cover-image thumbnail, extracted from a course backup's overviewfiles by
 // parse_backup_task (Task 8) and stored under component=local_oerexchange,
@@ -902,11 +906,15 @@ if ($structure && !empty($structure['sections'])) {
         // readable label instead of leaving it as a bare digit.
         echo ctype_digit((string) $title)
             ? s(get_string('sectionnumber', 'local_oerexchange', $title))
-            : s($title);
+            : format_string($title, true, ['context' => context_system::instance()]);
         if (!empty($section['activities'])) {
             echo html_writer::start_tag('ul');
             foreach ($section['activities'] as $activity) {
-                echo html_writer::tag('li', s($activity['modulename']) . ': ' . s($activity['title']));
+                echo html_writer::tag(
+                    'li',
+                    s($activity['modulename']) . ': '
+                        . format_string($activity['title'], true, ['context' => context_system::instance()])
+                );
             }
             echo html_writer::end_tag('ul');
         }
