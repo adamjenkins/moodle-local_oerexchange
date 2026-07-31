@@ -29,11 +29,11 @@ The catalogue at `/local/oerexchange/index.php` is open to anonymous
 visitors — no login is required to search or browse.
 
 - **Search and filter** by keyword, resource type (whole course or single
-  activity), license, and language.
+  activity), licence, and language.
 - Click any card to open the **resource page**, which shows:
   - A **structure preview** — the course's sections and activities — built
     from the shared backup without anyone needing to import it first.
-  - The **license** it was shared under (Creative Commons or public domain).
+  - The **licence** it was shared under (Creative Commons or public domain).
   - **Required plugins**, if the resource uses any activity type or course
     format that isn't part of standard Moodle. Each is marked either
     "included in trial" (you can try it without installing anything) or

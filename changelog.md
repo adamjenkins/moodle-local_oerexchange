@@ -218,7 +218,7 @@ First stable release. `$plugin->maturity` is now `MATURITY_STABLE`.
   no-op, silently retaining profiles, badges, reviews and reports through
   an approved delete-all request). The tombstoned catalogue skeleton
   survives by design.
-- License shortnames are validated against core's license manager and
+- Licence shortnames are validated against core's licence manager and
   titles are checked non-empty server-side on every publish path (WS,
   .mbz upload, data upload).
 - The data-upload MIME sniff is per extension: the flat shared list let
