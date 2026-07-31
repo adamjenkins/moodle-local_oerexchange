@@ -3,6 +3,52 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.0.2] - 2026-07-31
+
+### Added
+
+- Sandbox bundle configuration page (Site administration → Plugins → OER
+  Exchange → Sandbox bundle configuration): language packs to bake in, the
+  trial's default language, which Moodle branches to build, whether the
+  multilang filter (content and, separately, headings/names) is enabled in
+  the trial, further site settings as `name=value` pairs, and a per-entry
+  **Bake into bundle** checkbox on the plugin allowlist. Generates a
+  downloadable config file for `oer-sandbox`'s build scripts and a short
+  stamp identifying the saved configuration.
+- Deployed-bundle stamp check: once an admin confirms a configuration is
+  actually bundled in the deployed sandbox, the page fetches the deployed
+  bundle's own stamp and warns if it no longer matches the saved
+  configuration.
+- New capability `local/oerexchange:managesandbox` (Manager only by default)
+  gating the new page.
+- New opt-in setting `sandboxbaseurlinsecure` (off by default): relaxes core's
+  outbound-request security guard and TLS verification for the deployed-stamp
+  fetch only, for a self-hosted sandbox on a private network or behind a
+  self-signed certificate.
+- `local_oerexchange_pluginallowlist.bake` column, letting an admin mark an
+  allowlisted plugin for baking into the bundle rather than installing it at
+  trial boot.
+
+### Fixed
+
+- Resource titles, descriptions, catalogue-card summaries and structure-preview
+  section/activity titles rendered multilang markup as literal text even with
+  the multilang filter enabled — every sink used `s()` (escapes before any
+  filter runs) or `format_text(..., FORMAT_PLAIN)` (which also escapes before
+  filtering). Switched to `format_string()`/`format_text(FORMAT_HTML)` with a
+  system context, matching `block_oerexchangeshares`'s already-correct
+  pattern.
+- The sandbox configuration page fatally errored for every user (missing
+  `adminlib.php` require); fixing it exposed that all of this plugin's admin
+  pages were reachable only by users holding `moodle/site:config`, locking out
+  a manager with solely this plugin's own capabilities. All four admin pages
+  are now registered independently of `$hassiteconfig`.
+- A trial's baked-language-pack path silently failed to set the trial's
+  default language, so a Japanese-launched trial still booted in English
+  despite the pack installing correctly.
+- International English spelling ("License" → "Licence") corrected in a
+  handful of displayed strings.
+
 ## [1.0.1] - 2026-07-29
 
 ### Changed
