@@ -107,9 +107,13 @@ final class playground_test extends \advanced_testcase {
         global $DB;
         $this->resetAfterTest();
         set_config('sandboxbundled', 1, 'local_oerexchange');
+        // The real stored value is "5.2" — manage_allowlist.php validates this
+        // field with allowlist_manager::is_valid_branch() (dotted major.minor
+        // only), never MOODLE_502_STABLE. A fixture using the wrong format
+        // would pass against a broken branch_to_bundle() and prove nothing.
         $DB->insert_record('local_oerexchange_pluginallowlist', (object) [
             'plugintype' => 'mod', 'pluginname' => 'quizquest',
-            'moodlebranch' => 'MOODLE_502_STABLE', 'sourceurl' => 'https://x.invalid/q.zip',
+            'moodlebranch' => '5.2', 'sourceurl' => 'https://x.invalid/q.zip',
             'status' => 'active', 'bake' => 1,
             'timecreated' => time(), 'timemodified' => time(),
         ]);
@@ -373,14 +377,41 @@ final class playground_test extends \advanced_testcase {
         $this->assertSame('', playground::branch_to_bundle('main'));
     }
 
+    /**
+     * The allowlist's real stored form (dotted major.minor, e.g. "5.2" —
+     * allowlist_manager::is_valid_branch()) is already a bundle string, so
+     * branch_to_bundle() must return it unchanged (the identity case). This
+     * is the format is_baked_in() actually receives from a live allowlist
+     * row's moodlebranch column, not MOODLE_502_STABLE.
+     */
+    public function test_branch_to_bundle_is_the_identity_for_the_dotted_form_the_allowlist_stores(): void {
+        $this->assertSame('5.2', playground::branch_to_bundle('5.2'));
+        $this->assertSame('5.0', playground::branch_to_bundle('5.0'));
+        $this->assertSame('4.5', playground::branch_to_bundle('4.5'));
+    }
+
+    /**
+     * The regression test for the branch-format defect: manage_allowlist.php
+     * only ever writes moodlebranch values that pass
+     * allowlist_manager::is_valid_branch() (dotted major.minor, e.g. "5.2") —
+     * it never writes MOODLE_502_STABLE. An earlier version of this test built
+     * its fixture row with 'moodlebranch' => 'MOODLE_502_STABLE', a format the
+     * application never actually stores (it came from a stale db/install.xml
+     * column comment, not from allowlist_manager::is_valid_branch() or a live
+     * row). That mismatched fixture passed while branch_to_bundle('5.2') — the
+     * real value — returned '', so is_baked_in() compared '' against '5.2' and
+     * returned false for every real allowlist row. Verified live against the
+     * mod_quizquest row: moodlebranch='5.2'.
+     */
     public function test_a_baked_plugin_is_recognised_from_the_allowlist(): void {
         global $DB;
         $this->resetAfterTest();
         set_config('sandboxbundled', 1, 'local_oerexchange');
+        $this->assertTrue(\local_oerexchange\local\allowlist_manager::is_valid_branch('5.2'));
 
         $DB->insert_record('local_oerexchange_pluginallowlist', (object) [
             'plugintype' => 'mod', 'pluginname' => 'quizquest',
-            'moodlebranch' => 'MOODLE_502_STABLE', 'sourceurl' => 'https://x.invalid/q.zip',
+            'moodlebranch' => '5.2', 'sourceurl' => 'https://x.invalid/q.zip',
             'status' => 'active', 'bake' => 1,
             'timecreated' => time(), 'timemodified' => time(),
         ]);
@@ -396,7 +427,7 @@ final class playground_test extends \advanced_testcase {
 
         $DB->insert_record('local_oerexchange_pluginallowlist', (object) [
             'plugintype' => 'mod', 'pluginname' => 'quizquest',
-            'moodlebranch' => 'MOODLE_502_STABLE', 'sourceurl' => 'https://x.invalid/q.zip',
+            'moodlebranch' => '5.2', 'sourceurl' => 'https://x.invalid/q.zip',
             'status' => 'active', 'bake' => 1,
             'timecreated' => time(), 'timemodified' => time(),
         ]);

@@ -16,6 +16,8 @@
 
 namespace local_oerexchange\local\sandbox;
 
+use local_oerexchange\local\allowlist_manager;
+
 /**
  * Moodle Playground sandbox integration (DESIGN.md §4, option B): branch
  * mapper + blueprint builder + launch-URL builder. Pure functions — no HTTP
@@ -44,15 +46,34 @@ class playground {
     /**
      * The bundle string a Moodle branch name corresponds to.
      *
-     * The allowlist stores branches as MOODLE_502_STABLE; blueprints and
-     * launch URLs use "5.2" (see build_blueprint()'s $branch param and
-     * build_launch_url()). Comparing the two spellings directly silently
-     * matches nothing, so this is the single place they meet.
+     * Two spellings reach this method, from two different places:
+     * - The allowlist (local_oerexchange_pluginallowlist.moodlebranch, written by
+     *   manage_allowlist.php and validated by allowlist_manager::is_valid_branch())
+     *   stores the DOTTED form, e.g. "5.2" — that is already the bundle string, so
+     *   this is the identity case. (db/install.xml's column COMMENT says
+     *   "e.g. MOODLE_502_STABLE"; that comment is stale and wrong — the validator
+     *   and the live data are the truth. Trusting the comment instead of checking
+     *   is what broke this method the first time around: it made
+     *   branch_to_bundle('5.2') return '', so is_baked_in() compared '' against
+     *   the real bundle string and silently returned false for every allowlist
+     *   row, forever.)
+     * - BUNDLES (sandbox_config.php DEFAULT_BUNDLES, classes/local/sandbox/config.php
+     *   render(), oer-sandbox's fetch-moodle-source.sh) use the git branch-tag
+     *   spelling, MOODLE_502_STABLE, because that is the real upstream Moodle git
+     *   branch name the build script checks out.
      *
-     * @param string $moodlebranch e.g. MOODLE_502_STABLE
-     * @return string e.g. "5.2", or '' when the branch has no bundle string (main)
+     * Both are legitimate; this is the one place they meet. The dotted form is
+     * returned as-is, MOODLE_502_STABLE-style strings are converted to it, and
+     * anything else (e.g. "main") maps to '' — there is no bundle for it.
+     *
+     * @param string $moodlebranch e.g. "5.2" (allowlist) or "MOODLE_502_STABLE" (BUNDLES/fetch-moodle-source.sh)
+     * @return string e.g. "5.2", or '' when the branch has no bundle string (e.g. "main")
      */
     public static function branch_to_bundle(string $moodlebranch): string {
+        if (allowlist_manager::is_valid_branch($moodlebranch)) {
+            return $moodlebranch;
+        }
+
         if (!preg_match('/^MOODLE_(\d)(\d{2})_STABLE$/', $moodlebranch, $m)) {
             return '';
         }
