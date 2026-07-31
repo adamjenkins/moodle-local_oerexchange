@@ -368,7 +368,9 @@ class playground {
 
     /**
      * Build the runPhpCode step body for the switch-ON (`sandboxbundled`)
-     * language selection: a local filesystem copy, never a network fetch.
+     * language selection: a local filesystem copy first, falling back to the
+     * same network install the switch-OFF path uses if the copy can't
+     * deliver a usable pack.
      *
      * This is NOT the same as "nothing to do" even though the switch means
      * the pack is already baked: oer-sandbox's bake.sh (SANDBOX-CONFIG-PLAN.md
@@ -377,25 +379,64 @@ class playground {
      * but `dataroot` (where Moodle actually reads installed packs from,
      * `$CFG->dataroot/lang`) is recreated fresh on every trial boot, exactly
      * like the rest of the WASM instance's ephemeral filesystem. So this copy
-     * genuinely has to run every time; the only thing the switch removes is
-     * the network round-trip through the playground's CORS proxy to
-     * download.moodle.org (MULTILANG-TRYIT-PLAN.md verified fact 5). If the
-     * requested code was not actually baked into this deployment (e.g. an
-     * admin ticked the switch before rebuilding, or asked for a language
-     * `sandboxlangpacks` never listed), this step silently no-ops rather
-     * than falling back to a network install — that fallback is exactly the
-     * cost the switch exists to remove, and the deployed/saved stamp
-     * comparison on the config page (bundle_stamp) is what should catch a
-     * switch ticked ahead of a rebuild, not this step guessing around it.
+     * genuinely has to run every time; the only thing a successful copy
+     * removes is the network round-trip through the playground's CORS proxy
+     * to download.moodle.org (MULTILANG-TRYIT-PLAN.md verified fact 5).
+     *
+     * Measured live 2026-07-31 (SANDBOX-CONFIG-PLAN.md Task 12 Defect 2),
+     * booting a probe build of this step for branch 5.2
+     * (MOODLE_502_STABLE, split docroot):
+     *   - $CFG->dirroot   = /www/moodle/public
+     *   - $CFG->dataroot  = /persist/moodledata
+     *   - $CFG->langotherroot = /persist/moodledata/lang
+     *   - the pack bake.sh injects for a split-docroot branch really does
+     *     land at $CFG->dirroot . '/oer-baked-lang/<code>' (bake.sh's own
+     *     WEBROOT="$MOODLE_DIR/public" for split branches matches Moodle's
+     *     own dirroot = dirname(lib/setup.php's own dir) exactly) — so the
+     *     path guess here was already correct; is_dir()/is_file() and the
+     *     RecursiveDirectoryIterator copy all measured true/succeeded
+     *     (1385/1385 files copied, langconfig.php present at the target
+     *     afterward). The path was never the bug.
+     *   - The actual defect: the admin-repoint call below,
+     *     `user_update_user($admin, false)`, fatals with "Call to undefined
+     *     function user_update_user()" — user/lib.php is not among the
+     *     libraries lib/setup.php always loads (the same class of bug as
+     *     dev-docs/oer-platform/discoveries/
+     *     2026-07-23-core-libs-are-not-always-loaded.md), and CLI_SCRIPT +
+     *     require(config.php) here never pulls it in either. The copy
+     *     silently completes with the pack fully installed, but the admin's
+     *     `lang` column is never updated, so the very next 'login' step logs
+     *     in as an admin still on 'en' and the trial renders English despite
+     *     the pack being correctly baked and copied — invisible before this
+     *     measurement because runPhpCode's echo output is discarded by the
+     *     upstream step handler (reference-clones/moodle-playground/src/
+     *     blueprint/steps/request.js handleRunPhpCode(), which only
+     *     console.warn()s `result.errors`, never surfaces `result.text`).
+     *     Fixed here by dropping user_update_user() entirely in favour of
+     *     the same direct $DB->set_field('user', 'lang', ...) the
+     *     switch-OFF network path already uses successfully (see
+     *     reference-clones/moodle-playground/src/blueprint/php/helpers.js
+     *     phpInstallLanguagePacks()) — no extra require needed, and one
+     *     fewer divergence between the two paths.
+     *
+     * The baked-path lookup itself now probes two candidates rather than
+     * hardcoding one (dirroot's own value, then its parent), so a future
+     * bundle layout change (e.g. a branch that stops splitting the docroot)
+     * degrades to the network fallback below instead of silently no-oping.
+     *
+     * If neither the baked copy nor the network install can deliver the
+     * pack, the trial simply boots in English, same as a failed
+     * installLanguagePack step (SANDBOX-CONFIG-DESIGN.md's existing
+     * behaviour) — this was already the standing fallback contract; it
+     * previously just also (wrongly) covered the baked-and-present case.
      *
      * Modeled on build_activity_restore_php()'s CLI_SCRIPT preamble and
      * comment-free body (same base64-into-launch-URL size cost — see that
      * method's docblock). The recursive local copy mirrors the baked-copy
      * branch MULTILANG-TRYIT-PLAN.md Task 1 specified for its (never
-     * implemented, now superseded) build_multilang_defaults_php().
-     *
-     * Unverified live as of this writing — SANDBOX-CONFIG-PLAN.md Task 12
-     * is where this gets its first real boot with the CORS proxy blocked.
+     * implemented, now superseded) build_multilang_defaults_php(). The
+     * network fallback mirrors phpInstallLanguagePacks() (same file) line
+     * for line, since that generator is not reachable from this class.
      *
      * @param string $language already validated by is_installable_language()
      * @return string PHP source (without the leading <?php)
@@ -407,8 +448,19 @@ class playground {
 define('CLI_SCRIPT', true);
 require('/www/moodle/config.php');
 \$code = $codelit;
-\$baked = \$CFG->dirroot . '/oer-baked-lang/' . \$code;
-if (is_dir(\$baked) && is_file(\$baked . '/langconfig.php')) {
+\$source = 'none';
+\$candidates = [
+    \$CFG->dirroot . '/oer-baked-lang/' . \$code,
+    dirname(\$CFG->dirroot) . '/oer-baked-lang/' . \$code,
+];
+\$baked = null;
+foreach (\$candidates as \$candidate) {
+    if (is_dir(\$candidate) && is_file(\$candidate . '/langconfig.php')) {
+        \$baked = \$candidate;
+        break;
+    }
+}
+if (\$baked !== null) {
     \$target = \$CFG->dataroot . '/lang/' . \$code;
     make_upload_directory('lang');
     \$it = new RecursiveIteratorIterator(
@@ -424,14 +476,31 @@ if (is_dir(\$baked) && is_file(\$baked . '/langconfig.php')) {
             copy(\$item->getPathname(), \$dest);
         }
     }
+    if (is_file(\$target . '/langconfig.php')) {
+        \$source = 'baked';
+    }
+}
+if (\$source === 'none') {
+    require_once(\$CFG->libdir . '/componentlib.class.php');
+    make_upload_directory('lang');
+    try {
+        \$installer = new lang_installer([\$code]);
+        \$installer->run();
+    } catch (\Throwable \$e) {
+        // fall through to the filesystem check below
+    }
+    if (is_file(\$CFG->dataroot . '/lang/' . \$code . '/langconfig.php')) {
+        \$source = 'network';
+    }
+}
+if (\$source !== 'none') {
     get_string_manager()->reset_caches();
     \$admin = get_admin();
     if (\$admin) {
-        \$admin->lang = \$code;
-        user_update_user(\$admin, false);
+        \$DB->set_field('user', 'lang', \$code, ['id' => \$admin->id]);
     }
 }
-echo json_encode(['ok' => true]);
+echo json_encode(['ok' => \$source !== 'none', 'source' => \$source]);
 PHP;
     }
 

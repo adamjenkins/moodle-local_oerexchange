@@ -310,6 +310,8 @@ $string['settings_sandboxadvanced'] = 'Advanced settings';
 $string['settings_sandboxadvanced_help'] = 'Further site settings to apply to the sandbox, one name=value pair per line. These map to Moodle config values and are not validated against a fixed list — an unusable name or value is rejected when you save, rather than silently ignored.';
 $string['settings_sandboxbaseurl'] = 'Sandbox base URL';
 $string['settings_sandboxbaseurl_desc'] = 'Same-origin path where the Moodle Playground static bundle is deployed, e.g. https://vagrant.wisecat.net/try/';
+$string['settings_sandboxbaseurlinsecure'] = 'Allow an insecure sandbox base URL';
+$string['settings_sandboxbaseurlinsecure_desc'] = 'Only needed for a self-hosted sandbox on a private network and/or a self-signed certificate, e.g. a development or internal deployment. When enabled, the deployed-bundle stamp check above bypasses core\'s SSRF host-blocking guard and TLS certificate verification for requests to the sandbox base URL only. Leave this off for a normal public sandbox deployment.';
 $string['settings_sandboxbundled'] = 'These settings are bundled in the deployed sandbox';
 $string['settings_sandboxbundled_help'] = 'Bundles can only be produced by a build run on a machine with the toolchain — never by the Exchange itself. Tick this once the bundle has actually been rebuilt and redeployed with this configuration; until then, the Exchange treats nothing here as baked in, so a trial still installs what it needs at boot instead of silently missing it.';
 $string['settings_sandboxbundles'] = 'Bundles to build';

@@ -33,6 +33,13 @@ namespace local_oerexchange\local\sandbox;
  * the sandbox may be on a different host than this Exchange, so any fetch
  * failure here is reported as unverifiable, never as a mismatch.
  *
+ * Confirmed live 2026-07-31 (SANDBOX-CONFIG-PLAN.md Task 12 Defect 3): on a
+ * sandboxbaseurl that resolves to a private-range address (this dev VM,
+ * 192.168.56.10), core's curl_security_helper blocks the request outright
+ * ("The URL is blocked") before any TLS handshake — so a self-hosted "try
+ * it" sandbox on an internal network can never verify here by default. See
+ * fetch()'s own docblock for the fix and why it is opt-in.
+ *
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -113,17 +120,45 @@ class bundle_stamp {
      * coverage of the fetch itself to that one case, leaving a real fetch to
      * live verification (Task 12).
      *
+     * `sandboxbaseurl` is admin-configured, not attacker input — the same
+     * trust local_oerclient\exchange_client::http_options() places in its
+     * own admin-configured Exchange URL, and 'ignoresecurity' here follows
+     * that precedent to let core's curl SSRF guard (curlsecurityblockedhosts,
+     * which blocks private-range addresses by default) pass a fetch the
+     * admin explicitly asked for. Unlike exchange_client, this is NOT
+     * unconditional: it is gated behind its own opt-in setting
+     * ('sandboxbaseurlinsecure', default off), because a public "try it"
+     * sandbox is expected to sit behind a normal, validly-certificated host,
+     * and a self-hosted/private-network/self-signed-cert deployment (this
+     * dev VM's own situation — see the class docblock) is the exception, not
+     * the rule. Turning the setting on also disables TLS certificate
+     * verification for this one fetch, for the same reason
+     * exchange_client's 'verify' is tied to its own equivalent setting: a
+     * self-signed dev cert fails default verification independently of the
+     * SSRF guard, and there is no reason to relax one without the other for
+     * a deployment that needs either. See exchange_client's own docblock for
+     * why this must stay opt-in rather than unconditional ("Earlier
+     * revisions shipped verify=false + ignoresecurity unconditionally...
+     * every site and personal token travelled over unverified TLS on ANY
+     * production install").
+     *
      * @param string $baseurl
      * @return array{stamp: ?string, built: ?int, error: ?string}
      */
     private static function fetch(string $baseurl): array {
         $url = rtrim($baseurl, '/') . '/assets/oer-bundle-stamp.json';
 
+        $options = [
+            'connect_timeout' => self::CONNECT_TIMEOUT,
+            'timeout' => self::TOTAL_TIMEOUT,
+        ];
+        if ((bool) get_config('local_oerexchange', 'sandboxbaseurlinsecure')) {
+            $options['verify'] = false;
+            $options['ignoresecurity'] = true;
+        }
+
         try {
-            $client = new \core\http_client([
-                'connect_timeout' => self::CONNECT_TIMEOUT,
-                'timeout' => self::TOTAL_TIMEOUT,
-            ]);
+            $client = new \core\http_client($options);
             $response = $client->get($url);
             if ($response->getStatusCode() !== 200) {
                 return [

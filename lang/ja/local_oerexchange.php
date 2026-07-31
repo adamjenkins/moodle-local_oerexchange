@@ -310,6 +310,8 @@ $string['settings_sandboxadvanced'] = '詳細設定';
 $string['settings_sandboxadvanced_help'] = 'サンドボックスに適用する追加のサイト設定を、1行につき1つの「名前=値」の形式で指定します。これらはMoodleの設定値に対応しており、固定の一覧に照らして検証されるものではありません — 使用できない名前や値は、保存時に黙って無視されるのではなく、エラーとして拒否されます。';
 $string['settings_sandboxbaseurl'] = 'サンドボックスのベースURL';
 $string['settings_sandboxbaseurl_desc'] = 'Moodle Playgroundの静的バンドルが配置されている、同一オリジン上のパス。例: https://vagrant.wisecat.net/try/';
+$string['settings_sandboxbaseurlinsecure'] = '安全でないサンドボックスのベースURLを許可する';
+$string['settings_sandboxbaseurlinsecure_desc'] = 'プライベートネットワーク上や自己署名証明書を使用する自己ホスト型サンドボックス（開発環境や社内デプロイなど）でのみ必要です。有効にすると、上記のデプロイ済みバンドルのスタンプ確認は、サンドボックスのベースURLへのリクエストに限り、コアのSSRFホストブロックガードとTLS証明書検証を回避します。通常の公開サンドボックスデプロイではオフのままにしてください。';
 $string['settings_sandboxbundled'] = 'これらの設定はデプロイ済みサンドボックスに反映されている';
 $string['settings_sandboxbundled_help'] = 'バンドルは、ツールチェーンを備えたマシン上でのビルドによってのみ生成できます — Exchange自身が生成することはありません。この設定は、この構成でバンドルが実際に再ビルド・再デプロイされた後にチェックしてください。それまでの間、Exchangeはここでの設定が何も反映されていないものとして扱うため、試用環境は必要なものを黙って欠落させるのではなく、起動時にインストールし続けます。';
 $string['settings_sandboxbundles'] = 'ビルドするバンドル';

@@ -30,6 +30,7 @@ use local_oerexchange\local\sandbox\config;
 
 require(__DIR__ . '/../../config.php');
 require_once($CFG->libdir . '/formslib.php');
+require_once($CFG->libdir . '/adminlib.php');
 
 require_login();
 $context = context_system::instance();

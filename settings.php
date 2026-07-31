@@ -24,16 +24,22 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-if ($hassiteconfig) {
-    // Own category, nested under Plugins, instead of everything landing in
-    // the generic "Local plugins" list indistinguishable from every other
-    // local plugin (found live, 2026-07-19: 4 pages were all flattened
-    // there with no grouping at all).
-    $ADMIN->add('localplugins', new admin_category(
-        'local_oerexchange_category',
-        get_string('pluginname', 'local_oerexchange')
-    ));
+// Own category, nested under Plugins, instead of everything landing in the
+// generic "Local plugins" list indistinguishable from every other local
+// plugin (found live, 2026-07-19: 4 pages were all flattened there with no
+// grouping at all). Registered unconditionally (not inside `if
+// ($hassiteconfig)` below) because the four admin_externalpage entries added
+// at the bottom of this file are gated on THIS plugin's own capabilities
+// (managesites/moderate/managesandbox), not moodle/site:config, and need
+// this category to exist for a user who holds one of those but not
+// site:config — see those entries' own comment for why they too must stay
+// outside the $hassiteconfig guard.
+$ADMIN->add('localplugins', new admin_category(
+    'local_oerexchange_category',
+    get_string('pluginname', 'local_oerexchange')
+));
 
+if ($hassiteconfig) {
     $settings = new admin_settingpage('local_oerexchange', get_string('generalsettings', 'local_oerexchange'));
     $ADMIN->add('local_oerexchange_category', $settings);
 
@@ -56,6 +62,19 @@ if ($hassiteconfig) {
         get_string('settings_sandboxbaseurl_desc', 'local_oerexchange'),
         '',
         PARAM_URL
+    ));
+
+    // Off by default: relaxing core's curl SSRF guard and TLS verification
+    // is only ever safe for a sandbox base URL the admin fully controls and
+    // knows to be self-hosted (private network and/or self-signed cert) -
+    // see bundle_stamp::fetch()'s docblock for the full reasoning, modeled
+    // on local_oerclient\exchange_client's own equivalent, equally opt-in
+    // 'acceptinvalidcerts' setting.
+    $settings->add(new admin_setting_configcheckbox(
+        'local_oerexchange/sandboxbaseurlinsecure',
+        get_string('settings_sandboxbaseurlinsecure', 'local_oerexchange'),
+        get_string('settings_sandboxbaseurlinsecure_desc', 'local_oerexchange'),
+        0
     ));
 
     // Anonymous access, corrected against what the code actually does
@@ -194,32 +213,54 @@ if ($hassiteconfig) {
         \local_oerexchange\local\stale_manager::DEFAULT_GRACE,
         DAYSECS
     ));
-
-    $ADMIN->add('local_oerexchange_category', new admin_externalpage(
-        'local_oerexchange_managesites',
-        get_string('managesitestitle', 'local_oerexchange'),
-        new moodle_url('/local/oerexchange/manage_sites.php'),
-        'local/oerexchange:managesites'
-    ));
-
-    $ADMIN->add('local_oerexchange_category', new admin_externalpage(
-        'local_oerexchange_manageallowlist',
-        get_string('managepluginallowlisttitle', 'local_oerexchange'),
-        new moodle_url('/local/oerexchange/manage_allowlist.php'),
-        'local/oerexchange:managesites'
-    ));
-
-    $ADMIN->add('local_oerexchange_category', new admin_externalpage(
-        'local_oerexchange_moderate',
-        get_string('moderatetitle', 'local_oerexchange'),
-        new moodle_url('/local/oerexchange/moderate.php'),
-        'local/oerexchange:moderate'
-    ));
-
-    $ADMIN->add('local_oerexchange_category', new admin_externalpage(
-        'local_oerexchange_sandboxconfig',
-        get_string('sandboxconfigtitle', 'local_oerexchange'),
-        new moodle_url('/local/oerexchange/sandbox_config.php'),
-        'local/oerexchange:managesandbox'
-    ));
 }
+
+// Registered unconditionally (outside `if ($hassiteconfig)` above), NOT
+// because these pages are exempt from any capability check, but because
+// each is already gated on its OWN plugin capability
+// (admin_externalpage's 4th constructor arg — managesites/moderate/
+// managesandbox, never the default moodle/site:config) and
+// admin_externalpage_setup() (called by sandbox_config.php) can only ever
+// grant access to a page it can first locate in $ADMIN's tree for the
+// CURRENT user. $hassiteconfig is `has_capability('moodle/site:config',
+// ...)` for that same user — a manager role holds none of that capability
+// by default — so nesting these adds inside the `if ($hassiteconfig)` block
+// above meant a user with e.g. only local/oerexchange:managesandbox could
+// never reach sandbox_config.php at all: admin_externalpage_setup()'s own
+// $adminroot->locate() would find nothing, and since !$hassiteconfig is
+// also true for that same user, it throws moodle_exception('accessdenied',
+// 'admin') — confirmed live 2026-07-31 (SANDBOX-CONFIG-PLAN.md Task 12
+// Defect 1) with a real managesandbox-only manager account: the page went
+// from a hard fatal (missing adminlib.php require, fixed above) straight to
+// "Access denied", never actually reaching the form. This exact
+// unconditional-registration pattern is how core itself handles a custom
+// non-site:config admin page capability — see e.g.
+// report/backups/settings.php and report/log/settings.php, neither of
+// which references $hassiteconfig at all.
+$ADMIN->add('local_oerexchange_category', new admin_externalpage(
+    'local_oerexchange_managesites',
+    get_string('managesitestitle', 'local_oerexchange'),
+    new moodle_url('/local/oerexchange/manage_sites.php'),
+    'local/oerexchange:managesites'
+));
+
+$ADMIN->add('local_oerexchange_category', new admin_externalpage(
+    'local_oerexchange_manageallowlist',
+    get_string('managepluginallowlisttitle', 'local_oerexchange'),
+    new moodle_url('/local/oerexchange/manage_allowlist.php'),
+    'local/oerexchange:managesites'
+));
+
+$ADMIN->add('local_oerexchange_category', new admin_externalpage(
+    'local_oerexchange_moderate',
+    get_string('moderatetitle', 'local_oerexchange'),
+    new moodle_url('/local/oerexchange/moderate.php'),
+    'local/oerexchange:moderate'
+));
+
+$ADMIN->add('local_oerexchange_category', new admin_externalpage(
+    'local_oerexchange_sandboxconfig',
+    get_string('sandboxconfigtitle', 'local_oerexchange'),
+    new moodle_url('/local/oerexchange/sandbox_config.php'),
+    'local/oerexchange:managesandbox'
+));
