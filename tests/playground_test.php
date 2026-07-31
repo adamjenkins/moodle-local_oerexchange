@@ -29,7 +29,7 @@ use local_oerexchange\local\sandbox\playground;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 #[CoversClass(playground::class)]
-final class playground_test extends \basic_testcase {
+final class playground_test extends \advanced_testcase {
     public function test_map_branch_picks_lowest_deployed_at_or_above_source(): void {
         $this->assertSame('5.0', playground::map_branch('4.4.2 (Build: 20250101)'));
         $this->assertSame('5.0', playground::map_branch('5.0.1'));
@@ -85,16 +85,6 @@ final class playground_test extends \basic_testcase {
         $this->assertSame('https://exchange.example/allowlist_file.php?id=1', $installstep['url']);
     }
 
-    /**
-     * mod_quizquest is baked into the deployed 5.2 bundle (see
-     * playground::BAKED_IN_PLUGINS) — a real fix for the sandbox's
-     * third-party-plugin DB-install limitation, found live 2026-07-19
-     * (dev-docs/oer-platform/discoveries/2026-07-19-sandbox-thirdparty-plugin-db-install-limitation.md).
-     */
-    public function test_is_baked_in_recognises_the_known_baked_in_plugin(): void {
-        $this->assertTrue(playground::is_baked_in('mod', 'quizquest', '5.2'));
-    }
-
     public function test_is_baked_in_is_false_for_a_plugin_not_baked_into_that_branch(): void {
         $this->assertFalse(playground::is_baked_in('mod', 'board', '5.2'));
     }
@@ -114,6 +104,16 @@ final class playground_test extends \basic_testcase {
      * the runtime install would be redundant at best.
      */
     public function test_build_blueprint_skips_the_install_step_for_a_baked_in_plugin(): void {
+        global $DB;
+        $this->resetAfterTest();
+        set_config('sandboxbundled', 1, 'local_oerexchange');
+        $DB->insert_record('local_oerexchange_pluginallowlist', (object) [
+            'plugintype' => 'mod', 'pluginname' => 'quizquest',
+            'moodlebranch' => 'MOODLE_502_STABLE', 'sourceurl' => 'https://x.invalid/q.zip',
+            'status' => 'active', 'bake' => 1,
+            'timecreated' => time(), 'timemodified' => time(),
+        ]);
+
         $blueprint = playground::build_blueprint(
             'My Course',
             'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
@@ -364,6 +364,233 @@ final class playground_test extends \basic_testcase {
             'hyphen (BCP 47, not a Moodle code)' => ['pt-br'],
             'whitespace' => ['ja jp'],
         ];
+    }
+
+    public function test_a_moodle_branch_maps_to_its_bundle_string(): void {
+        $this->assertSame('5.2', playground::branch_to_bundle('MOODLE_502_STABLE'));
+        $this->assertSame('5.0', playground::branch_to_bundle('MOODLE_500_STABLE'));
+        $this->assertSame('4.5', playground::branch_to_bundle('MOODLE_405_STABLE'));
+        $this->assertSame('', playground::branch_to_bundle('main'));
+    }
+
+    public function test_a_baked_plugin_is_recognised_from_the_allowlist(): void {
+        global $DB;
+        $this->resetAfterTest();
+        set_config('sandboxbundled', 1, 'local_oerexchange');
+
+        $DB->insert_record('local_oerexchange_pluginallowlist', (object) [
+            'plugintype' => 'mod', 'pluginname' => 'quizquest',
+            'moodlebranch' => 'MOODLE_502_STABLE', 'sourceurl' => 'https://x.invalid/q.zip',
+            'status' => 'active', 'bake' => 1,
+            'timecreated' => time(), 'timemodified' => time(),
+        ]);
+
+        $this->assertTrue(playground::is_baked_in('mod', 'quizquest', '5.2'));
+        $this->assertFalse(playground::is_baked_in('mod', 'quizquest', '5.0'));
+    }
+
+    public function test_nothing_is_baked_while_the_switch_is_off(): void {
+        global $DB;
+        $this->resetAfterTest();
+        set_config('sandboxbundled', 0, 'local_oerexchange');
+
+        $DB->insert_record('local_oerexchange_pluginallowlist', (object) [
+            'plugintype' => 'mod', 'pluginname' => 'quizquest',
+            'moodlebranch' => 'MOODLE_502_STABLE', 'sourceurl' => 'https://x.invalid/q.zip',
+            'status' => 'active', 'bake' => 1,
+            'timecreated' => time(), 'timemodified' => time(),
+        ]);
+
+        // Flagged for baking but the bundle was never rebuilt: the plugin is
+        // NOT present, and skipping its install would produce a broken trial.
+        $this->assertFalse(playground::is_baked_in('mod', 'quizquest', '5.2'));
+    }
+
+    /**
+     * The brief this test comes from originally asserted that *every*
+     * runPhpCode step precedes login — that is stricter than the code:
+     * build_activity_restore_php() legitimately emits a runPhpCode step
+     * AFTER login for single-activity restores (its own restore target
+     * doesn't exist until the course is created, which only makes sense
+     * post-login). Narrowed here to the language/settings step specifically,
+     * identified by a marker only that step's generated code carries
+     * ('filter_set_global_state' for the switch-off settings step,
+     * 'oer-baked-lang' for the switch-on local language-selection step) —
+     * this keeps the real ordering guarantee (V4: $USER is serialised into
+     * the session at login, so a later language/settings change never takes
+     * effect) without asserting something the activity-restore step never
+     * promised.
+     */
+    public function test_the_language_step_always_precedes_login(): void {
+        $this->resetAfterTest();
+
+        foreach ([0, 1] as $bundled) {
+            set_config('sandboxbundled', $bundled, 'local_oerexchange');
+            foreach (['', 'ja'] as $language) {
+                $blueprint = playground::build_blueprint(
+                    'A resource',
+                    'https://x.invalid/r.mbz',
+                    [],
+                    '5.2',
+                    'course',
+                    $language
+                );
+                $steps = array_column($blueprint['steps'], 'step');
+                $login = array_search('login', $steps, true);
+                $this->assertNotFalse($login, "no login step (bundled=$bundled, lang=$language)");
+                foreach ($blueprint['steps'] as $i => $step) {
+                    $iscode = $step['step'] === 'runPhpCode' && (
+                        str_contains($step['code'], 'filter_set_global_state')
+                        || str_contains($step['code'], 'oer-baked-lang')
+                    );
+                    if ($step['step'] === 'installLanguagePack' || $iscode) {
+                        $this->assertLessThan(
+                            $login,
+                            $i,
+                            "a language/settings step followed login (bundled=$bundled, lang=$language)"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Switch ON: the packs are baked into the deployment (oer-sandbox
+     * Task 10's bake.sh), so there is nothing to download — only a cheap
+     * local step selecting the launcher's language
+     * (SANDBOX-CONFIG-DESIGN.md "What the switch does and does not remove").
+     */
+    public function test_switch_on_uses_a_local_language_step_instead_of_downloading(): void {
+        $this->resetAfterTest();
+        set_config('sandboxbundled', 1, 'local_oerexchange');
+
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course',
+            'ja'
+        );
+
+        $steps = array_column($blueprint['steps'], 'step');
+        $this->assertNotContains('installLanguagePack', $steps);
+        $this->assertContains('runPhpCode', $steps);
+
+        $langstep = null;
+        foreach ($blueprint['steps'] as $step) {
+            if ($step['step'] === 'runPhpCode' && str_contains($step['code'], 'oer-baked-lang')) {
+                $langstep = $step;
+            }
+        }
+        $this->assertNotNull($langstep);
+    }
+
+    /**
+     * Switch OFF: today's network installLanguagePack step is unchanged.
+     */
+    public function test_switch_off_still_downloads_the_language_pack(): void {
+        $this->resetAfterTest();
+        set_config('sandboxbundled', 0, 'local_oerexchange');
+
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course',
+            'ja'
+        );
+
+        $steps = array_column($blueprint['steps'], 'step');
+        $this->assertContains('installLanguagePack', $steps);
+        foreach ($blueprint['steps'] as $step) {
+            $this->assertFalse(
+                $step['step'] === 'runPhpCode' && str_contains($step['code'], 'oer-baked-lang'),
+                'switch-off must never emit the local, no-download language step'
+            );
+        }
+    }
+
+    /**
+     * Switch OFF with the multilang filter configured: the settings a
+     * bundle build would otherwise apply pre-snapshot must instead be
+     * applied at boot, since this deployment never rode them into the
+     * snapshot.
+     */
+    public function test_switch_off_emits_the_settings_step_when_something_is_configured(): void {
+        $this->resetAfterTest();
+        set_config('sandboxbundled', 0, 'local_oerexchange');
+        set_config('sandboxmultilang', 1, 'local_oerexchange');
+        set_config('sandboxmultilangheadings', 1, 'local_oerexchange');
+
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course',
+            ''
+        );
+
+        $settingsstep = null;
+        foreach ($blueprint['steps'] as $step) {
+            if ($step['step'] === 'runPhpCode' && str_contains($step['code'], 'filter_set_global_state')) {
+                $settingsstep = $step;
+            }
+        }
+        $this->assertNotNull($settingsstep);
+        $this->assertStringContainsString('multilang', $settingsstep['code']);
+    }
+
+    /**
+     * Switch ON: the settings step is omitted outright, even when there is
+     * something configured — it rode the install snapshot at build time
+     * (SANDBOX-CONFIG-DESIGN.md "What the switch does and does not remove",
+     * confirmed by the 2026-07-31 baking spike).
+     */
+    public function test_switch_on_omits_the_settings_step_even_when_something_is_configured(): void {
+        $this->resetAfterTest();
+        set_config('sandboxbundled', 1, 'local_oerexchange');
+        set_config('sandboxmultilang', 1, 'local_oerexchange');
+
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course',
+            ''
+        );
+
+        foreach ($blueprint['steps'] as $step) {
+            $this->assertFalse(
+                $step['step'] === 'runPhpCode' && str_contains($step['code'], 'filter_set_global_state'),
+                'switch-on must never emit the boot-time settings step'
+            );
+        }
+    }
+
+    /**
+     * Switch OFF and nothing configured: no settings step at all — this is
+     * also the regression guard for every pre-existing step-list assertion
+     * in this file that predates the sandbox-config switch.
+     */
+    public function test_no_settings_step_when_nothing_is_configured(): void {
+        $this->resetAfterTest();
+        set_config('sandboxbundled', 0, 'local_oerexchange');
+
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course',
+            ''
+        );
+
+        $this->assertNotContains('runPhpCode', array_column($blueprint['steps'], 'step'));
     }
 
     public function test_build_launch_url_embeds_branch_and_base64_blueprint(): void {

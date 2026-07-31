@@ -788,7 +788,7 @@ if ($cancontrolthumbnail) {
 // three states rather than a boolean "in trial" — found live, 2026-07-19:
 // a plugin merely being on the allowlist only means the sandbox *attempts*
 // to install it via a fragile runtime upgrade path that does not reliably
-// complete (see playground::BAKED_IN_PLUGINS docblock and
+// complete (see playground::is_baked_in()'s docblock and
 // dev-docs/oer-platform/discoveries/2026-07-19-sandbox-thirdparty-plugin-db-install-limitation.md).
 // Only a plugin actually baked into the bundle at build time is reliable:
 // - 'bakedin'    — baked into the branch's bundle; Try it will fully work.
