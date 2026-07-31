@@ -200,6 +200,7 @@
         <FIELD NAME="itemid" TYPE="int" LENGTH="10" NOTNULL="false" COMMENT="File API itemid of the same-origin mirrored ZIP"/>
         <FIELD NAME="sha256" TYPE="char" LENGTH="64" NOTNULL="false"/>
         <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="active" COMMENT="active|disabled"/>
+        <FIELD NAME="bake" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" COMMENT="1 = baked into the bundle at build time rather than installed at trial boot"/>
         <FIELD NAME="notes" TYPE="text" NOTNULL="false"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true"/>

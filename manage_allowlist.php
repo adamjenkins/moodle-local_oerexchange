@@ -30,6 +30,7 @@ require_login();
 
 $context = context_system::instance();
 require_capability('local/oerexchange:managesites', $context);
+$cansandbox = has_capability('local/oerexchange:managesandbox', $context);
 
 $PAGE->set_url('/local/oerexchange/manage_allowlist.php');
 $PAGE->set_context($context);
@@ -43,6 +44,26 @@ if ($toggleid && confirm_sesskey()) {
     $entry->status = $entry->status === 'active' ? 'disabled' : 'active';
     $entry->timemodified = time();
     $DB->update_record('local_oerexchange_pluginallowlist', $entry);
+    redirect(new moodle_url('/local/oerexchange/manage_allowlist.php'));
+}
+
+if (optional_param('savebake', 0, PARAM_INT) && confirm_sesskey()) {
+    // Gated on the capability rather than merely hidden in the UI: a request
+    // forged by (or replayed for) a user without local/oerexchange:managesandbox
+    // must not be able to flip what ships baked into every trial, even though
+    // the checkbox itself is rendered disabled for them.
+    if ($cansandbox) {
+        $baked = optional_param_array('bake', [], PARAM_INT);
+        $now = time();
+        $entries = $DB->get_records('local_oerexchange_pluginallowlist', null, '', 'id, bake');
+        foreach ($entries as $entry) {
+            $newbake = !empty($baked[$entry->id]) ? 1 : 0;
+            if ((int) $entry->bake !== $newbake) {
+                $DB->set_field('local_oerexchange_pluginallowlist', 'bake', $newbake, ['id' => $entry->id]);
+                $DB->set_field('local_oerexchange_pluginallowlist', 'timemodified', $now, ['id' => $entry->id]);
+            }
+        }
+    }
     redirect(new moodle_url('/local/oerexchange/manage_allowlist.php'));
 }
 
@@ -128,29 +149,56 @@ $entries = $DB->get_records('local_oerexchange_pluginallowlist', null, 'moodlebr
 if (empty($entries)) {
     echo html_writer::tag('p', get_string('allowlistempty', 'local_oerexchange'), ['class' => 'mt-3']);
 } else {
+    $sesskey = sesskey();
+
+    echo html_writer::start_tag('form', [
+        'method' => 'post',
+        'action' => new moodle_url('/local/oerexchange/manage_allowlist.php'),
+    ]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'savebake', 'value' => 1]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => $sesskey]);
+
     $table = new html_table();
     $table->head = [
         get_string('allowlistplugintype', 'local_oerexchange'),
         get_string('allowlistpluginname', 'local_oerexchange'),
         get_string('allowlistbranch', 'local_oerexchange'),
         get_string('sitestatus', 'local_oerexchange'),
+        get_string('allowlistbake', 'local_oerexchange') . ' ' . $OUTPUT->help_icon('allowlistbake', 'local_oerexchange'),
         '',
     ];
-    $sesskey = sesskey();
     foreach ($entries as $e) {
         $toggleurl = new moodle_url('/local/oerexchange/manage_allowlist.php', ['toggleid' => $e->id, 'sesskey' => $sesskey]);
         $label = $e->status === 'active'
             ? get_string('allowlistdisable', 'local_oerexchange')
             : get_string('allowlistenable', 'local_oerexchange');
+        // Rendered disabled (not hidden) for a user without managesandbox, and any
+        // submitted value from such a user is ignored server-side above — a
+        // disabled checkbox never submits a value at all, but the server-side
+        // check is what actually enforces the gate against a forged request.
+        $bakeattrs = [
+            'type' => 'checkbox',
+            'name' => 'bake[' . $e->id . ']',
+            'value' => 1,
+        ] + ($e->bake ? ['checked' => 'checked'] : []) + ($cansandbox ? [] : ['disabled' => 'disabled']);
+        $bakecheckbox = html_writer::empty_tag('input', $bakeattrs);
         $table->data[] = [
             s($e->plugintype),
             s($e->pluginname),
             s($e->moodlebranch),
             s($e->status),
+            $bakecheckbox,
             html_writer::link($toggleurl, $label, ['class' => 'btn btn-sm btn-outline-secondary']),
         ];
     }
     echo html_writer::table($table);
+
+    if ($cansandbox) {
+        echo html_writer::empty_tag('input', [
+            'type' => 'submit', 'value' => get_string('savebakesettings', 'local_oerexchange'), 'class' => 'btn btn-primary',
+        ]);
+    }
+    echo html_writer::end_tag('form');
 }
 
 echo $OUTPUT->footer();

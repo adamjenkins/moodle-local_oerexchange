@@ -232,5 +232,14 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026072702, 'local', 'oerexchange');
     }
 
+    if ($oldversion < 2026073100) {
+        $table = new xmldb_table('local_oerexchange_pluginallowlist');
+        $field = new xmldb_field('bake', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'status');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        upgrade_plugin_savepoint(true, 2026073100, 'local', 'oerexchange');
+    }
+
     return true;
 }
