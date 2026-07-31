@@ -215,4 +215,11 @@ if ($hassiteconfig) {
         new moodle_url('/local/oerexchange/moderate.php'),
         'local/oerexchange:moderate'
     ));
+
+    $ADMIN->add('local_oerexchange_category', new admin_externalpage(
+        'local_oerexchange_sandboxconfig',
+        get_string('sandboxconfigtitle', 'local_oerexchange'),
+        new moodle_url('/local/oerexchange/sandbox_config.php'),
+        'local/oerexchange:managesandbox'
+    ));
 }

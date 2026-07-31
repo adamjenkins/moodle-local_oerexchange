@@ -78,4 +78,34 @@ final class sandbox_config_test extends \advanced_testcase {
         $this->expectException(\moodle_exception::class);
         config::parse_advanced("country=JP\\nBAKE_PLUGINS_X=evil");
     }
+
+    public function test_baked_plugins_are_grouped_by_branch(): void {
+        $this->resetAfterTest();
+
+        $config = [
+            'stamp' => 'cfg-000000000000',
+            'langpacks' => [],
+            'triallang' => '',
+            'settings' => [],
+            'filters' => [],
+            'bakeplugins' => [
+                'MOODLE_502_STABLE' => [
+                    ['type' => 'mod', 'name' => 'quizquest',
+                     'url' => 'https://x.invalid/allowlist_file.php?id=3',
+                     'sha256' => str_repeat('a', 64)],
+                ],
+            ],
+        ];
+        $file = config::render($config);
+
+        $this->assertStringContainsString("BAKE_PLUGINS_MOODLE_502_STABLE=mod:quizquest\n", $file);
+        $this->assertStringContainsString(
+            "PLUGIN_ZIP_mod_quizquest_MOODLE_502_STABLE=https://x.invalid/allowlist_file.php?id=3\n",
+            $file
+        );
+        $this->assertStringContainsString(
+            "PLUGIN_SHA256_mod_quizquest_MOODLE_502_STABLE=" . str_repeat('a', 64) . "\n",
+            $file
+        );
+    }
 }
