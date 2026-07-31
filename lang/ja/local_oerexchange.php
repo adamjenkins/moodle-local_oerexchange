@@ -147,6 +147,7 @@ $string['notifystaleremovedbody'] = '共有リソース「{$a->title}」は、�
 $string['notifystaleremovedsubject'] = 'リソース「{$a->title}」は放置期間の経過により削除されました';
 $string['notifystalewarningbody'] = '共有リソース「{$a->title}」は長期間更新されていないため、放置されている可能性があると判定されました。{$a->url} にアクセスして、リソースを更新するか「まだ最新です」ボタンを押してください — ワンクリックで完了します。{$a->deadline} までに操作がない場合、このリソースはExchangeから自動的に削除されます。';
 $string['notifystalewarningsubject'] = '「{$a->title}」はまだ最新ですか？ {$a->deadline} に削除されます';
+$string['oerexchange:managesandbox'] = '「試してみる」サンドボックスのバンドル構成を設定する';
 $string['oerexchange:managesites'] = '登録済みのクライアントサイトおよびサンドボックスプラグインの許可リストを管理する';
 $string['oerexchange:moderate'] = '報告および解析失敗の項目をモデレートする';
 $string['openreports'] = '未処理の報告';

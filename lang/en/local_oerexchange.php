@@ -147,6 +147,7 @@ $string['notifystaleremovedbody'] = 'Your shared resource "{$a->title}" has been
 $string['notifystaleremovedsubject'] = 'Your resource "{$a->title}" was removed after the inactivity period';
 $string['notifystalewarningbody'] = 'Your shared resource "{$a->title}" has not been updated for a long time, so it is now flagged as possibly abandoned. Visit {$a->url} to either update it or press "Still fresh" — one click is enough. If nothing happens by {$a->deadline}, the resource will be removed from the Exchange automatically.';
 $string['notifystalewarningsubject'] = 'Is "{$a->title}" still fresh? It will be removed on {$a->deadline}';
+$string['oerexchange:managesandbox'] = 'Configure the Try it sandbox bundle';
 $string['oerexchange:managesites'] = 'Manage registered client sites and the sandbox plugin allowlist';
 $string['oerexchange:moderate'] = 'Moderate reports and failed parses';
 $string['openreports'] = 'Open reports';
