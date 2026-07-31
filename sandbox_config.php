@@ -25,6 +25,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+use local_oerexchange\local\sandbox\bundle_stamp;
 use local_oerexchange\local\sandbox\config;
 
 require(__DIR__ . '/../../config.php');
@@ -215,6 +216,44 @@ if (!$form->is_submitted()) {
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('sandboxconfigtitle', 'local_oerexchange'));
+
+// The saved-vs-deployed comparison (SANDBOX-CONFIG-DESIGN.md D1): the switch
+// above only records an admin's claim that the deployed bundle carries this
+// configuration; this fetch is the Exchange checking that claim itself
+// rather than trusting the checkbox. "Could not verify" is rendered
+// distinctly from a mismatch — a fetch failure is not evidence the two
+// disagree, and treating it as one would train an admin to ignore the real
+// warning.
+$currentconfig = config::current();
+$deployedstamp = bundle_stamp::deployed();
+if ($deployedstamp['error'] !== null) {
+    echo $OUTPUT->notification(
+        get_string('sandboxstampunverifiable', 'local_oerexchange', $deployedstamp['error']),
+        \core\output\notification::NOTIFY_INFO
+    );
+} else {
+    $built = $deployedstamp['built'] !== null
+        ? userdate($deployedstamp['built'])
+        : get_string('sandboxstampbuiltunknown', 'local_oerexchange');
+    if ($deployedstamp['stamp'] === $currentconfig['stamp']) {
+        echo $OUTPUT->notification(
+            get_string('sandboxstampmatch', 'local_oerexchange', (object) [
+                'stamp' => $currentconfig['stamp'],
+                'built' => $built,
+            ]),
+            \core\output\notification::NOTIFY_SUCCESS
+        );
+    } else {
+        echo $OUTPUT->notification(
+            get_string('sandboxstampmismatch', 'local_oerexchange', (object) [
+                'saved' => $currentconfig['stamp'],
+                'deployed' => (string) $deployedstamp['stamp'],
+                'built' => $built,
+            ]),
+            \core\output\notification::NOTIFY_WARNING
+        );
+    }
+}
 
 $downloadurl = new moodle_url('/local/oerexchange/sandbox_config.php', ['download' => 1, 'sesskey' => sesskey()]);
 echo html_writer::div(
