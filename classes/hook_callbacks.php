@@ -180,6 +180,33 @@ class hook_callbacks {
     }
 
     /**
+     * Offers the OER catalogue as a site home page option in Site
+     * administration > Appearance > Navigation > Default home page for
+     * users (dispatched from admin/settings/appearance.php:178).
+     *
+     * This is core's own supported mechanism, and it covers logged-in
+     * users only — get_home_page() is gated on isloggedin()
+     * (lib/moodlelib.php:10028) and core index.php runs
+     * require_course_login() before it ever consults the setting. Serving
+     * anonymous visitors needs the separate, earlier after_config
+     * interception in {@see self::after_config()}.
+     *
+     * Note the resulting behaviour differs by audience: core redirects a
+     * logged-in user to /local/oerexchange/index.php, whereas after_config
+     * renders the catalogue in place at '/' for a visitor. Each uses the
+     * right mechanism for its audience; the admin manual documents the
+     * difference so it does not read as a bug.
+     *
+     * @param \core_user\hook\extend_default_homepage $hook
+     */
+    public static function extend_default_homepage(\core_user\hook\extend_default_homepage $hook): void {
+        $hook->add_option(
+            new \core\url('/local/oerexchange/index.php'),
+            get_string('settings_homepageoption', 'local_oerexchange')
+        );
+    }
+
+    /**
      * Serves the OER catalogue in place at the site root for anonymous
      * visitors, when the publiclanding setting is on.
      *

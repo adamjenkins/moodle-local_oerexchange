@@ -38,4 +38,11 @@ $callbacks = [
         'hook'     => \core\hook\after_config::class,
         'callback' => \local_oerexchange\hook_callbacks::class . '::after_config',
     ],
+    // Adds the catalogue to core's own "Default home page for users"
+    // setting. Covers logged-in users, whom the after_config listener
+    // above deliberately leaves alone.
+    [
+        'hook'     => \core_user\hook\extend_default_homepage::class,
+        'callback' => \local_oerexchange\hook_callbacks::class . '::extend_default_homepage',
+    ],
 ];

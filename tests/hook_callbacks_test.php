@@ -341,4 +341,19 @@ final class hook_callbacks_test extends \advanced_testcase {
 
         $this->assertFalse(hook_callbacks::should_serve_public_landing());
     }
+
+    /**
+     * The key is the local URL string, because that is exactly what
+     * add_option() stores (out_as_local_url(),
+     * user/classes/hook/extend_default_homepage.php:57) and what core
+     * then writes into $CFG->defaulthomepage.
+     */
+    public function test_catalogue_is_offered_as_a_default_home_page(): void {
+        $this->resetAfterTest();
+
+        $hook = new \core_user\hook\extend_default_homepage();
+        hook_callbacks::extend_default_homepage($hook);
+
+        $this->assertArrayHasKey('/local/oerexchange/index.php', $hook->get_options());
+    }
 }

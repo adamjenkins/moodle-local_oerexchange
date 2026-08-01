@@ -299,6 +299,7 @@ $string['settings_badge_minresources'] = 'Trusted Contributor: minimum published
 $string['settings_badge_minresources_desc'] = '';
 $string['settings_badgesheading'] = 'Badges';
 $string['settings_badgesheading_desc'] = 'Automatic, threshold-based badges (design doc, "earned through impact, not gamification"). Thresholds are provisional — calibrate against real usage data once the platform has traffic.';
+$string['settings_homepageoption'] = 'OER catalogue';
 $string['settings_licensesheading'] = 'Licences';
 $string['settings_licensesheading_desc'] = 'Which licences courseware may be shared under. The choices offered here are the licences enabled in this site\'s own <a href="{$a}">licence manager</a>.';
 $string['settings_publiclanding'] = 'Show the catalogue to visitors at the site home page';
