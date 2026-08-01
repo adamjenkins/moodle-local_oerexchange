@@ -103,6 +103,22 @@ is turned on — and that setting governs **Try it** as well, because a sandbox
 trial downloads the `.mbz` itself to boot. With the setting off, an anonymous
 visitor who clicks Try it is sent to the login page.
 
+**Show the catalogue to visitors at the site home page** (off by default) goes
+one step further: with it on, a visitor who is not logged in and opens the site
+home page is served the catalogue *at that address*, instead of being sent to
+the login form. The page is rendered in place, so the address bar stays at the
+site root and searching from there stays there too. `forcelogin` can remain on
+— it still applies to every other page; only the front page is opened. The
+catalogue is not served while the site is in maintenance mode, and
+`/?redirect=0` always reaches the normal front page. Implemented as a
+`\core\hook\after_config` listener, which runs before core `index.php`'s
+`require_course_login()`.
+
+For logged-in users, the plugin adds an **OER catalogue** option to Moodle's
+own *Appearance → Navigation → Default home page for users*
+(`\core_user\hook\extend_default_homepage`); core handles that case by
+redirecting to the catalogue's own address.
+
 A "site key" issued on approval **is a real core web service token**, minted
 against a dedicated, non-interactive Moodle account created for that site
 (`local_oerexchange\local\site_manager`) — not a custom auth scheme.

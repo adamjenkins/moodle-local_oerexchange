@@ -24,6 +24,19 @@ All notable changes to this project are documented in this file, in
 
 ### Added
 
+- Optional public landing page: a new `publiclanding` setting (off by default)
+  serves the catalogue in place at the site root for visitors who are not
+  logged in, via a `\core\hook\after_config` listener that runs before core
+  `index.php`'s `require_course_login()`. `forcelogin` can stay on for the
+  rest of the site. Rendered rather than redirected, so the address bar stays
+  at the site root; there is consequently no redirect target to configure and
+  no open-redirect surface. Guarded against non-front-page requests,
+  logged-in (non-guest) users, `?redirect=0`, `$CFG->maintenance_enabled`,
+  initial install and pending upgrades.
+- The catalogue is offered as a "Default home page for users" option
+  (Appearance → Navigation) via `\core_user\hook\extend_default_homepage`,
+  covering logged-in users, whom the listener above deliberately leaves to
+  core.
 - A "Try it" trial enrols its own user in the trial course as both Editing
   teacher and Student, via the manual enrolment plugin, for full-course and
   single-activity trials alike.
@@ -37,6 +50,11 @@ All notable changes to this project are documented in this file, in
 - Educator profile descriptions are rendered with `format_text()` in
   `FORMAT_MOODLE` instead of `FORMAT_PLAIN`, so site text filters — including
   auto-linking and multilang — apply. HTML cleaning remains on.
+- The catalogue listing moved out of `index.php` into
+  `\local_oerexchange\local\catalogue_view`, which takes its form action and
+  paging base URL from the caller instead of hardcoding
+  `/local/oerexchange/index.php`. No user-visible change to that page; it is
+  what lets the same catalogue be served at the site root.
 
 ### Removed
 

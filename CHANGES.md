@@ -53,6 +53,37 @@ its own user in the trial course as both **Editing teacher** and **Student**,
 through the manual enrolment plugin, for both full-course and single-activity
 trials.
 
+## The catalogue can now be your site's front page for visitors
+
+If your Exchange has **"Force users to log in"** switched on, someone arriving
+at your site's home page was sent straight to the login form — so the
+catalogue, the whole point of a public Exchange, was invisible to anyone
+without an account. Browsing the catalogue itself has never required logging
+in; only the front page stood in the way.
+
+A new setting, **"Show the catalogue to visitors at the site home page"**
+(Site administration → Plugins → Local plugins → OER Exchange), changes that.
+With it on, a visitor who is not logged in and opens your site's home page is
+shown the catalogue **at that address** — the page is served in place, so the
+address bar stays on your site's home page rather than jumping to a longer
+URL, and searching from there keeps them there.
+
+**It opens one door, not the site.** "Force users to log in" still applies to
+everything else: courses, dashboards, administration and the rest all behave
+exactly as before. The setting is **off by default**, so upgrading changes
+nothing until you deliberately turn it on. Administrators can always reach the
+normal front page at `/?redirect=0`. Guests are treated as visitors and see
+the catalogue too, and the catalogue is not served while the site is in
+maintenance mode.
+
+Logged-in users are not affected by this setting. To send them to the
+catalogue as well, this release also adds an **"OER catalogue"** option to
+Moodle's own *Site administration → Appearance → Navigation → Default home
+page for users*, which you can also let users choose individually. Note the
+two work slightly differently, because Moodle handles the logged-in case
+itself: a logged-in user is taken to the catalogue's own address, whereas a
+visitor sees it at the site home page address.
+
 ## Security
 
 Because the profile page is public, the values of the custom profile fields it
