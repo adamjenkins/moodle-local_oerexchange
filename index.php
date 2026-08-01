@@ -17,6 +17,10 @@
 /**
  * Catalogue browse/search page. Anonymous browsing is allowed by design.
  *
+ * The listing itself lives in \local_oerexchange\local\catalogue_view, so
+ * that the public-landing hook can render exactly the same catalogue at
+ * the site root without duplicating any of it.
+ *
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -24,203 +28,15 @@
 
 require(__DIR__ . '/../../config.php'); // phpcs:ignore moodle.Files.RequireLogin.Missing -- see docblock above.
 
-$query = optional_param('q', '', PARAM_TEXT);
-$type = optional_param('type', '', PARAM_ALPHA);
-$license = optional_param('license', '', PARAM_TEXT);
-$language = optional_param('language', '', PARAM_TEXT);
-$page = optional_param('page', 0, PARAM_INT);
-$perpage = 20;
+$view = \local_oerexchange\local\catalogue_view::from_request();
+$pageurl = new moodle_url('/local/oerexchange/index.php');
 
-$PAGE->set_url('/local/oerexchange/index.php');
+$PAGE->set_url($pageurl);
 $PAGE->set_context(context_system::instance());
 $PAGE->set_pagelayout('standard');
 $PAGE->set_title(get_string('catalogtitle', 'local_oerexchange'));
 $PAGE->set_heading(get_string('catalogtitle', 'local_oerexchange'));
 
-$where = ['status = :status'];
-$sqlparams = ['status' => 'published'];
-
-if ($type !== '') {
-    $where[] = 'type = :type';
-    $sqlparams['type'] = $type;
-}
-if ($license !== '') {
-    $where[] = 'licenseshortname = :license';
-    $sqlparams['license'] = $license;
-}
-if ($language !== '') {
-    $where[] = 'language = :language';
-    $sqlparams['language'] = $language;
-}
-if ($query !== '') {
-    $like = $DB->sql_like('title', ':q1', false) . ' OR ' . $DB->sql_like('summary', ':q2', false)
-        . ' OR ' . $DB->sql_like('tags', ':q3', false);
-    $where[] = "({$like})";
-    $needle = '%' . $DB->sql_like_escape($query) . '%';
-    $sqlparams['q1'] = $needle;
-    $sqlparams['q2'] = $needle;
-    $sqlparams['q3'] = $needle;
-}
-
-$wheresql = implode(' AND ', $where);
-$total = $DB->count_records_select('local_oerexchange_resources', $wheresql, $sqlparams);
-$resources = $DB->get_records_select(
-    'local_oerexchange_resources',
-    $wheresql,
-    $sqlparams,
-    'timeshared DESC',
-    '*',
-    $page * $perpage,
-    $perpage
-);
-
-// Populate the license/language filters from what's actually in the
-// catalogue, rather than a hardcoded list — these strings existed
-// (filterlicense, filterlanguage) but the form never used them, so the
-// only way to filter by license/language was to know the exact query
-// string params (found live, 2026-07-19, while documenting the browse
-// page for the walkthrough).
-$distinctlicenses = $DB->get_fieldset_select(
-    'local_oerexchange_resources',
-    'DISTINCT licenseshortname',
-    "status = :status AND licenseshortname <> ''",
-    ['status' => 'published']
-);
-sort($distinctlicenses);
-$distinctlanguages = $DB->get_fieldset_select(
-    'local_oerexchange_resources',
-    'DISTINCT language',
-    "status = :status AND language <> ''",
-    ['status' => 'published']
-);
-sort($distinctlanguages);
-
 echo $OUTPUT->header();
-
-echo html_writer::start_tag('form', [
-    'method' => 'get',
-    'action' => new moodle_url('/local/oerexchange/index.php'),
-    'class' => 'oerexchange-searchform mb-3',
-]);
-echo html_writer::empty_tag('input', [
-    'type' => 'text', 'name' => 'q', 'value' => $query,
-    'placeholder' => get_string('searchplaceholder', 'local_oerexchange'), 'class' => 'form-control d-inline w-auto',
-]);
-echo html_writer::tag(
-    'label',
-    get_string('filterbytype', 'local_oerexchange'),
-    ['for' => 'oerexchange-filter-type', 'class' => 'ms-2 me-1']
-);
-echo html_writer::select(
-    [
-        '' => '',
-        'course' => get_string('typecourse', 'local_oerexchange'),
-        'activity' => get_string('typeactivity', 'local_oerexchange'),
-        'data' => get_string('typedata', 'local_oerexchange'),
-    ],
-    'type',
-    $type,
-    false,
-    ['id' => 'oerexchange-filter-type', 'class' => 'form-select d-inline w-auto']
-);
-echo html_writer::tag(
-    'label',
-    get_string('filterlicense', 'local_oerexchange'),
-    ['for' => 'oerexchange-filter-license', 'class' => 'ms-2 me-1']
-);
-echo html_writer::select(
-    array_merge(['' => ''], array_combine($distinctlicenses, $distinctlicenses)),
-    'license',
-    $license,
-    false,
-    ['id' => 'oerexchange-filter-license', 'class' => 'form-select d-inline w-auto']
-);
-echo html_writer::tag(
-    'label',
-    get_string('filterlanguage', 'local_oerexchange'),
-    ['for' => 'oerexchange-filter-language', 'class' => 'ms-2 me-1']
-);
-echo html_writer::select(
-    array_merge(['' => ''], array_combine($distinctlanguages, $distinctlanguages)),
-    'language',
-    $language,
-    false,
-    ['id' => 'oerexchange-filter-language', 'class' => 'form-select d-inline w-auto']
-);
-echo ' ';
-echo html_writer::empty_tag('input', [
-    'type' => 'submit',
-    'value' => get_string('searchbutton', 'local_oerexchange'),
-    'class' => 'btn btn-primary ms-2',
-]);
-echo html_writer::end_tag('form');
-
-if (empty($resources)) {
-    $hasfilters = $query !== '' || $type !== '' || $license !== '' || $language !== '';
-    $message = $hasfilters
-        ? get_string('nocatalogresources', 'local_oerexchange')
-        : get_string('catalogueempty', 'local_oerexchange');
-    echo $OUTPUT->notification($message, 'info');
-} else {
-    // One query for the whole page's cover images rather than one per card.
-    $coverurls = \local_oerexchange\local\cover_image::urls_for(array_keys($resources));
-
-    echo html_writer::start_tag('div', ['class' => 'oerexchange-list row row-cols-1 row-cols-md-3 g-3']);
-    foreach ($resources as $r) {
-        $url = new moodle_url('/local/oerexchange/resource.php', ['id' => $r->id]);
-        if ($r->type === 'course') {
-            $typelabel = get_string('typecourse', 'local_oerexchange');
-        } else if ($r->type === 'data') {
-            $typelabel = get_string('typedata', 'local_oerexchange');
-            if (!empty($r->dataresourcetype)) {
-                $typelabel .= ' (' . get_string('datatype_' . $r->dataresourcetype, 'local_oerexchange') . ')';
-            }
-        } else {
-            $typelabel = get_string('typeactivity', 'local_oerexchange')
-                . ($r->activitytype ? ' (' . s($r->activitytype) . ')' : '');
-        }
-        echo html_writer::start_tag('div', ['class' => 'col']);
-        echo html_writer::start_tag('div', ['class' => 'card h-100']);
-        // The whole card leads with the cover image, so the catalogue reads as
-        // a shelf of courseware rather than a list of titles. Resources with
-        // no cover get the same-sized default thumbnail, which keeps every
-        // row of the grid aligned.
-        echo html_writer::link(
-            $url,
-            \local_oerexchange\local\cover_image::card($coverurls[$r->id] ?? null),
-            ['tabindex' => '-1', 'aria-hidden' => 'true']
-        );
-        echo html_writer::start_tag('div', ['class' => 'card-body']);
-        $title = format_string($r->title, true, ['context' => context_system::instance()]);
-        echo html_writer::tag('h5', html_writer::link($url, $title), ['class' => 'card-title']);
-        // Filter first (multilang collapses to one language), then strip tags
-        // and decode entities via content_to_text(), then shorten, then
-        // escape exactly once — same order block_oerexchangebrowse.php uses
-        // for its card summaries, which fixed a double-escape from
-        // strip_tags() + s() on pre-encoded entities.
-        $summaryfiltered = format_text($r->summary ?? '', FORMAT_HTML, ['context' => context_system::instance()]);
-        echo html_writer::tag(
-            'p',
-            s(shorten_text(content_to_text($summaryfiltered, FORMAT_HTML), 140)),
-            ['class' => 'card-text text-muted']
-        );
-        echo html_writer::tag('div', $typelabel . ' · ' . s($r->licenseshortname), ['class' => 'small text-muted']);
-        echo html_writer::tag(
-            'div',
-            get_string('downloadcountlabel', 'local_oerexchange', $r->downloadcount) . ' · '
-                . get_string('importcountlabel', 'local_oerexchange', $r->importcount),
-            ['class' => 'small text-muted']
-        );
-        echo html_writer::end_tag('div');
-        echo html_writer::end_tag('div');
-        echo html_writer::end_tag('div');
-    }
-    echo html_writer::end_tag('div');
-
-    $baseurl = new moodle_url('/local/oerexchange/index.php', [
-        'q' => $query, 'type' => $type, 'license' => $license, 'language' => $language,
-    ]);
-    echo $OUTPUT->paging_bar($total, $page, $perpage, $baseurl);
-}
-
+echo $view->render($pageurl);
 echo $OUTPUT->footer();
