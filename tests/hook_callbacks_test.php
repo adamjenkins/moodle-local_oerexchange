@@ -257,4 +257,88 @@ final class hook_callbacks_test extends \advanced_testcase {
         $this->assertStringContainsString('&amp;', $html);
         $this->assertStringNotContainsString('&amp;amp;', $html);
     }
+
+    /**
+     * Put the request into the exact state where the public landing page
+     * should be served, so each guard test below can break one thing and
+     * assert that one guard catches it.
+     */
+    private function arrange_anonymous_front_page_request(): void {
+        global $SCRIPT;
+        $this->setUser(null);
+        $SCRIPT = '/index.php';
+        unset($_GET['redirect'], $_POST['redirect']);
+        set_config('publiclanding', 1, 'local_oerexchange');
+        set_config('maintenance_enabled', 0);
+    }
+
+    public function test_landing_served_for_anonymous_visitor_on_the_front_page(): void {
+        $this->resetAfterTest();
+        $this->arrange_anonymous_front_page_request();
+
+        $this->assertTrue(hook_callbacks::should_serve_public_landing());
+    }
+
+    public function test_landing_not_served_when_setting_is_off(): void {
+        $this->resetAfterTest();
+        $this->arrange_anonymous_front_page_request();
+        set_config('publiclanding', 0, 'local_oerexchange');
+
+        $this->assertFalse(hook_callbacks::should_serve_public_landing());
+    }
+
+    public function test_landing_not_served_off_the_front_page(): void {
+        $this->resetAfterTest();
+        global $SCRIPT;
+        $this->arrange_anonymous_front_page_request();
+        $SCRIPT = '/local/oerexchange/resource.php';
+
+        $this->assertFalse(hook_callbacks::should_serve_public_landing());
+    }
+
+    public function test_landing_not_served_for_a_logged_in_user(): void {
+        $this->resetAfterTest();
+        $this->arrange_anonymous_front_page_request();
+        $this->setUser($this->getDataGenerator()->create_user());
+
+        $this->assertFalse(hook_callbacks::should_serve_public_landing());
+    }
+
+    /**
+     * A guest is treated as a visitor and gets the catalogue - the
+     * behaviour confirmed by the user when the design was approved.
+     */
+    public function test_landing_served_for_a_guest_user(): void {
+        $this->resetAfterTest();
+        $this->arrange_anonymous_front_page_request();
+        $this->setGuestUser();
+
+        $this->assertTrue(hook_callbacks::should_serve_public_landing());
+    }
+
+    /**
+     * The escape hatch, mirroring core's own /?redirect=0 convention
+     * (public/index.php:37) - without it an admin who turns this on can
+     * never reach the real front page again.
+     */
+    public function test_landing_not_served_when_redirect_is_suppressed(): void {
+        $this->resetAfterTest();
+        $this->arrange_anonymous_front_page_request();
+        $_GET['redirect'] = '0';
+
+        $this->assertFalse(hook_callbacks::should_serve_public_landing());
+    }
+
+    /**
+     * Rendering in place skips core index.php's own
+     * print_maintenance_message() call, so this guard is the only thing
+     * stopping the catalogue being served while the site is closed.
+     */
+    public function test_landing_not_served_during_maintenance(): void {
+        $this->resetAfterTest();
+        $this->arrange_anonymous_front_page_request();
+        set_config('maintenance_enabled', 1);
+
+        $this->assertFalse(hook_callbacks::should_serve_public_landing());
+    }
 }

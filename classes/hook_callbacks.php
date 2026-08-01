@@ -177,4 +177,84 @@ class hook_callbacks {
         $html .= \html_writer::empty_tag('meta', ['property' => 'og:type', 'content' => 'profile']);
         return $html;
     }
+
+    /**
+     * Whether this request should be served the public catalogue landing
+     * page instead of Moodle's own front page.
+     *
+     * Split out from {@see self::after_config()} with no output and no
+     * side effects precisely so every guard below is unit-testable — the
+     * caller is the part that cannot be tested, because it exits.
+     *
+     * Guards are ordered cheapest-first, and this runs on EVERY request
+     * site-wide, so the $SCRIPT comparison must stay the first real test:
+     * it is a plain string compare that rejects every page but one before
+     * anything touches the database. Same discipline as
+     * {@see self::get_profile_slug_from_current_url()}.
+     *
+     * @return bool
+     */
+    public static function should_serve_public_landing(): bool {
+        global $CFG, $SCRIPT;
+
+        // The hot path, and deliberately the very first test. $SCRIPT is
+        // set by initialise_fullme() (lib/setuplib.php:716) as a
+        // wwwroot-relative path taken from SCRIPT_NAME, so this is correct
+        // for a Moodle installed in a subdirectory too, and DirectoryIndex
+        // means a bare '/' request arrives here as '/index.php' just like
+        // an explicit one does. $SCRIPT is null for a request core cannot
+        // place under wwwroot (lib/setuplib.php:719), which also fails
+        // this test — the safe direction.
+        //
+        // This subsumes a CLI_SCRIPT check: a CLI script's $SCRIPT is its
+        // own path (lib/setuplib.php:783, e.g. '/admin/cli/cron.php'),
+        // never '/index.php', and core refuses to run a web script from
+        // the CLI at all (lib/setup.php:344). An explicit CLI_SCRIPT guard
+        // would also be untestable-by-construction, since CLI_SCRIPT is
+        // always true under PHPUnit — it would silently make the
+        // positive-path tests below vacuous. AJAX_SCRIPT is false under
+        // PHPUnit, so that one can stay.
+        if ($SCRIPT !== '/index.php' || AJAX_SCRIPT) {
+            return false;
+        }
+
+        if (during_initial_install()) {
+            return false;
+        }
+
+        // Logged-in users are core's business: an admin sets where they
+        // land via Appearance > Navigation > Default home page for users,
+        // which self::extend_default_homepage() adds the catalogue to.
+        // Guests count as visitors, and do get the catalogue.
+        if (isloggedin() && !isguestuser()) {
+            return false;
+        }
+
+        // The escape hatch — core's own convention (public/index.php:37).
+        // Without it, an admin who turns this on has no way back to the
+        // real front page.
+        if (optional_param('redirect', 1, PARAM_BOOL) === 0) {
+            return false;
+        }
+
+        // Rendering in place bypasses core index.php's own maintenance
+        // check, so without this the catalogue would stay public while the
+        // site was supposedly closed. CLI maintenance mode needs no guard:
+        // lib/setup.php:356-370 has already 503'd the request long before
+        // this hook fires.
+        if (!empty($CFG->maintenance_enabled)) {
+            return false;
+        }
+
+        if (!get_config('local_oerexchange', 'publiclanding')) {
+            return false;
+        }
+
+        // Last, because it is the most expensive check here.
+        if (moodle_needs_upgrading()) {
+            return false;
+        }
+
+        return true;
+    }
 }
