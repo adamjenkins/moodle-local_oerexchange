@@ -103,6 +103,31 @@ if ($hassiteconfig) {
         0
     ));
 
+    // What an anonymous visitor gets at the site root. Catalogue browsing
+    // has always been anonymous (index.php has never had a login gate);
+    // the only thing between a visitor and it is the front page, which
+    // sends them to the login form whenever forcelogin is on. This lets an
+    // admin open that one door without opening the whole site.
+    $settings->add(new admin_setting_heading(
+        'local_oerexchange/publiclandingheading',
+        get_string('settings_publiclandingheading', 'local_oerexchange'),
+        get_string('settings_publiclandingheading_desc', 'local_oerexchange')
+    ));
+
+    // Off by default, like every other opt-in setting in this plugin:
+    // turning it on changes what the whole world sees at the site root, so
+    // it must never happen as a side effect of installing or upgrading.
+    $settings->add(new admin_setting_configcheckbox(
+        'local_oerexchange/publiclanding',
+        get_string('settings_publiclanding', 'local_oerexchange'),
+        get_string(
+            'settings_publiclanding_desc',
+            'local_oerexchange',
+            (new moodle_url('/', ['redirect' => 0]))->out()
+        ),
+        0
+    ));
+
     // Which destinations the "Share this resource" / "Share my profile"
     // disclosures offer. Every network target is a plain link to that
     // network's own share endpoint - no third-party script or SDK is ever
