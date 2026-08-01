@@ -326,9 +326,14 @@ final class catalogue_view {
                 s(shorten_text(content_to_text($summaryfiltered, FORMAT_HTML), 140)),
                 ['class' => 'card-text text-muted']
             );
+            // The licence code is printed exactly as published; licence_display
+            // escapes it and applies the capitals (when the setting is on) as a
+            // CSS class rather than transforming the text. The filter dropdown
+            // above deliberately keeps the stored spelling — its labels are
+            // also its values, matched against the column in get_records_sql().
             $html .= \html_writer::tag(
                 'div',
-                $typelabel . ' · ' . s($r->licenseshortname),
+                $typelabel . ' · ' . licence_display::html($r->licenseshortname),
                 ['class' => 'small text-muted']
             );
             $html .= \html_writer::tag(

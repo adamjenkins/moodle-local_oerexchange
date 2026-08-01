@@ -123,6 +123,18 @@ A "site key" issued on approval **is a real core web service token**, minted
 against a dedicated, non-interactive Moodle account created for that site
 (`local_oerexchange\local\site_manager`) — not a custom auth scheme.
 
+## Licence display
+
+**Show licence codes in capitals** (`uppercaselicencenames`, on by default)
+chooses whether a resource's licence code reads `CC-SA-4.0` or `cc-sa-4.0` on
+resource pages, catalogue cards and the browse block. It is a display setting
+only: codes are wrapped in `<span class="oer-licence-name">` and the capitals
+come from CSS, so the licence is stored, filtered and advertised to client
+sites exactly as it was published. The licence filter dropdown keeps the
+stored spelling regardless. A theme can override the styling with
+`.oer-licence-name--upper { text-transform: unset; }`, because plugin
+stylesheets are emitted before theme CSS.
+
 ## Requirements
 
 - Moodle 5.0–5.2 (`$plugin->supported`).

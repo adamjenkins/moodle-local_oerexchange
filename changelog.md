@@ -63,6 +63,16 @@ All notable changes to this project are documented in this file, in
   paging base URL from the caller instead of hardcoding
   `/local/oerexchange/index.php`. No user-visible change to that page; it is
   what lets the same catalogue be served at the site root.
+- Licence shortnames on the resource page and the catalogue cards are wrapped
+  in `<span class="oer-licence-name">` by the new
+  `\local_oerexchange\local\licence_display`, and shown in capitals by
+  `styles.css` (the plugin's first stylesheet) rather than by transforming the
+  text. A new **Show licence codes in capitals** setting
+  (`uppercaselicencenames`, on by default) drops the modifier class; a theme
+  can override `.oer-licence-name--upper` instead, since plugin sheets are
+  emitted before theme CSS. The DOM text is now always the stored shortname,
+  so copied text and assistive tech get the real identifier, and the licence
+  filter — whose option labels are also its query values — keeps matching.
 
 ### Removed
 

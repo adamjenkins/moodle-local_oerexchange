@@ -180,6 +180,17 @@ if ($hassiteconfig) {
         license_manager::get_active_licenses_as_array()
     ));
 
+    // Display only — it switches a CSS class on, nothing more. The stored and
+    // rendered shortname is unchanged either way, so turning this off cannot
+    // affect what may be published, what the catalogue filter matches, or what
+    // get_config advertises to client sites.
+    $settings->add(new admin_setting_configcheckbox(
+        'local_oerexchange/uppercaselicencenames',
+        get_string('settings_uppercaselicencenames', 'local_oerexchange'),
+        get_string('settings_uppercaselicencenames_desc', 'local_oerexchange'),
+        1
+    ));
+
     $settings->add(new admin_setting_heading(
         'local_oerexchange/badgesheading',
         get_string('settings_badgesheading', 'local_oerexchange'),

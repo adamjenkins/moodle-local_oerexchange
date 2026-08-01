@@ -84,6 +84,21 @@ two work slightly differently, because Moodle handles the logged-in case
 itself: a logged-in user is taken to the catalogue's own address, whereas a
 visitor sees it at the site home page address.
 
+## Licence codes are shown consistently, and you can choose the style
+
+A resource's licence code is now displayed the same way everywhere — on
+resource pages, catalogue cards, the browse block, and on connected client
+sites. Previously the client plugin showed `CC-SA-4.0` while this site showed
+`cc-sa-4.0` for the same resource.
+
+A new setting, **Show licence codes in capitals**, chooses between the two; it
+is on by default, so codes appear as `CC-SA-4.0`. This affects appearance only:
+the licence is stored, filtered and sent to client sites exactly as it was
+published, so text you copy from a page still matches, and screen readers read
+the code out rather than spelling out capital letters. The licence filter
+dropdown keeps the stored spelling either way. If you would rather style this
+in your theme, the codes are wrapped in `.oer-licence-name`.
+
 ## Security
 
 Because the profile page is public, the values of the custom profile fields it

@@ -444,7 +444,16 @@ if ($coauthorusers) {
     );
 }
 
-echo html_writer::tag('p', get_string('licenselabel', 'local_oerexchange', s($resource->licenseshortname)));
+// Printed exactly as it was published. Showing it in capitals is presentation
+// only — licence_display attaches a CSS class and styles.css does the
+// upper-casing — so the text in the DOM stays the real identifier and an admin
+// can switch the capitals off. The helper returns escaped HTML, which is what
+// {$a} receives here.
+echo html_writer::tag('p', get_string(
+    'licenselabel',
+    'local_oerexchange',
+    \local_oerexchange\local\licence_display::html($resource->licenseshortname)
+));
 if ($resource->courseformat) {
     echo html_writer::tag(
         'p',
