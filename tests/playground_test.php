@@ -519,6 +519,100 @@ final class playground_test extends \advanced_testcase {
     }
 
     /**
+     * A configured pack must be installed even when the trial opens in a
+     * language that needs no pack of its own.
+     *
+     * Found live 2026-08-01 against the deployed sandbox: with langpacks=[ja]
+     * and an English-speaking visitor, the trial installed nothing, ended up
+     * with exactly one translation, and Moodle hides the language switcher
+     * below two (lib/classes/output/language_menu.php show_language_menu()) —
+     * so a bundle carrying a correctly baked Japanese pack offered no way to
+     * reach it.
+     */
+    public function test_configured_packs_install_even_for_an_english_trial(): void {
+        $this->resetAfterTest();
+        set_config('sandboxbundled', 0, 'local_oerexchange');
+        set_config('sandboxlangpacks', 'ja', 'local_oerexchange');
+
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course',
+            'en'
+        );
+
+        $langsteps = array_values(array_filter(
+            $blueprint['steps'],
+            fn($step) => $step['step'] === 'installLanguagePack'
+        ));
+        $this->assertCount(1, $langsteps);
+        $this->assertSame('ja', $langsteps[0]['language']);
+        // The trial still OPENS in English: a configured pack exists to be
+        // switched to, not to hijack the language the visitor asked for.
+        $this->assertFalse($langsteps[0]['setDefault']);
+    }
+
+    /**
+     * The trial's own language and a configured pack list naming it must not
+     * produce the step twice.
+     */
+    public function test_a_configured_pack_matching_the_trial_language_is_not_duplicated(): void {
+        $this->resetAfterTest();
+        set_config('sandboxbundled', 0, 'local_oerexchange');
+        set_config('sandboxlangpacks', 'ja,fr', 'local_oerexchange');
+
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course',
+            'ja'
+        );
+
+        $langsteps = array_values(array_filter(
+            $blueprint['steps'],
+            fn($step) => $step['step'] === 'installLanguagePack'
+        ));
+        $this->assertSame(['ja', 'fr'], array_column($langsteps, 'language'));
+        // Exactly one pack may claim the default, and it must be the trial's.
+        $this->assertSame([true, false], array_column($langsteps, 'setDefault'));
+    }
+
+    /**
+     * Switch ON: the single local step must cover every configured pack, not
+     * just the trial's own language — the switch changes how packs arrive, not
+     * which ones do.
+     */
+    public function test_switch_on_local_step_covers_every_configured_pack(): void {
+        $this->resetAfterTest();
+        set_config('sandboxbundled', 1, 'local_oerexchange');
+        set_config('sandboxlangpacks', 'ja', 'local_oerexchange');
+
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course',
+            'en'
+        );
+
+        $langstep = null;
+        foreach ($blueprint['steps'] as $step) {
+            if ($step['step'] === 'runPhpCode' && str_contains($step['code'], 'oer-baked-lang')) {
+                $langstep = $step;
+            }
+        }
+        $this->assertNotNull($langstep, 'a configured pack must still be installed for an English trial');
+        $this->assertStringContainsString("'ja'", $langstep['code']);
+        // English needs no pack, so nothing may claim the default here.
+        $this->assertStringContainsString("\$default = ''", $langstep['code']);
+    }
+
+    /**
      * Switch OFF: today's network installLanguagePack step is unchanged.
      */
     public function test_switch_off_still_downloads_the_language_pack(): void {

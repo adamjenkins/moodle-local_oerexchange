@@ -3,6 +3,17 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.0.3] - 2026-08-01
+
+### Fixed
+
+- A "Try it" trial now installs every language pack the sandbox configuration
+  names, not only the language the trial opens in. With a Japanese pack
+  configured and an English-speaking visitor, the pack was baked into the
+  bundle correctly and then never installed, leaving the trial with a single
+  translation — and Moodle hides the language switcher below two. The trial
+  language still decides only which of the installed languages it opens in.
+
 ## [1.0.2] - 2026-07-31
 
 ### Added

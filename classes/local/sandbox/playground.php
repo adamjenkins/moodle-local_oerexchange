@@ -177,10 +177,14 @@ class playground {
      *                              its caller's guard). Defaults to 'course' so any caller not
      *                              yet updated keeps today's exact restoreCourse behavior.
      * @param string $language Moodle language code the trial should come up in — normally the
-     *                          launching user's own current_language(). '' or 'en' emits no
-     *                          language step at all (core ships English; every other language
-     *                          is a downloaded pack, or a locally-selected one — see below). An
-     *                          unrecognisable code is dropped.
+     *                          launching user's own current_language(). '' or 'en' needs no pack
+     *                          of its own (core ships English; every other language is a
+     *                          downloaded pack, or a locally-selected one — see below), and an
+     *                          unrecognisable code is dropped. Note this decides only which
+     *                          language the trial OPENS in: the packs it installs are this one
+     *                          plus every pack the sandbox configuration names, so a trial can
+     *                          offer a switcher. An English trial on a site configuring no packs
+     *                          therefore still emits no language step at all.
      * @return array the blueprint structure (JSON-encode before use)
      */
     public static function build_blueprint(
@@ -210,9 +214,23 @@ class playground {
         // this method must still do that work itself at boot, exactly as
         // before this switch existed.
         $bundled = (bool) get_config('local_oerexchange', 'sandboxbundled');
+        $current = config::current();
+
+        // Every language pack the sandbox configuration names gets installed,
+        // not only the one the trial opens in. Found live 2026-08-01, with
+        // langpacks=[ja] and a trial default of English: the pack was baked
+        // into the bundle correctly and then never installed, because the only
+        // code that ever reached a language step was the launching user's own
+        // - so an English-speaking visitor got a trial with exactly one
+        // translation, and Moodle hides the language switcher below two
+        // (lib/classes/output/language_menu.php show_language_menu()). An
+        // admin who configures a pack list is asking for a trial a visitor can
+        // switch languages in; the trial language still decides only which of
+        // them it OPENS in.
+        $packs = self::trial_language_packs($current['langpacks'], $language);
 
         if ($bundled) {
-            if (self::is_installable_language($language)) {
+            if ($packs) {
                 // Baked (oer-sandbox scripts/bake.sh, Task 10 of
                 // SANDBOX-CONFIG-PLAN.md) means the pack already lives in the
                 // bundle's webroot — nothing to download, only a local copy
@@ -222,7 +240,7 @@ class playground {
                 // being baked.
                 $steps[] = [
                     'step' => 'runPhpCode',
-                    'code' => self::build_language_selection_php($language),
+                    'code' => self::build_language_selection_php($packs, $language),
                 ];
             }
         } else {
@@ -234,7 +252,6 @@ class playground {
             // WASM PHP step (every byte here also risks the base64-encoded
             // launch URL's nginx header-size limit — see
             // build_activity_restore_php()'s docblock).
-            $current = config::current();
             if ($current['filters'] || $current['settings']) {
                 $steps[] = [
                     'step' => 'runPhpCode',
@@ -242,7 +259,7 @@ class playground {
                 ];
             }
 
-            if (self::is_installable_language($language)) {
+            foreach ($packs as $code) {
                 // A trial boots with core's English strings only; every other
                 // language lives in a pack that Moodle's own lang_installer
                 // downloads from download.moodle.org/langpack. Upstream's step
@@ -251,18 +268,29 @@ class playground {
                 // trial - see reference-clones/moodle-playground/src/blueprint/
                 // steps/moodle-language.js.
                 //
-                // setDefault is not optional in practice: the bundle's baseline
-                // snapshot bakes admin.lang='en', and a logged-in user's own lang
-                // overrides $CFG->lang, so without it the auto-logged-in admin
-                // reads English out of a pack that installed perfectly. Upstream's
-                // helper repoints pre-existing accounts for exactly this reason
-                // (helpers.js phpInstallLanguagePacks()). Note also that the
-                // snapshot sets langmenu=0 - there is no switcher inside a trial,
-                // so whatever is set here is what the user gets.
+                // setDefault on the trial's own language is not optional in
+                // practice: the bundle's baseline snapshot bakes admin.lang='en',
+                // and a logged-in user's own lang overrides $CFG->lang, so
+                // without it the auto-logged-in admin reads English out of a
+                // pack that installed perfectly. Upstream's helper repoints
+                // pre-existing accounts for exactly this reason (helpers.js
+                // phpInstallLanguagePacks()). The other packs are installed
+                // WITHOUT it - they exist so the switcher has somewhere to
+                // switch to, and making each the default in turn would just
+                // leave the trial in whichever happened to be applied last.
+                //
+                // Whether the user can then switch at all is a separate
+                // question, answered by the langmenu site setting. That setting
+                // is only honoured from oer-sandbox's patch-playground.mjs
+                // onwards - upstream's generated config.php assigned
+                // $CFG->langmenu = 0, and a value assigned in config.php is a
+                // forced setting that overrides the database row, so a bundle
+                // built before that patch ignores a configured langmenu=1 and
+                // shows no switcher however many packs this installs.
                 $steps[] = [
                     'step' => 'installLanguagePack',
-                    'language' => $language,
-                    'setDefault' => true,
+                    'language' => $code,
+                    'setDefault' => $code === $language,
                 ];
             }
         }
@@ -438,70 +466,109 @@ class playground {
      * network fallback mirrors phpInstallLanguagePacks() (same file) line
      * for line, since that generator is not reachable from this class.
      *
-     * @param string $language already validated by is_installable_language()
+     * Every code in $codes is installed, so a trial can offer a language
+     * switcher rather than only the one language it opens in; $default names
+     * the one it opens in (see build_blueprint()'s own comment on why the two
+     * are separate). A code that cannot be delivered by either route is
+     * skipped, not fatal — the other packs still install.
+     *
+     * @param string[] $codes already validated by is_installable_language()
+     * @param string $default which of $codes the trial opens in; '' for none
      * @return string PHP source (without the leading <?php)
      */
-    private static function build_language_selection_php(string $language): string {
-        $codelit = var_export($language, true);
+    private static function build_language_selection_php(array $codes, string $default): string {
+        $codeslit = var_export(array_values($codes), true);
+        $defaultlit = var_export(self::is_installable_language($default) ? $default : '', true);
 
         return <<<PHP
 define('CLI_SCRIPT', true);
 require('/www/moodle/config.php');
-\$code = $codelit;
-\$source = 'none';
-\$candidates = [
-    \$CFG->dirroot . '/oer-baked-lang/' . \$code,
-    dirname(\$CFG->dirroot) . '/oer-baked-lang/' . \$code,
-];
-\$baked = null;
-foreach (\$candidates as \$candidate) {
-    if (is_dir(\$candidate) && is_file(\$candidate . '/langconfig.php')) {
-        \$baked = \$candidate;
-        break;
-    }
-}
-if (\$baked !== null) {
-    \$target = \$CFG->dataroot . '/lang/' . \$code;
-    make_upload_directory('lang');
-    \$it = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator(\$baked, FilesystemIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::SELF_FIRST
-    );
-    foreach (\$it as \$item) {
-        \$dest = \$target . '/' . \$it->getSubPathname();
-        if (\$item->isDir()) {
-            @mkdir(\$dest, 0777, true);
-        } else {
-            @mkdir(dirname(\$dest), 0777, true);
-            copy(\$item->getPathname(), \$dest);
+require_once(\$CFG->libdir . '/componentlib.class.php');
+\$codes = $codeslit;
+\$default = $defaultlit;
+\$installed = [];
+make_upload_directory('lang');
+foreach (\$codes as \$code) {
+    \$source = 'none';
+    \$candidates = [
+        \$CFG->dirroot . '/oer-baked-lang/' . \$code,
+        dirname(\$CFG->dirroot) . '/oer-baked-lang/' . \$code,
+    ];
+    \$baked = null;
+    foreach (\$candidates as \$candidate) {
+        if (is_dir(\$candidate) && is_file(\$candidate . '/langconfig.php')) {
+            \$baked = \$candidate;
+            break;
         }
     }
-    if (is_file(\$target . '/langconfig.php')) {
-        \$source = 'baked';
+    if (\$baked !== null) {
+        \$target = \$CFG->dataroot . '/lang/' . \$code;
+        \$it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator(\$baked, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+        foreach (\$it as \$item) {
+            \$dest = \$target . '/' . \$it->getSubPathname();
+            if (\$item->isDir()) {
+                @mkdir(\$dest, 0777, true);
+            } else {
+                @mkdir(dirname(\$dest), 0777, true);
+                copy(\$item->getPathname(), \$dest);
+            }
+        }
+        if (is_file(\$target . '/langconfig.php')) {
+            \$source = 'baked';
+        }
     }
+    if (\$source === 'none') {
+        try {
+            \$installer = new lang_installer([\$code]);
+            \$installer->run();
+        } catch (\Throwable \$e) {
+            // fall through to the filesystem check below
+        }
+        if (is_file(\$CFG->dataroot . '/lang/' . \$code . '/langconfig.php')) {
+            \$source = 'network';
+        }
+    }
+    \$installed[\$code] = \$source;
 }
-if (\$source === 'none') {
-    require_once(\$CFG->libdir . '/componentlib.class.php');
-    make_upload_directory('lang');
-    try {
-        \$installer = new lang_installer([\$code]);
-        \$installer->run();
-    } catch (\Throwable \$e) {
-        // fall through to the filesystem check below
-    }
-    if (is_file(\$CFG->dataroot . '/lang/' . \$code . '/langconfig.php')) {
-        \$source = 'network';
-    }
-}
-if (\$source !== 'none') {
-    get_string_manager()->reset_caches();
+get_string_manager()->reset_caches();
+if (\$default !== '' && (\$installed[\$default] ?? 'none') !== 'none') {
     \$admin = get_admin();
     if (\$admin) {
-        \$DB->set_field('user', 'lang', \$code, ['id' => \$admin->id]);
+        \$DB->set_field('user', 'lang', \$default, ['id' => \$admin->id]);
     }
 }
-echo json_encode(['ok' => \$source !== 'none', 'source' => \$source]);
+echo json_encode(['installed' => \$installed]);
 PHP;
+    }
+
+    /**
+     * Which language packs a trial should install: the one it opens in, plus
+     * every pack the sandbox configuration names.
+     *
+     * The trial's own language comes first so it is the one installed even if
+     * a later pack's download exhausts the boot's patience, and duplicates are
+     * collapsed — a configuration naming the very language the visitor is
+     * already browsing in must not produce the same step twice.
+     *
+     * @param string[] $configured config::current()['langpacks']
+     * @param string $language the trial's own language ('' or 'en' for none)
+     * @return string[] validated codes, trial language first
+     */
+    private static function trial_language_packs(array $configured, string $language): array {
+        $packs = [];
+        if (self::is_installable_language($language)) {
+            $packs[] = $language;
+        }
+        foreach ($configured as $code) {
+            if (self::is_installable_language($code)) {
+                $packs[] = $code;
+            }
+        }
+
+        return array_values(array_unique($packs));
     }
 
     /**
