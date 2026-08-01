@@ -25,7 +25,10 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_oerexchange';
-$plugin->version   = 2026080101;
+// Bumped for db/hooks.php: hook registrations are cached, so without a
+// version bump an already-installed site never picks up the after_config
+// and extend_default_homepage callbacks added for the public landing page.
+$plugin->version   = 2026080102;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass
