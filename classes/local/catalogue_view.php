@@ -233,9 +233,19 @@ final class catalogue_view {
             get_string('filterlicense', 'local_oerexchange'),
             ['for' => 'oerexchange-filter-license', 'class' => 'ms-2 me-1']
         );
+        // The option *labels* are escaped with s(); the keys are not, because
+        // they become the option's value attribute, which html_writer escapes
+        // itself. html_writer::select() passes each label straight to
+        // html_writer::tag() (lib/classes/output/html_writer.php:346), and
+        // tag() does not escape its content — so an unescaped label here
+        // would be an output sink for whatever is in the column. The publish
+        // web service declares these PARAM_TEXT, which strips tags, so this
+        // is defence in depth rather than a live hole; it is applied at the
+        // sink so the value is neutralised however it reached the database,
+        // not only via the one write path that happens to clean it today.
         $distinctlicenses = $this->get_distinct('licenseshortname');
         $html .= \html_writer::select(
-            array_merge(['' => ''], array_combine($distinctlicenses, $distinctlicenses)),
+            array_merge(['' => ''], array_combine($distinctlicenses, array_map('s', $distinctlicenses))),
             'license',
             $this->license,
             false,
@@ -246,9 +256,11 @@ final class catalogue_view {
             get_string('filterlanguage', 'local_oerexchange'),
             ['for' => 'oerexchange-filter-language', 'class' => 'ms-2 me-1']
         );
+        // Labels escaped at the sink, keys left raw — see the licence filter
+        // above for why.
         $distinctlanguages = $this->get_distinct('language');
         $html .= \html_writer::select(
-            array_merge(['' => ''], array_combine($distinctlanguages, $distinctlanguages)),
+            array_merge(['' => ''], array_combine($distinctlanguages, array_map('s', $distinctlanguages))),
             'language',
             $this->language,
             false,

@@ -17,6 +17,14 @@ All notable changes to this project are documented in this file, in
   `$CFG->forceloginforprofiles`; this page is deliberately public. Applied to
   every field type rather than allowlisting known-safe ones, so third-party
   field types are covered and none is silently dropped.
+- The catalogue's licence and language filter option *labels* are escaped with
+  `s()`. `html_writer::select()` hands each label to `html_writer::tag()`
+  (`lib/classes/output/html_writer.php:346`), whose content argument is not
+  escaped — only the value attribute was being escaped. Not exploitable via
+  the publish web service, which declares both `PARAM_TEXT`; applied at the
+  sink so the value is neutralised however it reached the database. Predates
+  this release; hardened now because the same filter row is served on the
+  site front page by the new public landing page.
 - The `.mbz` URL interpolated into the sandbox's generated PHP is escaped with
   `addcslashes($url, "'\\")` instead of escaping the quote alone, so a trailing
   backslash cannot break out of the generated string literal. Not reachable

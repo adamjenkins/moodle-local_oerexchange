@@ -124,6 +124,31 @@ final class catalogue_view_test extends \advanced_testcase {
         $this->assertStringNotContainsString('/local/oerexchange/index.php', $html);
     }
 
+    /**
+     * The licence/language filters are populated from column values, and
+     * html_writer::select() does not escape option labels — it hands each
+     * one to html_writer::tag(), whose content argument is unescaped
+     * (lib/classes/output/html_writer.php:346). The write path cleans these
+     * with PARAM_TEXT, so this is defence in depth; it is asserted here so
+     * the escaping cannot be dropped again unnoticed.
+     */
+    public function test_filter_option_labels_are_escaped(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $id = $this->seed_resource('Astronomy Basics');
+        $DB->set_field('local_oerexchange_resources', 'licenseshortname', 'cc<x>&"', ['id' => $id]);
+
+        $html = (new catalogue_view('', '', '', '', 0))->render(new \moodle_url('/'));
+
+        // Assert on the option's CONTENT, between '>' and '</option>'. The
+        // value attribute is escaped by html_writer either way, so an
+        // assertion that the escaped form merely appears somewhere in the
+        // page passes even with the label escaping removed — it matches the
+        // attribute. Only the content distinguishes the two.
+        $this->assertStringContainsString('>cc&lt;x&gt;&amp;&quot;</option>', $html);
+        $this->assertStringNotContainsString('>cc<x>&"</option>', $html);
+    }
+
     public function test_render_uses_the_plugin_url_when_that_is_the_base(): void {
         $this->resetAfterTest();
         $this->seed_resource('Astronomy Basics');
