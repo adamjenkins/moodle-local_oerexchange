@@ -67,10 +67,17 @@ final class licence_display_test extends \advanced_testcase {
 
     public function test_an_unsaved_setting_falls_back_to_capitals_rather_than_off(): void {
         $this->resetAfterTest();
-        // Deliberately set nothing: a setting's declared default is not written
-        // to config until the settings page is first saved, so get_config()
-        // returns false here. Reading that as "off" would silently disable the
-        // feature on every site that never opened the settings page.
+        // The state under test is "no row stored at all", which a site reaches
+        // between the plugin files landing and upgrade.php running, and which
+        // any code path reading this setting must survive.
+        //
+        // It has to be FORCED, not assumed: admin_apply_default_settings()
+        // writes every declared default at install time, so a freshly
+        // installed site — which is what CI builds — already has '1' stored.
+        // An earlier version of this test simply asserted get_config() was
+        // false and passed locally purely because the setting had not been
+        // created there yet; CI failed it immediately.
+        unset_config('uppercaselicencenames', 'local_oerexchange');
         $this->assertFalse(get_config('local_oerexchange', 'uppercaselicencenames'));
 
         $this->assertTrue(licence_display::is_uppercased());
