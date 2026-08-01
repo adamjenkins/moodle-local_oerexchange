@@ -29,4 +29,13 @@ $callbacks = [
         'hook'     => \core\hook\output\before_standard_head_html_generation::class,
         'callback' => \local_oerexchange\hook_callbacks::class . '::before_standard_head_html_generation',
     ],
+    // Fires from lib/setup.php:1209 — early enough to serve the catalogue
+    // at the site root before core index.php's require_course_login()
+    // bounces an anonymous visitor to the login page. Inert unless the
+    // publiclanding setting is on; the callback's first test is a plain
+    // string compare that rejects every page but the front page.
+    [
+        'hook'     => \core\hook\after_config::class,
+        'callback' => \local_oerexchange\hook_callbacks::class . '::after_config',
+    ],
 ];

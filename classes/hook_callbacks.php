@@ -16,6 +16,7 @@
 
 namespace local_oerexchange;
 
+use local_oerexchange\local\catalogue_view;
 use local_oerexchange\local\profile_manager;
 
 /**
@@ -176,6 +177,54 @@ class hook_callbacks {
         $html .= \html_writer::empty_tag('meta', ['property' => 'og:url', 'content' => $profileurl->out(false)]);
         $html .= \html_writer::empty_tag('meta', ['property' => 'og:type', 'content' => 'profile']);
         return $html;
+    }
+
+    /**
+     * Serves the OER catalogue in place at the site root for anonymous
+     * visitors, when the publiclanding setting is on.
+     *
+     * Rendering rather than redirecting is the point: the visitor's
+     * address bar stays at the site root. There is no redirect anywhere in
+     * this path, which is also why the setting is a checkbox rather than a
+     * URL field — there is no open-redirect surface to get wrong.
+     *
+     * This fires from lib/setup.php:1209, after the session starts
+     * (lib/setup.php:905, so isloggedin() is valid) and before core
+     * public/index.php:56 calls require_course_login($SITE) — the call
+     * that would otherwise bounce an anonymous visitor to the login page
+     * whenever forcelogin is on. That ordering is the entire reason this
+     * feature can leave forcelogin on and still open the front door.
+     *
+     * $PAGE (lib/setup.php:1048) and $OUTPUT (:653) both exist and are
+     * unconfigured by this point, so setting them up here is safe. Note
+     * the if(false) block at lib/setup.php:1198 is an IDE autocompletion
+     * hint, not where they are constructed.
+     *
+     * @param \core\hook\after_config $hook
+     */
+    public static function after_config(\core\hook\after_config $hook): void {
+        global $PAGE, $OUTPUT;
+
+        if (!self::should_serve_public_landing()) {
+            return;
+        }
+
+        $baseurl = new \moodle_url('/');
+        $PAGE->set_url($baseurl);
+        $PAGE->set_context(\context_system::instance());
+        // The frontpage layout, not the standard one, so a theme's own
+        // front-page treatment still applies to what is now the front page.
+        $PAGE->set_pagelayout('frontpage');
+        $PAGE->set_title(get_string('catalogtitle', 'local_oerexchange'));
+        $PAGE->set_heading(get_string('catalogtitle', 'local_oerexchange'));
+
+        echo $OUTPUT->header();
+        // An intro/hero block above the catalogue would go here — the
+        // grid-only presentation was chosen deliberately for the first
+        // release, with that revisit explicitly anticipated.
+        echo catalogue_view::from_request()->render($baseurl);
+        echo $OUTPUT->footer();
+        exit;
     }
 
     /**
