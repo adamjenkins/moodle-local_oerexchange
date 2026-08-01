@@ -100,8 +100,7 @@ final class profile_edit_controller_test extends route_testcase {
         $user = $this->getDataGenerator()->create_user();
         profile_manager::get_or_create_for_user((int) $user->id);
         profile_manager::save((int) $user->id, [
-            'slug' => 'ownerslug', 'bio' => 'My existing bio.', 'expertise' => ['biology'],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true,
+            'slug' => 'ownerslug', 'bio' => 'My existing bio.', 'expertise' => ['biology'], 'visible' => true,
         ]);
         $this->setUser($user);
 
@@ -117,12 +116,63 @@ final class profile_edit_controller_test extends route_testcase {
         $this->assertStringContainsString('biology', $body);
     }
 
+    /**
+     * The ORCID/LinkedIn/ResearchMap inputs are gone from this form for good
+     * (their columns were dropped in db/upgrade.php's 2026080101 step). The
+     * form must no longer offer them, and a POST that still carries them —
+     * a stale form left open in a tab across the upgrade, say — must save the
+     * remaining fields cleanly rather than failing on columns that no longer
+     * exist.
+     */
+    public function test_removed_portfolio_inputs_are_gone_and_a_stale_post_still_saves(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $profile = profile_manager::get_or_create_for_user((int) $user->id);
+        $this->setUser($user);
+
+        $this->add_class_routes_to_route_loader(profile_edit_controller::class, '');
+
+        $response = $this->process_request(
+            'GET',
+            'u/' . $profile->slug . '/edit',
+            route_loader_interface::ROUTE_GROUP_PAGE
+        );
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+        foreach (['orcidurl', 'linkedinurl', 'researchmapurl'] as $removed) {
+            $this->assertStringNotContainsString('name="' . $removed . '"', $body);
+        }
+
+        // A stale submission still carrying them: ignored, not fatal.
+        $_POST = [
+            'slug' => $profile->slug,
+            'bio' => 'Saved despite the stale fields.',
+            'expertise' => '',
+            'orcidurl' => 'https://orcid.org/0000-0000-0000-0000',
+            'linkedinurl' => 'https://www.linkedin.com/in/example',
+            'researchmapurl' => 'https://researchmap.jp/example',
+            'visible' => '1',
+            'sesskey' => sesskey(),
+        ];
+        $response = $this->process_request(
+            'POST',
+            'u/' . $profile->slug . '/edit',
+            route_loader_interface::ROUTE_GROUP_PAGE
+        );
+
+        $this->assertContains($response->getStatusCode(), [302, 303]);
+        $updated = profile_manager::get_by_slug($profile->slug);
+        $this->assertSame('Saved despite the stale fields.', $updated->bio);
+        foreach (['orcidurl', 'linkedinurl', 'researchmapurl'] as $removed) {
+            $this->assertObjectNotHasProperty($removed, $updated);
+        }
+    }
+
     public function test_non_owner_is_denied_with_403(): void {
         $this->resetAfterTest();
         $owner = $this->getDataGenerator()->create_user();
         profile_manager::get_or_create_for_user((int) $owner->id);
-        profile_manager::save((int) $owner->id, ['slug' => 'notyours', 'bio' => '', 'expertise' => [],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true]);
+        profile_manager::save((int) $owner->id, ['slug' => 'notyours', 'bio' => '', 'expertise' => [], 'visible' => true]);
         $intruder = $this->getDataGenerator()->create_user();
         $this->setUser($intruder);
 
@@ -160,11 +210,7 @@ final class profile_edit_controller_test extends route_testcase {
         $_POST = [
             'slug' => $profile->slug,
             'bio' => 'New bio',
-            'expertise' => 'biology, chemistry',
-            'orcidurl' => '',
-            'linkedinurl' => '',
-            'researchmapurl' => '',
-            'visible' => '1',
+            'expertise' => 'biology, chemistry', 'visible' => '1',
             'sesskey' => sesskey(),
         ];
         $response = $this->process_request('POST', 'u/' . $profile->slug . '/edit', route_loader_interface::ROUTE_GROUP_PAGE);
@@ -194,9 +240,6 @@ final class profile_edit_controller_test extends route_testcase {
             'slug' => 'brandnewslug',
             'bio' => '',
             'expertise' => '',
-            'orcidurl' => '',
-            'linkedinurl' => '',
-            'researchmapurl' => '',
             'sesskey' => sesskey(),
         ];
         $response = $this->process_request('POST', 'u/' . $profile->slug . '/edit', route_loader_interface::ROUTE_GROUP_PAGE);

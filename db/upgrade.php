@@ -241,5 +241,24 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026073100, 'local', 'oerexchange');
     }
 
+    if ($oldversion < 2026080101) {
+        // Drop the three hardcoded portfolio-link columns. The public profile
+        // page now renders the user's own "Visible to everyone" custom user
+        // profile fields (/user/profile/index.php) in the same position
+        // instead, which the admin controls site-wide rather than this plugin
+        // hardcoding three networks. Deliberately NO migration: the project
+        // owner's decision is to discard this data outright, so there is
+        // nothing to copy anywhere first.
+        $table = new xmldb_table('local_oerexchange_profiles');
+        foreach (['orcidurl', 'linkedinurl', 'researchmapurl'] as $fieldname) {
+            $field = new xmldb_field($fieldname);
+            if ($dbman->field_exists($table, $field)) {
+                $dbman->drop_field($table, $field);
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026080101, 'local', 'oerexchange');
+    }
+
     return true;
 }

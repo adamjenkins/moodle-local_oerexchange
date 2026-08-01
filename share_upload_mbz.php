@@ -61,8 +61,14 @@ $pageparams = $resourceid ? ['resourceid' => $resourceid] : [];
 $PAGE->set_url('/local/oerexchange/share_upload_mbz.php', $pageparams);
 $PAGE->set_context(context_system::instance());
 $PAGE->set_pagelayout('standard');
+// The raw title, deliberately unescaped and unfiltered here: set_title() and
+// set_heading() below both run format_string() over the whole assembled
+// string themselves (lib/pagelib.php), so filtering it a second time here
+// would be redundant, and s()-escaping it — as this line used to — defeated
+// that filtering entirely, rendering a multilang title as literal <span>
+// markup in the browser tab and the page heading.
 $heading = $updating
-    ? get_string('replacefileheading', 'local_oerexchange', s($updating->title))
+    ? get_string('replacefileheading', 'local_oerexchange', $updating->title)
     : get_string('uploadmbzheading', 'local_oerexchange');
 $PAGE->set_title($heading);
 $PAGE->set_heading($heading);
@@ -160,7 +166,11 @@ if ($updating) {
     // will and won't change answers it.
     echo html_writer::tag(
         'p',
-        get_string('replacefileintro', 'local_oerexchange', s($updating->title)),
+        get_string(
+            'replacefileintro',
+            'local_oerexchange',
+            format_string($updating->title, true, ['context' => context_system::instance()])
+        ),
         ['class' => 'alert alert-info']
     );
 } else {

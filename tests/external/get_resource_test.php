@@ -167,7 +167,7 @@ final class get_resource_test extends \advanced_testcase {
         \local_oerexchange\local\profile_manager::get_or_create_for_user((int) $creator->id);
         \local_oerexchange\local\profile_manager::save((int) $creator->id, [
             'slug' => 'hiddenprofile', 'bio' => '', 'expertise' => [],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => false,
+            'visible' => false,
         ]);
         $this->setUser($this->getDataGenerator()->create_user());
 
@@ -239,7 +239,7 @@ final class get_resource_test extends \advanced_testcase {
         \local_oerexchange\local\profile_manager::get_or_create_for_user((int) $creator->id);
         \local_oerexchange\local\profile_manager::save((int) $creator->id, [
             'slug' => 'visibleprofile', 'bio' => '', 'expertise' => [],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true,
+            'visible' => true,
         ]);
         $this->setUser($this->getDataGenerator()->create_user());
 

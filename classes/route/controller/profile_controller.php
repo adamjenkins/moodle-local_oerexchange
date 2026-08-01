@@ -151,15 +151,51 @@ class profile_controller {
         $out .= \html_writer::tag('div', $OUTPUT->user_picture($user, ['size' => 100, 'link' => false]), ['class' => 'mb-2']);
         $out .= \html_writer::tag('p', get_string('profileheading', 'local_oerexchange'), ['class' => 'text-muted small mb-1']);
         $out .= \html_writer::tag('h2', s($fullname));
+        // FORMAT_MOODLE, not the FORMAT_PLAIN this used to pass. FORMAT_PLAIN
+        // runs no filters at all (it only escapes and nl2br's), so a URL in a
+        // bio never became a link and a multilang span rendered as literal
+        // markup. FORMAT_MOODLE is the format that actually matches how the
+        // data is captured: the bio comes from a plain <textarea name="bio">
+        // (profile_edit_controller::render_form()) read as
+        // optional_param('bio', '', PARAM_RAW_TRIMMED)
+        // (profile_edit_controller::save()) and written to the column
+        // verbatim by profile_manager::save() — no editor, no HTML, just raw
+        // text with real newlines. That is exactly FORMAT_MOODLE's input
+        // contract (newlines converted to <br />, filters applied), whereas
+        // FORMAT_HTML would leave the newlines as insignificant whitespace.
+        // Cleaning stays on deliberately: no 'noclean' option is passed, so
+        // format_text() still runs clean_text() over this
+        // user-supplied-and-never-HTML-validated string.
+        //
+        // 'para' => false because this is already being placed inside a <p>:
+        // format_text()'s default para=true wraps FORMAT_MOODLE output in a
+        // <div class="text_to_html"> (weblib.php:482-483), which inside a <p>
+        // is invalid nesting that browsers silently repair by closing the <p>
+        // early. FORMAT_PLAIN never emitted that wrapper, so this only became
+        // a problem with the format change. Newlines are still converted —
+        // that is the 'newlines' option, left at its default. Core's own
+        // profile_field_base::display_data() sets para = false for exactly
+        // the same reason (user/profile/lib.php:134-135).
         $out .= \html_writer::tag('p', $profile->bio !== ''
-            ? format_text($profile->bio, FORMAT_PLAIN)
+            ? format_text($profile->bio, FORMAT_MOODLE, [
+                'context' => \context_system::instance(),
+                'para' => false,
+            ])
             : get_string('profilenobio', 'local_oerexchange'));
 
         $expertise = json_decode($profile->expertise ?: '[]', true) ?: [];
         if ($expertise) {
             $out .= \html_writer::start_tag('div', ['class' => 'mb-2']);
             foreach ($expertise as $tag) {
-                $out .= \html_writer::tag('span', s($tag), ['class' => 'badge bg-secondary me-1']);
+                // Author-authored display text, so it is a filter sink like
+                // the resource titles below: s() would render a multilang-
+                // marked-up subject tag as visible literal <span> markup.
+                // format_string() escapes internally — no s() as well.
+                $out .= \html_writer::tag(
+                    'span',
+                    format_string($tag, true, ['context' => \context_system::instance()]),
+                    ['class' => 'badge bg-secondary me-1']
+                );
             }
             $out .= \html_writer::end_tag('div');
         }
@@ -174,21 +210,29 @@ class profile_controller {
             $out .= \html_writer::end_tag('div');
         }
 
-        $links = [];
-        foreach (['orcidurl' => 'ORCID', 'linkedinurl' => 'LinkedIn', 'researchmapurl' => 'ResearchMap'] as $field => $label) {
-            // Saving a profile does not itself restrict these to a safe
-            // scheme (Task 2's profile_manager::save()); re-validate here
-            // rather than trust stored data for something rendered as a
-            // clickable href — clean_param() returns '' for anything that
-            // isn't a well-formed http(s)/etc URL, ruling out a stored
-            // javascript: URI.
-            $url = clean_param($profile->{$field} ?? '', PARAM_URL);
-            if ($url !== '') {
-                $links[] = \html_writer::link($url, $label, ['class' => 'me-2']);
+        // This position used to hold three hardcoded portfolio links
+        // (ORCID/LinkedIn/ResearchMap), whose columns are now dropped from
+        // the schema entirely (db/upgrade.php's 2026080101 step). It now
+        // shows the user's own additional user profile fields — the site's
+        // custom user profile fields (admin page /user/profile/index.php) —
+        // which lets the admin decide what an educator can publish here
+        // instead of this plugin hardcoding three particular networks.
+        $customfields = self::get_public_custom_fields((int) $profile->userid);
+        if ($customfields) {
+            $out .= \html_writer::tag(
+                'h3',
+                get_string('profilefieldsheading', 'local_oerexchange'),
+                ['class' => 'h5 mt-3']
+            );
+            $out .= \html_writer::start_tag('dl', ['class' => 'row mb-2']);
+            foreach ($customfields as $customfield) {
+                // Both halves arrive already-safe from core (see
+                // get_public_custom_fields()'s docblock), so neither is put
+                // through s() here — that would double-escape them.
+                $out .= \html_writer::tag('dt', $customfield['name'], ['class' => 'col-sm-3']);
+                $out .= \html_writer::tag('dd', $customfield['value'], ['class' => 'col-sm-9']);
             }
-        }
-        if ($links) {
-            $out .= \html_writer::tag('div', implode(' ', $links), ['class' => 'mb-2']);
+            $out .= \html_writer::end_tag('dl');
         }
 
         $out .= \html_writer::tag('div', implode(' · ', array_filter([
@@ -292,7 +336,32 @@ class profile_controller {
                     );
                     $out .= \html_writer::empty_tag('img', [
                         'src' => $coverurl->out(false),
-                        'alt' => get_string('thumbnailalt', 'local_oerexchange', s($r->title)),
+                        // Filter, then decode back to plain text, and NO s().
+                        // The old s($r->title) was a double-escape: this value
+                        // ends up as an attribute, and html_writer::attribute()
+                        // already runs s() over every value it writes
+                        // (lib/classes/output/html_writer.php:113), so a
+                        // multilang title came out as visible, doubly-escaped
+                        // "&amp;lt;span lang=..." markup.
+                        //
+                        // format_string(..., 'escape' => false) is the obvious
+                        // attribute-context form and is what core uses for
+                        // group names (weblib.php), but it is not sufficient
+                        // here: it suppresses format_string's own ampersand
+                        // escaping and nothing else, so clean_text()/
+                        // HTMLPurifier still encodes a bare '&', and a title
+                        // stored with pre-encoded entities is untouched by it
+                        // either way. Both cases then get escaped a second
+                        // time by html_writer and render as a literal
+                        // "&amp;". html_entity_decode() after filtering is
+                        // correct for both, and matches the idiom
+                        // block_oerexchangequicklinks already uses for its
+                        // aria-labels.
+                        'alt' => get_string('thumbnailalt', 'local_oerexchange', html_entity_decode(
+                            format_string($r->title, true, ['context' => \context_system::instance()]),
+                            ENT_QUOTES,
+                            'UTF-8'
+                        )),
                         'class' => 'card-img-top',
                     ]);
                 }
@@ -313,7 +382,15 @@ class profile_controller {
                         ['class' => 'badge bg-warning text-dark mb-1 ms-1']
                     );
                 }
-                $out .= \html_writer::tag('h5', \html_writer::link($rurl, s($r->title)), ['class' => 'card-title']);
+                // Uses format_string(), not s(): a multilang span in a title must
+                // collapse to one language rather than show as literal
+                // markup, matching the title sink index.php:194 and
+                // resource.php already use. It is not additionally wrapped in
+                // s() — format_string() escapes bare ampersands and runs
+                // clean_text() itself (lib/classes/formatting.php:105-128),
+                // so an s() around it would double-escape.
+                $title = format_string($r->title, true, ['context' => \context_system::instance()]);
+                $out .= \html_writer::tag('h5', \html_writer::link($rurl, $title), ['class' => 'card-title']);
                 $out .= \html_writer::tag(
                     'div',
                     get_string('downloadcountlabel', 'local_oerexchange', $r->downloadcount),
@@ -330,5 +407,109 @@ class profile_controller {
 
         $response->getBody()->write($out);
         return $response;
+    }
+
+    /**
+     * The user's custom user profile fields (user_info_field, admin page
+     * /user/profile/index.php) that this deliberately-public page may show,
+     * flattened to a name/value list in the admin's configured field order.
+     *
+     * Core API used, all verified by reading
+     * /srv/lms/moodle/public/user/profile/lib.php on 2026-08-01:
+     *
+     * - profile_get_user_fields_with_data(int $userid): profile_field_base[]
+     *   (lib.php:640) returns one field object per user_info_field row —
+     *   every field, with this user's data attached, already ordered
+     *   `uic.sortorder ASC, uif.sortorder ASC` (lib.php:652), i.e. the
+     *   admin's configured order. It lives in a legacy lib, not an
+     *   autoloaded class, hence the require_once below.
+     * - profile_field_base::$field->visible (lib.php:69, a public stdClass)
+     *   holds the raw visibility, compared against PROFILE_VISIBLE_ALL
+     *   (lib.php:37, '2').
+     * - profile_field_base::is_empty() (lib.php:534) is core's own
+     *   definition of "no data": empty, except the string '0' which counts
+     *   as data (so an explicitly-unchecked checkbox still renders "No",
+     *   exactly as core's own profile page shows it).
+     * - display_name() (lib.php:145) returns
+     *   format_string($this->field->name, true, [context system, escape]) —
+     *   i.e. filtered (a multilang span in a field name collapses to one
+     *   language) and already HTML-safe. Must NOT be re-escaped.
+     * - display_data() (lib.php:133) returns each field type's own rendering
+     *   and is likewise already HTML — the base class returns
+     *   format_text($this->data, FORMAT_MOODLE); text fields return
+     *   format_string() plus, when param4 is set, a built <a href> using the
+     *   configured link format (field/text/field.class.php:36-56); checkbox
+     *   returns get_string('yes'/'no') (field/checkbox/field.class.php:72);
+     *   datetime returns userdate() (field/datetime/field.class.php:102).
+     *   Also must NOT be re-escaped.
+     *
+     * This is the same trio core itself uses to render custom fields for a
+     * viewer, in user_get_user_details()
+     * (/srv/lms/moodle/public/user/lib.php:417-430: show_field_content()
+     * gate, then display_name() + display_data()).
+     *
+     * Two deliberate divergences from that core snippet:
+     *
+     * 1. The visibility test is an explicit `=== PROFILE_VISIBLE_ALL`, not
+     *    core's show_field_content()/is_visible(). is_visible() (lib.php:450)
+     *    also passes a PROFILE_VISIBLE_PRIVATE or _TEACHERS field when the
+     *    *viewer* is the field's owner or holds moodle/user:viewalldetails —
+     *    which on this page would mean the owner previewing their own public
+     *    profile sees fields no member of the public can see, i.e. the page
+     *    would actively mislead them about what they are publishing. Only
+     *    "Visible to everyone" is genuinely publishable here.
+     * 2. No isloggedin() gate and no $CFG->forceloginforprofiles check
+     *    (core's /user/profile.php:49 consults the latter). This page is
+     *    deliberately public — see the class docblock — and the project
+     *    owner's decision is that "Visible to everyone" is to be read
+     *    literally, anonymous visitors included. Note this needs no
+     *    capability check to be safe: for PROFILE_VISIBLE_ALL, core's own
+     *    is_visible() returns true unconditionally (lib.php:472-473).
+     *
+     * @param int $userid
+     * @return array<int, array{name: string, value: string}> already-safe HTML, in admin-configured order
+     */
+    protected static function get_public_custom_fields(int $userid): array {
+        global $CFG;
+
+        require_once($CFG->dirroot . '/user/profile/lib.php');
+
+        $fields = [];
+        foreach (profile_get_user_fields_with_data($userid) as $field) {
+            if ((int) $field->field->visible !== (int) PROFILE_VISIBLE_ALL) {
+                continue;
+            }
+            if ($field->is_empty()) {
+                continue;
+            }
+            $fields[] = [
+                'name' => $field->display_name(),
+                // Core's display_data() is safe for five of its six field
+                // types, but NOT universally: profile_field_social's version
+                // (user/profile/field/social/field.class.php) substitutes the
+                // raw stored value into a template that for the 'url' network
+                // is `<a href="%%PLAIN%%">%%PLAIN%%</a>`
+                // (field/social/classes/helper.php) — no escaping at all. The
+                // edit form's PARAM_URL is the only guard, and it is bypassed
+                // by every non-form writer: core_user_create_users /
+                // update_users declare customfields[].value as PARAM_RAW
+                // (user/externallib.php) and hand it to profile_save_data(),
+                // as do uploaduser and the LDAP/OAuth2 sync paths.
+                //
+                // Core lives with that because /user/profile.php honours
+                // $CFG->forceloginforprofiles; this page is deliberately
+                // public, so the same stored value would be published to the
+                // anonymous internet. clean_text() closes it for every field
+                // type, including third-party ones this plugin has never
+                // seen, without dropping any: verified against the live
+                // bootstrap that it strips a javascript: href and an injected
+                // onmouseover while leaving a legitimate <a href="https://…">,
+                // a checkbox's "Yes" and a formatted date untouched. It is
+                // idempotent on the already-safe types.
+                'value' => clean_text($field->display_data(), FORMAT_HTML),
+            ];
+        }
+
+        return $fields;
     }
 }

@@ -135,9 +135,9 @@ class profile_edit_controller {
      * failure this re-renders the same form the GET branch produces, with
      * the error message shown and every field pre-filled from the values
      * just submitted in THIS request (not the stale, pre-save $profile row)
-     * — otherwise the user's whole form (bio, expertise, portfolio links,
-     * not just the bad slug) would be silently lost, forcing a re-type from
-     * scratch (Task 7 review finding).
+     * — otherwise the user's whole form (bio, expertise, not just the bad
+     * slug) would be silently lost, forcing a re-type from scratch (Task 7
+     * review finding).
      *
      * Only \moodle_exception is caught (both around require_sesskey() and
      * around profile_manager::save(), see below), deliberately no wider: a
@@ -186,9 +186,6 @@ class profile_edit_controller {
             'slug' => $newslug,
             'bio' => $bio,
             'expertise' => $expertise,
-            'orcidurl' => optional_param('orcidurl', '', PARAM_URL),
-            'linkedinurl' => optional_param('linkedinurl', '', PARAM_URL),
-            'researchmapurl' => optional_param('researchmapurl', '', PARAM_URL),
             'visible' => (bool) optional_param('visible', 0, PARAM_BOOL),
         ];
 
@@ -225,16 +222,13 @@ class profile_edit_controller {
      * failed save.
      *
      * @param \stdClass $profile
-     * @return \stdClass slug, bio, expertise (array), orcidurl, linkedinurl, researchmapurl, visible (bool)
+     * @return \stdClass slug, bio, expertise (array), visible (bool)
      */
     protected static function values_from_profile(\stdClass $profile): \stdClass {
         return (object) [
             'slug' => $profile->slug,
             'bio' => $profile->bio,
             'expertise' => json_decode($profile->expertise ?: '[]', true) ?: [],
-            'orcidurl' => $profile->orcidurl,
-            'linkedinurl' => $profile->linkedinurl,
-            'researchmapurl' => $profile->researchmapurl,
             'visible' => (bool) $profile->visible,
         ];
     }
@@ -251,9 +245,8 @@ class profile_edit_controller {
      *        form's own action URL; on a failed save this is deliberately
      *        the URL's original slug, not $values->slug, since the request
      *        stays on the same edit URL)
-     * @param \stdClass $values slug, bio, expertise (array), orcidurl,
-     *        linkedinurl, researchmapurl, visible (bool) — see
-     *        values_from_profile()
+     * @param \stdClass $values slug, bio, expertise (array), visible (bool)
+     *        — see values_from_profile()
      * @param string|null $error a caught save() validation message to show
      *        above the form, or null for the plain GET render
      * @return ResponseInterface
@@ -294,7 +287,13 @@ class profile_edit_controller {
         ]);
         $out .= \html_writer::empty_tag('input', [
             'type' => 'text', 'name' => 'slug', 'id' => 'oerexchange-profile-slug',
-            'value' => s($values->slug), 'class' => 'form-control mb-2',
+            // No s(): html_writer escapes attribute values itself
+            // (html_writer::attribute(), lib/outputcomponents.php), so
+            // pre-escaping double-encodes an & or a quote in the stored
+            // value. No format_string() either — an edit field must show the
+            // raw stored source, including any multilang markup the author
+            // typed, or saving the form would silently rewrite it.
+            'value' => $values->slug, 'class' => 'form-control mb-2',
         ]);
 
         $out .= \html_writer::tag('label', get_string('profileeditbio', 'local_oerexchange'), [
@@ -309,33 +308,16 @@ class profile_edit_controller {
         ]);
         $out .= \html_writer::empty_tag('input', [
             'type' => 'text', 'name' => 'expertise', 'id' => 'oerexchange-profile-expertise',
-            'value' => s(implode(', ', $values->expertise)), 'class' => 'form-control mb-2',
+            // Same as the slug field above: html_writer escapes this itself.
+            'value' => implode(', ', $values->expertise), 'class' => 'form-control mb-2',
         ]);
 
-        $out .= \html_writer::tag('label', get_string('profileeditorcid', 'local_oerexchange'), [
-            'for' => 'oerexchange-profile-orcid',
-        ]);
-        $out .= \html_writer::empty_tag('input', [
-            'type' => 'url', 'name' => 'orcidurl', 'id' => 'oerexchange-profile-orcid',
-            'value' => s($values->orcidurl), 'class' => 'form-control mb-2',
-        ]);
-
-        $out .= \html_writer::tag('label', get_string('profileeditlinkedin', 'local_oerexchange'), [
-            'for' => 'oerexchange-profile-linkedin',
-        ]);
-        $out .= \html_writer::empty_tag('input', [
-            'type' => 'url', 'name' => 'linkedinurl', 'id' => 'oerexchange-profile-linkedin',
-            'value' => s($values->linkedinurl), 'class' => 'form-control mb-2',
-        ]);
-
-        $out .= \html_writer::tag('label', get_string('profileeditresearchmap', 'local_oerexchange'), [
-            'for' => 'oerexchange-profile-researchmap',
-        ]);
-        $out .= \html_writer::empty_tag('input', [
-            'type' => 'url', 'name' => 'researchmapurl', 'id' => 'oerexchange-profile-researchmap',
-            'value' => s($values->researchmapurl), 'class' => 'form-control mb-2',
-        ]);
-
+        // There are deliberately no portfolio-link inputs here any more. The
+        // ORCID/LinkedIn/ResearchMap fields this form used to carry were
+        // dropped from the schema outright (db/upgrade.php's 2026080101
+        // step); the public profile page now shows the user's own "Visible to
+        // everyone" custom user profile fields, which are edited on the
+        // site's normal user-profile edit page, not here.
         $out .= \html_writer::start_tag('div', ['class' => 'form-check mb-3']);
         $out .= \html_writer::empty_tag('input', array_merge([
             'type' => 'checkbox', 'name' => 'visible', 'value' => '1', 'class' => 'form-check-input',

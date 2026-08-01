@@ -327,7 +327,11 @@ if ($action === 'report' && isloggedin() && !isguestuser()) {
         // case as well as the "on" one.
         $trydisabled = optional_param('trydisabled', 0, PARAM_BOOL) ? 1 : 0;
         // PARAM_TEXT, not PARAM_RAW: this is rendered back into the page for
-        // every visitor, and is escaped with s() at the point of output too.
+        // every visitor. PARAM_TEXT strips every tag except the ones the
+        // multilang filter needs (lib/classes/param.php, clean_param_value_text()),
+        // so the display side runs it through format_string() rather than s()
+        // — s() would escape the multilang span an author deliberately typed
+        // into literal markup.
         $reason = trim(optional_param('trydisabledreason', '', PARAM_TEXT));
 
         $DB->update_record('local_oerexchange_resources', (object) [
@@ -380,7 +384,15 @@ if (
     && \local_oerexchange\local\resource_manager::user_can_delete_resource($resource, (int) $USER->id)
 ) {
     echo $OUTPUT->confirm(
-        get_string('resourcedeleteconfirm', 'local_oerexchange', s($resource->title)),
+        // Core's confirm() puts the message through html_writer::tag('p', ...)
+        // — content position, so it is NOT escaped for us
+        // (lib/classes/output/core_renderer.php, confirm()). format_string()
+        // escapes internally, so it is both the filter and the escape here.
+        get_string(
+            'resourcedeleteconfirm',
+            'local_oerexchange',
+            format_string($resource->title, true, ['context' => context_system::instance()])
+        ),
         new moodle_url('/local/oerexchange/resource.php', [
             'id' => $id, 'action' => 'deleteconfirm', 'sesskey' => sesskey(),
         ]),
@@ -453,7 +465,14 @@ if ($resource->forkedfromid) {
         $purl = new moodle_url('/local/oerexchange/resource.php', ['id' => $parent->id]);
         echo html_writer::tag(
             'p',
-            get_string('attributionchain', 'local_oerexchange', html_writer::link($purl, s($parent->title)))
+            get_string(
+                'attributionchain',
+                'local_oerexchange',
+                html_writer::link(
+                    $purl,
+                    format_string($parent->title, true, ['context' => context_system::instance()])
+                )
+            )
         );
     }
 }
@@ -491,9 +510,29 @@ if ($coverfiles) {
     );
     echo html_writer::empty_tag('img', [
         'src' => $coverurl->out(false),
-        // No s() here: html_writer escapes attribute values itself, so
-        // pre-escaping double-encoded any & or quotes in the title.
-        'alt' => get_string('thumbnailalt', 'local_oerexchange', $resource->title),
+        // Html_writer escapes attribute values itself, so there is no s()
+        // here — pre-escaping double-encoded any & or quotes in the title.
+        // The title still has to go through the string filters, or a multilang
+        // one shows both languages in the alt text. It must then be decoded
+        // back to plain text before html_writer sees it: html_writer escapes
+        // every attribute value with s() itself (html_writer::attribute()),
+        // so handing it format_string()'s already-escaped output renders an
+        // ampersand as the literal "&amp;". format_string(..., 'escape' =>
+        // false) only half-fixes that — it suppresses format_string's OWN
+        // ampersand escaping but not clean_text()/HTMLPurifier's, and it does
+        // nothing at all for a value stored with pre-encoded entities. Proved
+        // by the failing assertion in tests/multilang_rendering_test.php.
+        // html_entity_decode() is correct for both, and is the idiom
+        // block_oerexchangequicklinks already uses for its aria-labels.
+        'alt' => get_string(
+            'thumbnailalt',
+            'local_oerexchange',
+            html_entity_decode(
+                format_string($resource->title, true, ['context' => context_system::instance()]),
+                ENT_QUOTES,
+                'UTF-8'
+            )
+        ),
         'class' => 'img-fluid mb-3', 'style' => 'max-height:200px;',
     ]);
 }
@@ -826,7 +865,11 @@ if ($sandboxenabled && $version && $resource->type !== 'data' && !empty($resourc
     echo html_writer::tag(
         'div',
         $reason !== ''
-            ? get_string('tryitdisabledwithreason', 'local_oerexchange', s($reason))
+            ? get_string(
+                'tryitdisabledwithreason',
+                'local_oerexchange',
+                format_string($reason, true, ['context' => context_system::instance()])
+            )
             : get_string('tryitdisabledbyauthor', 'local_oerexchange'),
         ['class' => 'alert alert-info py-2 px-3 mb-2']
     );
@@ -856,9 +899,22 @@ if ($version) {
 // Share this resource. Uses $PAGE->url rather than rebuilding the resource
 // URL so the shared link is byte-identical to the canonical one the og:url
 // tag advertises.
+//
+// share_targets wants PLAIN TEXT, not HTML: the title ends up in a tweet
+// body, a mailto: subject, an sms: body and navigator.share()'s title, none
+// of which render HTML entities. So filter it (a multilang title collapses to
+// the viewer's language instead of being shared as literal <span> markup),
+// then flatten the filtered HTML back to plain text so format_string()'s
+// '&amp;' never reaches a share sheet as visible text. Same
+// format_string/content_to_text ordering the catalogue card teaser in
+// index.php uses — filter first, flatten second.
+$sharetitle = content_to_text(
+    format_string($resource->title, true, ['context' => context_system::instance()]),
+    FORMAT_HTML
+);
 echo \local_oerexchange\local\share_targets::render(
     $PAGE->url->out(false),
-    $resource->title,
+    $sharetitle,
     get_string('shareresource', 'local_oerexchange')
 );
 echo html_writer::end_tag('div');
@@ -904,8 +960,13 @@ if ($structure && !empty($structure['sections'])) {
         // in the backup XML (Moodle applies "Topic N"/"Week N" only at
         // display time in core, not in the backup) — show that number in a
         // readable label instead of leaving it as a bare digit.
+        // No s() on the lang-string branch: get_string() output is
+        // site-owned text that is already safe to emit, and the only value
+        // interpolated into it is the ctype_digit()-guarded section number.
+        // s() there would instead escape any & or quote in a translation of
+        // the string itself. Matches local_oerclient's resource_preview.php.
         echo ctype_digit((string) $title)
-            ? s(get_string('sectionnumber', 'local_oerexchange', $title))
+            ? get_string('sectionnumber', 'local_oerexchange', $title)
             : format_string($title, true, ['context' => context_system::instance()]);
         if (!empty($section['activities'])) {
             echo html_writer::start_tag('ul');
@@ -944,25 +1005,36 @@ $reviews = $DB->get_records(
     ['resourceid' => $resource->id, 'status' => 'visible'],
     'timecreated DESC'
 );
+// The three review fields are captured as PARAM_TEXT (see the 'review'
+// action handler above), which strips every tag EXCEPT the ones the multilang
+// filter needs — so they are plain text that may legitimately carry multilang
+// markup, and format_string() is the right sink for them, not s() (which
+// escaped that markup into literal <span> text) and not
+// format_text(FORMAT_HTML) (these fields never hold HTML; only the
+// PARAM_RAW summary column does).
+$reviewcontext = context_system::instance();
 foreach ($reviews as $rv) {
     echo html_writer::start_tag('div', ['class' => 'card mb-2']);
     echo html_writer::start_tag('div', ['class' => 'card-body']);
     if ($rv->contexttext) {
         echo html_writer::tag(
             'p',
-            '<strong>' . get_string('reviewcontext', 'local_oerexchange') . '</strong> ' . s($rv->contexttext)
+            '<strong>' . get_string('reviewcontext', 'local_oerexchange') . '</strong> '
+                . format_string($rv->contexttext, true, ['context' => $reviewcontext])
         );
     }
     if ($rv->adaptationtext) {
         echo html_writer::tag(
             'p',
-            '<strong>' . get_string('reviewadaptation', 'local_oerexchange') . '</strong> ' . s($rv->adaptationtext)
+            '<strong>' . get_string('reviewadaptation', 'local_oerexchange') . '</strong> '
+                . format_string($rv->adaptationtext, true, ['context' => $reviewcontext])
         );
     }
     if ($rv->outcometext) {
         echo html_writer::tag(
             'p',
-            '<strong>' . get_string('reviewoutcome', 'local_oerexchange') . '</strong> ' . s($rv->outcometext)
+            '<strong>' . get_string('reviewoutcome', 'local_oerexchange') . '</strong> '
+                . format_string($rv->outcometext, true, ['context' => $reviewcontext])
         );
     }
     echo html_writer::end_tag('div');

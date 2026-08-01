@@ -108,9 +108,6 @@ class provider implements
             'slug' => 'privacy:metadata:local_oerexchange_profiles:slug',
             'bio' => 'privacy:metadata:local_oerexchange_profiles:bio',
             'expertise' => 'privacy:metadata:local_oerexchange_profiles:expertise',
-            'orcidurl' => 'privacy:metadata:local_oerexchange_profiles:orcidurl',
-            'linkedinurl' => 'privacy:metadata:local_oerexchange_profiles:linkedinurl',
-            'researchmapurl' => 'privacy:metadata:local_oerexchange_profiles:researchmapurl',
             'visible' => 'privacy:metadata:local_oerexchange_profiles:visible',
             'timecreated' => 'privacy:metadata:local_oerexchange_profiles:timecreated',
             'timemodified' => 'privacy:metadata:local_oerexchange_profiles:timemodified',
@@ -335,8 +332,6 @@ class provider implements
             ], $linkcodes)),
             'profile' => array_values(array_map(fn($r) => [
                 'slug' => $r->slug, 'bio' => $r->bio, 'expertise' => $r->expertise,
-                'orcidurl' => $r->orcidurl,
-                'linkedinurl' => $r->linkedinurl, 'researchmapurl' => $r->researchmapurl,
                 'visible' => \core_privacy\local\request\transform::yesno($r->visible),
                 'timecreated' => \core_privacy\local\request\transform::datetime($r->timecreated),
                 'timemodified' => \core_privacy\local\request\transform::datetime($r->timemodified),

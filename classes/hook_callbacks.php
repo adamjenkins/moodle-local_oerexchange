@@ -140,8 +140,28 @@ class hook_callbacks {
         // resolvable URL (see that class's docblock); a shared/pasted
         // og:url must actually resolve.
         $profileurl = \moodle_url::routed_path('/local_oerexchange/u/' . $profile->slug);
+        // A bare strip_tags() ran no text filters at all, so a multilang bio
+        // advertised BOTH languages at once in every link preview, and its
+        // HTML entities stayed encoded for html_writer to encode a second
+        // time below. Filter first, flatten second — the same order
+        // index.php's catalogue card teaser uses.
+        //
+        // FORMAT_MOODLE, not FORMAT_HTML, to stay consistent with how
+        // profile_controller::view() renders this very same column on the
+        // page itself: the bio comes from a plain <textarea> as
+        // PARAM_RAW_TRIMMED, i.e. plain text with real newlines, which is
+        // FORMAT_MOODLE's input contract. Cleaning stays on (no 'noclean').
+        // content_to_text() then flattens the filtered HTML back to real
+        // plain text and decodes the entities, so html_writer's attribute
+        // escaping below is the only escaping applied.
         $ogdescription = $profile->bio !== ''
-            ? shorten_text(strip_tags($profile->bio), 200)
+            ? shorten_text(
+                content_to_text(
+                    format_text($profile->bio, FORMAT_MOODLE, ['context' => \context_system::instance()]),
+                    FORMAT_HTML
+                ),
+                200
+            )
             : get_string('profilenobio', 'local_oerexchange');
         $userpicture = new \user_picture($user);
         $userpicture->size = 200;

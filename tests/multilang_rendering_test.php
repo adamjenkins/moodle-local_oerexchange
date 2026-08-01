@@ -37,6 +37,16 @@ use PHPUnit\Framework\Attributes\CoversNothing;
  * test-local filter configuration, so a regression to s()/FORMAT_PLAIN
  * fails these tests without depending on site config.
  *
+ * Later additions widen this to the other sink SHAPES the same audit found,
+ * each of which needs a different call because of where the value lands:
+ * an html_writer ATTRIBUTE (format_string with 'escape' => false, since
+ * html_writer escapes attributes itself), a PAGE HEADING/TITLE (raw value —
+ * set_title()/set_heading() format_string() it themselves), a PLAIN-TEXT
+ * share payload (filter, then flatten with content_to_text()), and a
+ * PARAM_TEXT column (format_string, because PARAM_TEXT deliberately
+ * preserves multilang markup). The heading and PARAM_TEXT tests drive real
+ * core code (moodle_page, clean_param) rather than pinning an expression.
+ *
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -188,5 +198,175 @@ final class multilang_rendering_test extends \advanced_testcase {
             . format_string($activitytitle, true, ['context' => \core\context\system::instance()]);
 
         $this->assertSame('quiz: Week 1 Quiz', $line);
+    }
+
+    /**
+     * The ATTRIBUTE sink: resource.php's cover-image alt text (and the
+     * matching one on the profile page's resource cards).
+     *
+     * html_writer escapes every attribute value with s() itself
+     * (lib/classes/output/html_writer.php:113), so the value handed to it
+     * must be filtered but NOT pre-escaped. format_string(..., ['escape' =>
+     * false]) looks like the answer and is what core uses for group names,
+     * but it is not enough: 'escape' governs format_string's OWN ampersand
+     * escaping only (lib/classes/formatting.php), while clean_text() still
+     * encodes a bare '&', and a value stored with a pre-encoded entity — as
+     * the fixture below has — is untouched by the option in either
+     * direction. html_entity_decode() after filtering handles both, and is
+     * the idiom block_oerexchangequicklinks already uses for its aria-labels.
+     *
+     * Three things must hold at once: one language, no literal span markup,
+     * and the ampersand escaped exactly once rather than twice.
+     */
+    public function test_attribute_sink_filters_without_double_escaping_the_ampersand(): void {
+        $this->resetAfterTest();
+        $this->enable_multilang();
+
+        $title = '<span lang="en" class="multilang">Fish &amp; Chips</span>'
+            . '<span lang="ja" class="multilang">魚とチップス</span>';
+
+        $img = \html_writer::empty_tag('img', [
+            'src' => 'https://example.com/cover.png',
+            'alt' => html_entity_decode(
+                format_string($title, true, ['context' => \core\context\system::instance()]),
+                ENT_QUOTES,
+                'UTF-8'
+            ),
+        ]);
+
+        $this->assertStringContainsString('alt="Fish &amp; Chips"', $img);
+        $this->assertStringNotContainsString('魚とチップス', $img);
+        $this->assertStringNotContainsString('multilang', $img);
+        $this->assertStringNotContainsString('&amp;amp;', $img);
+    }
+
+    /**
+     * Decoding after filtering must not be mistaken for "unescaped".
+     * clean_text() has already stripped dangerous markup by then, and
+     * html_writer escapes the attribute value on the way out regardless, so
+     * a <script> in a title can never break out of the alt attribute.
+     */
+    public function test_the_attribute_sink_still_cleans_dangerous_markup(): void {
+        $this->resetAfterTest();
+        $this->enable_multilang();
+
+        $title = 'Chemistry<script>alert(1)</script>';
+
+        $formatted = html_entity_decode(
+            format_string($title, true, ['context' => \core\context\system::instance()]),
+            ENT_QUOTES,
+            'UTF-8'
+        );
+        $img = \html_writer::empty_tag('img', ['src' => 'https://example.com/c.png', 'alt' => $formatted]);
+
+        $this->assertStringNotContainsString('<script>', $formatted);
+        $this->assertStringNotContainsString('<script>', $img);
+        $this->assertStringContainsString('Chemistry', $img);
+    }
+
+    /**
+     * $PAGE->set_title()/set_heading() run format_string() over the whole
+     * string themselves (lib/pagelib.php: set_title() at :1424,
+     * set_heading() at :1455, whose $applyformatting parameter defaults to
+     * true) — so share_upload_mbz.php and share_upload_data.php now pass the
+     * RAW title into their get_string() heading rather than s()-escaping it
+     * first, which is what defeated that filtering.
+     *
+     * Drives the real moodle_page methods, not a pinned expression.
+     */
+    public function test_page_heading_and_title_filter_a_raw_multilang_title(): void {
+        global $PAGE;
+        $this->resetAfterTest();
+        $this->enable_multilang();
+
+        $PAGE->set_context(\core\context\system::instance());
+        $title = '<span lang="en" class="multilang">Chemistry</span>'
+            . '<span lang="ja" class="multilang">化学</span>';
+
+        $PAGE->set_heading($title);
+        $PAGE->set_title($title);
+
+        $this->assertSame('Chemistry', $PAGE->heading);
+        $this->assertStringContainsString('Chemistry', $PAGE->title);
+        $this->assertStringNotContainsString('化学', $PAGE->heading);
+        $this->assertStringNotContainsString('化学', $PAGE->title);
+        $this->assertStringNotContainsString('multilang', $PAGE->heading);
+        $this->assertStringNotContainsString('multilang', $PAGE->title);
+    }
+
+    /**
+     * The negative control for the sink above: the old s()-first form. Even
+     * with the filter trio on, pre-escaping leaves the heading showing
+     * literal, visible span markup — proving the defect was in our call and
+     * not in filter configuration.
+     */
+    public function test_page_heading_cannot_filter_a_pre_escaped_title(): void {
+        global $PAGE;
+        $this->resetAfterTest();
+        $this->enable_multilang();
+
+        $PAGE->set_context(\core\context\system::instance());
+        $title = '<span lang="en" class="multilang">Chemistry</span>'
+            . '<span lang="ja" class="multilang">化学</span>';
+
+        $PAGE->set_heading(s($title));
+
+        $this->assertStringContainsString('multilang', $PAGE->heading);
+        $this->assertStringContainsString('化学', $PAGE->heading);
+    }
+
+    /**
+     * The PLAIN-TEXT sink: resource.php's share payload. The title ends up
+     * in a tweet body, a mailto: subject, an sms: body and
+     * navigator.share()'s title, none of which render HTML entities — so the
+     * title is filtered (multilang collapses) and then flattened back to
+     * plain text, leaving a real '&' rather than format_string()'s '&amp;'.
+     */
+    public function test_share_title_is_filtered_then_flattened_to_plain_text(): void {
+        $this->resetAfterTest();
+        $this->enable_multilang();
+
+        $title = '<span lang="en" class="multilang">Fish &amp; Chips</span>'
+            . '<span lang="ja" class="multilang">魚とチップス</span>';
+
+        $sharetitle = content_to_text(
+            format_string($title, true, ['context' => \core\context\system::instance()]),
+            FORMAT_HTML
+        );
+
+        $this->assertSame('Fish & Chips', $sharetitle);
+        $this->assertStringNotContainsString('&amp;', $sharetitle);
+        $this->assertStringNotContainsString('multilang', $sharetitle);
+    }
+
+    /**
+     * The PARAM_TEXT sink shared by the review fields (contexttext,
+     * adaptationtext, outcometext), the author's Try-it-disabled reason and
+     * the registered site name.
+     *
+     * PARAM_TEXT exists precisely to let multilang markup through — core's
+     * own cleaner comments "Leave only tags needed for multilang"
+     * (lib/classes/param.php, clean_param_value_text()), and PARAM_TEXT is
+     * documented in moodlelib.php as "general plain text compatible with
+     * multilang filter". So a PARAM_TEXT column rendered with s() is a
+     * multilang bug by construction: the round trip below proves the markup
+     * survives storage and must therefore be filtered at display time.
+     */
+    public function test_param_text_preserves_multilang_which_format_string_then_collapses(): void {
+        $this->resetAfterTest();
+        $this->enable_multilang();
+
+        $submitted = '<span lang="en" class="multilang">Used in first-year chemistry</span>'
+            . '<span lang="ja" class="multilang">一年生の化学で使用</span>';
+
+        // What required_param('reviewcontext', PARAM_TEXT) stores.
+        $stored = clean_param($submitted, PARAM_TEXT);
+        $this->assertStringContainsString('class="multilang"', $stored);
+
+        $rendered = format_string($stored, true, ['context' => \core\context\system::instance()]);
+
+        $this->assertStringContainsString('Used in first-year chemistry', $rendered);
+        $this->assertStringNotContainsString('一年生の化学で使用', $rendered);
+        $this->assertStringNotContainsString('multilang', $rendered);
     }
 }

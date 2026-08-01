@@ -1,34 +1,77 @@
-# Release notes — 1.0.3
+# Release notes — 1.0.4
 
-## A trial's language switcher now works, and offers the languages you configured
+## Multilingual titles and descriptions now display correctly
 
-Two separate problems stopped a "Try it" trial ever showing Moodle's language
-switcher, so a bilingual resource could only be viewed in one language:
+If your site uses the multilang filter to publish bilingual content, resource
+titles and descriptions on several pages showed the raw
+`<span lang="en" class="multilang">…</span>` markup as visible text instead of
+the language the visitor is reading in. The cause was the same everywhere:
+those values were HTML-escaped for safety but never passed through Moodle's
+text filters. Fixed on the resource page, the moderation pages, the registered
+sites page, the upload pages, the public educator profile, and the Open Graph
+description used for link previews.
 
-- **The sandbox forced the switcher off.** The playground's generated
-  `config.php` assigned `$CFG->langmenu = 0`, and a value assigned in
-  `config.php` is a *forced* setting that overrides the database — so the
-  `langmenu=1` an admin configured on the Sandbox bundle configuration page was
-  applied, written into the bundle's install snapshot, and then ignored at
-  runtime, with no error anywhere. Fixed in the `oer-sandbox` build scripts
-  (`scripts/patch-playground.mjs`), which means **the bundle must be rebuilt**
-  for the setting to take effect; nothing in this plugin can compensate for a
-  bundle built before that change.
-- **A configured language pack was never installed.** A trial only ever
-  installed a pack for the language it opened in — normally the launching
-  user's own. With a Japanese pack configured and an English-speaking visitor,
-  the pack shipped inside the bundle and was then never installed, so the trial
-  had exactly one translation, and Moodle hides the switcher below two. A trial
-  now installs the language it opens in *plus* every pack the sandbox
-  configuration names.
+**Site requirement:** for titles and other short strings, Moodle only runs the
+multilang filter when that filter is set to apply to *content and headings*
+rather than content alone (Site administration → Plugins → Filters → Manage
+filters). Long descriptions are filtered either way. No plugin can change this;
+if titles still show markup after upgrading, that setting is why.
 
-The trial language still decides only which of the installed languages the
-trial *opens* in — the rest are there so a visitor can switch.
+## Text filters now apply to educator profile descriptions
 
-Verified end to end against the deployed sandbox: an English visitor's trial
-opens in English, offers 日本語 (ja) in the user menu's language selector,
-renders Japanese after switching, and offers English back.
+A profile description was previously rendered as plain text, so a URL in it
+stayed a bare URL and no filter ran. Descriptions now go through Moodle's
+standard text formatting, so auto-linking, multilang and any other filter your
+site enables all work — with Moodle's HTML cleaning applied, as everywhere else.
 
-No database changes. No action is required after upgrading beyond the usual
-`admin/cli/upgrade.php` — but a sandbox bundle rebuilt with the current
-`oer-sandbox` scripts is required for the switcher itself.
+## Educator profiles show your site's own profile fields
+
+The three fixed "ORCID URL", "LinkedIn URL" and "ResearchMap URL" boxes have
+been removed. In their place, a public profile now lists whichever of the
+site's **additional user profile fields** (Site administration → Users →
+User profile fields) the administrator has set to **"Visible to everyone"**,
+and which the user has filled in. Fields set to any other visibility, and
+fields the user left blank, do not appear.
+
+This puts the choice of what a profile can advertise in the administrator's
+hands: an ORCID field, a personal site, a department, a mentoring flag —
+whatever suits your community — including fields configured to display as
+links, which render as links here.
+
+**This upgrade permanently deletes the three old columns and any URLs stored
+in them.** There is no migration: if those values matter to you, export them
+before upgrading. Re-create them afterwards as additional user profile fields
+if you want them back.
+
+## "Try it" trials now enrol you in the trial course
+
+A trial previously left you as a site administrator who was not a member of
+the course you had come to look at, so the Participants list was empty and
+anything that depends on being enrolled — the gradebook, activity completion,
+switching role to Student — behaved oddly or not at all. A trial now enrols
+its own user in the trial course as both **Editing teacher** and **Student**,
+through the manual enrolment plugin, for both full-course and single-activity
+trials.
+
+## Security
+
+Because the profile page is public, the values of the custom profile fields it
+shows are now passed through Moodle's HTML cleaner before display. Moodle's
+"social" profile field type places a stored value directly into a link's
+address without escaping it, and the checks on that value are bypassed when a
+profile is written by a web service, a bulk user upload, or LDAP/OAuth2
+directory sync rather than by the profile form. Core tolerates this because
+its own profile pages can be hidden from anonymous visitors; this page cannot.
+Legitimate links, dates and checkbox values are unaffected.
+
+## Also fixed
+
+- A registering site's name is filtered on the moderation and site-management
+  pages.
+- Resource titles in co-author and stale-resource notification messages no
+  longer contain multilang markup.
+- A cover image's alternative text no longer double-escapes an ampersand in
+  the title.
+
+Beyond the usual `admin/cli/upgrade.php`, no action is required after
+upgrading — but note the permanent data removal described above.

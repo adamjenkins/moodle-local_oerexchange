@@ -53,6 +53,44 @@ final class profile_manager_test extends \advanced_testcase {
         $this->assertNotEmpty($profile1->slug);
     }
 
+    /**
+     * The orcidurl/linkedinurl/researchmapurl columns were dropped outright
+     * (db/install.xml, and db/upgrade.php's 2026080101 step for existing
+     * sites) — the public profile page shows the user's "Visible to
+     * everyone" custom user profile fields instead. No migration: the data
+     * is discarded by decision, so there is nothing to assert survived.
+     *
+     * Asserts against the live schema, not merely against save()'s array
+     * shape, so this fails if install.xml and the upgrade step ever drift.
+     */
+    public function test_removed_url_columns_are_absent_from_schema_defaults_and_save(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $dropped = ['orcidurl', 'linkedinurl', 'researchmapurl'];
+
+        $columns = $DB->get_columns('local_oerexchange_profiles');
+        foreach ($dropped as $column) {
+            $this->assertArrayNotHasKey($column, $columns, "{$column} is still in the profiles table");
+        }
+
+        // The defaults path must not try to write them...
+        $created = profile_manager::get_or_create_for_user((int) $user->id);
+        foreach ($dropped as $column) {
+            $this->assertObjectNotHasProperty($column, $created);
+        }
+
+        // ...and save() must succeed without them being supplied at all.
+        profile_manager::save((int) $user->id, [
+            'slug' => 'nourls', 'bio' => 'Still saves.', 'expertise' => ['biology'], 'visible' => true,
+        ]);
+        $saved = profile_manager::get_by_slug('nourls');
+        $this->assertSame('Still saves.', $saved->bio);
+        foreach ($dropped as $column) {
+            $this->assertObjectNotHasProperty($column, $saved);
+        }
+    }
+
     public function test_get_by_slug_returns_null_when_missing(): void {
         $this->resetAfterTest();
         $this->assertNull(profile_manager::get_by_slug('nosuchslug'));
@@ -107,13 +145,11 @@ final class profile_manager_test extends \advanced_testcase {
         $user2 = $this->getDataGenerator()->create_user();
 
         profile_manager::get_or_create_for_user((int) $user1->id);
-        profile_manager::save((int) $user1->id, ['slug' => 'takenslug', 'bio' => '', 'expertise' => [],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true]);
+        profile_manager::save((int) $user1->id, ['slug' => 'takenslug', 'bio' => '', 'expertise' => [], 'visible' => true]);
 
         profile_manager::get_or_create_for_user((int) $user2->id);
         $this->expectException(\moodle_exception::class);
-        profile_manager::save((int) $user2->id, ['slug' => 'takenslug', 'bio' => '', 'expertise' => [],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true]);
+        profile_manager::save((int) $user2->id, ['slug' => 'takenslug', 'bio' => '', 'expertise' => [], 'visible' => true]);
     }
 
     public function test_save_allows_keeping_your_own_slug(): void {
@@ -122,8 +158,7 @@ final class profile_manager_test extends \advanced_testcase {
         $profile = profile_manager::get_or_create_for_user((int) $user->id);
 
         profile_manager::save((int) $user->id, ['slug' => $profile->slug, 'bio' => 'Updated bio',
-            'expertise' => ['biology'], 'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '',
-            'visible' => true]);
+            'expertise' => ['biology'], 'visible' => true]);
 
         $updated = profile_manager::get_by_slug($profile->slug);
         $this->assertSame('Updated bio', $updated->bio);
@@ -134,8 +169,7 @@ final class profile_manager_test extends \advanced_testcase {
         $this->resetAfterTest();
         $user = $this->getDataGenerator()->create_user();
         $profile = profile_manager::get_or_create_for_user((int) $user->id);
-        profile_manager::save((int) $user->id, ['slug' => $profile->slug, 'bio' => '', 'expertise' => [],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => false]);
+        profile_manager::save((int) $user->id, ['slug' => $profile->slug, 'bio' => '', 'expertise' => [], 'visible' => false]);
 
         $result = profile_manager::get_by_slug($profile->slug);
         $this->assertNotNull($result, 'get_by_slug does not itself enforce visibility — callers (route controllers) do');
@@ -191,8 +225,7 @@ final class profile_manager_test extends \advanced_testcase {
         $realdb = $DB;
         $DB = new racing_db_stub($realdb, 'local_oerexchange_profiles', ['slug' => 'raceslug']);
         try {
-            profile_manager::save((int) $user2->id, ['slug' => 'raceslug', 'bio' => '', 'expertise' => [],
-                'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true]);
+            profile_manager::save((int) $user2->id, ['slug' => 'raceslug', 'bio' => '', 'expertise' => [], 'visible' => true]);
             $this->fail('Expected a moodle_exception (error_slugtaken) from the lost race.');
         } catch (\moodle_exception $e) {
             $this->assertSame(
@@ -228,11 +261,7 @@ final class profile_manager_test extends \advanced_testcase {
             'userid' => (int) $user->id,
             'slug' => $winnerslug,
             'bio' => '',
-            'expertise' => json_encode([]),
-            'orcidurl' => '',
-            'linkedinurl' => '',
-            'researchmapurl' => '',
-            'visible' => 1,
+            'expertise' => json_encode([]), 'visible' => 1,
             'timecreated' => $now,
             'timemodified' => $now,
         ]);

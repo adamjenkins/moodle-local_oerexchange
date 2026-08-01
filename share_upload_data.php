@@ -57,8 +57,11 @@ $pageparams = $resourceid ? ['resourceid' => $resourceid] : [];
 $PAGE->set_url('/local/oerexchange/share_upload_data.php', $pageparams);
 $PAGE->set_context(context_system::instance());
 $PAGE->set_pagelayout('standard');
+// Raw title by design — see share_upload_mbz.php's matching comment:
+// set_title()/set_heading() run format_string() themselves, and s() here
+// defeated it, leaving a multilang title as literal <span> markup.
 $heading = $updating
-    ? get_string('replacefileheading', 'local_oerexchange', s($updating->title))
+    ? get_string('replacefileheading', 'local_oerexchange', $updating->title)
     : get_string('uploaddataheading', 'local_oerexchange');
 $PAGE->set_title($heading);
 $PAGE->set_heading($heading);
@@ -183,7 +186,11 @@ echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', '
 if ($updating) {
     echo html_writer::tag(
         'p',
-        get_string('replacefileintro', 'local_oerexchange', s($updating->title)),
+        get_string(
+            'replacefileintro',
+            'local_oerexchange',
+            format_string($updating->title, true, ['context' => context_system::instance()])
+        ),
         ['class' => 'alert alert-info']
     );
 } else {

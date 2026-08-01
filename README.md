@@ -56,8 +56,10 @@ plugin installed on their own Moodle sites.
   moderation queue's restorable list, never irreversibly. Resources whose
   author is unreachable are left for human moderators.
 - **Educator profiles**: a shareable profile page per educator
-  (`/local_oerexchange/u/{slug}`, bio/expertise/badges/portfolio links/metrics/
-  resource grid), auto-created on first published resource. Author attribution
+  (`/local_oerexchange/u/{slug}`, bio/expertise/badges/metrics/resource grid,
+  plus whichever of the site's additional user profile fields the admin has
+  set to "Visible to everyone"), auto-created on first published resource.
+  Author attribution
   and a creator/moderator-editable thumbnail on every resource, Open Graph
   social-preview tags via the Hooks API, a nightly badge-computation task, and
   a full-deletion-with-tombstone GDPR path (a departing user's shared

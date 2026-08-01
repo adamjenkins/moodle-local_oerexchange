@@ -238,14 +238,28 @@ class coauthor_manager {
      * @param \stdClass $addedby the user who added them
      */
     public static function notify_added(\stdClass $resource, \stdClass $user, \stdClass $addedby): void {
+        // Filter the title, then flatten it back to plain text: this is a
+        // FORMAT_PLAIN message, so an unfiltered title reaches the recipient
+        // as literal `<span lang=... class="multilang">` markup, and a
+        // format_string()-escaped one reaches them as `&amp;`. format_string()
+        // resolves the multilang spans and content_to_text() undoes the entity
+        // escaping it applies. (Filters resolve in the *sending* session's
+        // language, not the recipient's — a pre-existing property of this
+        // notification, whose get_string() calls are already unlocalised to
+        // the recipient, not something introduced here.)
+        $title = content_to_text(
+            format_string($resource->title, true, ['context' => \context_system::instance()]),
+            FORMAT_HTML
+        );
+
         $message = new \core\message\message();
         $message->component = 'local_oerexchange';
         $message->name = 'coauthor';
         $message->userfrom = \core_user::get_noreply_user();
         $message->userto = $user;
-        $message->subject = get_string('notifycoauthorsubject', 'local_oerexchange', $resource->title);
+        $message->subject = get_string('notifycoauthorsubject', 'local_oerexchange', $title);
         $message->fullmessage = get_string('notifycoauthorbody', 'local_oerexchange', (object) [
-            'title' => $resource->title,
+            'title' => $title,
             'addedby' => fullname($addedby),
         ]);
         $message->fullmessageformat = FORMAT_PLAIN;
@@ -256,7 +270,7 @@ class coauthor_manager {
             '/local/oerexchange/resource.php',
             ['id' => $resource->id]
         ))->out(false);
-        $message->contexturlname = $resource->title;
+        $message->contexturlname = $title;
 
         message_send($message);
     }

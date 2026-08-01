@@ -358,6 +358,19 @@ class playground {
                 'url' => $signedmbzurl,
                 'category' => 'Trial',
             ];
+            // The trial's own user must end up enrolled in the course it
+            // lands on (Editing teacher AND Student), which the activity
+            // path does inline in its own generated PHP because it creates
+            // the course itself. The restoreCourse step gives this method
+            // no course id at all — it is executed in the browser long
+            // after this blueprint was built — so the enrolment has to be
+            // its own step, and has to rediscover the course at runtime.
+            // See build_course_enrolment_php() for how, and for what
+            // happens when that discovery is wrong.
+            $steps[] = [
+                'step' => 'runPhpCode',
+                'code' => self::build_course_enrolment_php(),
+            ];
         }
 
         return [
@@ -621,6 +634,199 @@ PHP;
     }
 
     /**
+     * The shared enrolment fragment both content paths embed: enrol the
+     * trial's own administrator into $course as BOTH Editing teacher and
+     * Student, through the manual enrolment plugin.
+     *
+     * Assumes $course (a full course record) and $admin (the user record
+     * get_admin() returned) are already in scope, and leaves the outcome in
+     * $enrolled for the caller's json_encode. Not a standalone step body —
+     * it carries no preamble of its own.
+     *
+     * Why a real enrolment and not a bare role_assign(): only an enrolment
+     * puts the user on the Participants list and gives them a gradebook row.
+     * enrol_try_internal_enrol() (lib/enrollib.php:1212) is the obvious
+     * one-liner and is what upstream's own enrolUser step generator uses
+     * (oer-sandbox/playground/src/blueprint/php/helpers.js:846-865), but it
+     * returns false and does nothing when the course has no manual enrol
+     * instance (enrollib.php:1224-1226 — it looks one up and never creates
+     * one). A restored course's enrol instances come from whatever was in
+     * the .mbz, so that case is real; hence enrol_get_plugin('manual') plus
+     * add_default_instance() (enrol/manual/lib.php:137-150, which delegates
+     * to enrol_plugin::add_instance(), enrollib.php:2601) when there is none.
+     *
+     * Both roles from one user: calling enrol_user() a second time with a
+     * different role id ADDS the second role, it does not replace the first.
+     * Verified by reading enrol_plugin::enrol_user()
+     * (lib/enrollib.php:2112-2202): the second call finds the existing
+     * user_enrolments row and only touches it if timestart/timeend/status
+     * differ (:2132-2136 — they don't here), then unconditionally runs
+     * `if ($roleid) { ... role_assign(...) }` at :2177-2184; role_assign()
+     * keys its "already assigned" lookup on roleid among other columns
+     * (lib/accesslib.php:1622) so a different roleid inserts a new
+     * role_assignments row rather than updating the old one. Identical code
+     * in both deployed bundle branches — 5.0's
+     * oer-sandbox/playground/.cache/moodle/MOODLE_500_STABLE/lib/enrollib.php
+     * :2177-2184 and accesslib.php:1622 match line for line. So no separate
+     * role_assign() call is needed; two enrol_user() calls are correct and
+     * are also what keeps both roles owned by the enrolment.
+     *
+     * Role ids are resolved by shortname rather than hardcoded: get_field()
+     * defaults to IGNORE_MISSING and returns false for a role that doesn't
+     * exist, so a site missing one of them simply enrols the other.
+     *
+     * $CFG->noemailever is set first, for this one WASM request only.
+     * enrol_user() dispatches core_enrol\hook\after_user_enrolled
+     * (lib/enrollib.php:2170-2175), which enrol_manual listens to
+     * (enrol/manual/db/hooks.php:29-30) and which sends a course welcome
+     * message unless the instance's customint1 is ENROL_DO_NOT_SEND_EMAIL
+     * (enrol/manual/classes/user_enrolment_callbacks.php:36) — and
+     * add_default_instance() fills customint1 from the
+     * enrol_manual/sendcoursewelcomemessage site default, which is
+     * ENROL_SEND_EMAIL_FROM_COURSE_CONTACT (enrol/manual/settings.php).
+     * So without this, every trial boot would try to email the trial's own
+     * administrator, as themselves, from inside PHP-WASM, where there is no
+     * MTA and an SMTP connect can only fail — at best wasted boot time, at
+     * worst a stall on a connect timeout. noemailever short-circuits it in
+     * email_to_user() (lib/moodlelib.php:5736) whatever the instance says,
+     * so it covers a manual instance restored from the .mbz with its own
+     * customint1 just as well as the one add_default_instance() creates.
+     *
+     * Everything is wrapped in one try/catch so a failure here can never
+     * cost the user a working trial (see build_course_enrolment_php()'s
+     * docblock on how soft that failure really is). The catch pushes the
+     * message into $enrolled rather than a variable of its own, because
+     * runPhpCode's step handler discards this script's stdout entirely
+     * (oer-sandbox/playground/src/blueprint/steps/request.js
+     * handleRunPhpCode(), which only console.warn()s result.errors) — the
+     * echoed JSON exists purely for a human probing a live trial by hand,
+     * which is how the language-step defect at
+     * build_language_selection_php() was eventually found, and one array is
+     * enough for that.
+     *
+     * enrollib.php is required explicitly even though lib/setup.php loads it
+     * unconditionally in both deployed branches (5.0
+     * .cache/moodle/MOODLE_500_STABLE/lib/setup.php:633, 5.2
+     * .cache/moodle/MOODLE_502_STABLE/public/lib/setup.php:637) — same
+     * cheap insurance build_boot_settings_php() takes with filterlib.php,
+     * and what upstream's generator does too (helpers.js:859).
+     *
+     * @return string PHP source fragment
+     */
+    private static function build_enrolment_php(): string {
+        return <<<'PHP'
+$enrolled = [];
+try {
+    require_once($CFG->libdir . '/enrollib.php');
+    $CFG->noemailever = true;
+    $manual = enrol_get_plugin('manual');
+    $instance = $DB->get_record('enrol', ['courseid' => $course->id, 'enrol' => 'manual'], '*', IGNORE_MULTIPLE);
+    if ($manual && !$instance) {
+        $instanceid = $manual->add_default_instance($course);
+        if ($instanceid) {
+            $instance = $DB->get_record('enrol', ['id' => $instanceid]);
+        }
+    }
+    if ($manual && $instance) {
+        foreach (['editingteacher', 'student'] as $shortname) {
+            $roleid = $DB->get_field('role', 'id', ['shortname' => $shortname]);
+            if ($roleid) {
+                $manual->enrol_user($instance, $admin->id, $roleid);
+                $enrolled[] = $shortname;
+            }
+        }
+    }
+} catch (\Throwable $e) {
+    $enrolled[] = 'error: ' . $e->getMessage();
+}
+PHP;
+    }
+
+    /**
+     * Build the runPhpCode step body that enrols the trial's administrator
+     * into a course the upstream restoreCourse step has just restored.
+     *
+     * The activity path does its enrolment inside
+     * build_activity_restore_php(), which creates the course itself and so
+     * already knows its id. The course path has no such handle: restoreCourse
+     * is upstream's own step, executed in the browser, and it returns nothing
+     * to this method (it doesn't even set the blueprint's landingPage —
+     * oer-sandbox/playground/src/blueprint/steps/moodle-restore.js
+     * handleRestoreCourse() returns undefined, and executor.js:102 only
+     * adopts a landingPage a handler actually returns). So the course has to
+     * be rediscovered at runtime: the highest-id course that isn't SITEID.
+     *
+     * That is a heuristic, and it is the same one build_blueprint()'s
+     * 'landingPage' => '/course/view.php?id=2' already bets on, one step
+     * earlier and rather more boldly — a trial boots from a snapshot whose
+     * only course is the site course, and the restore is the only thing that
+     * creates another. Ordering to `id DESC` rather than hardcoding 2 makes
+     * this the more forgiving of the two: it still finds the course if the
+     * snapshot ever ships with an extra one, or if some future step creates
+     * a course before the restore. If the guess is wrong the consequence is
+     * bounded and soft — the wrong course (or, when the restore failed
+     * outright and left no course at all, no course) gets the enrolment, the
+     * trial itself is unaffected, and the user lands on a working site. It
+     * is deliberately NOT tightened by, say, matching the resource title:
+     * a restored course's name comes from the .mbz, not from anything this
+     * method is given, so that would be a guess dressed up as a check.
+     *
+     * "Soft" here is verified, not assumed, and holds at two independent
+     * levels of the pinned upstream source:
+     *  - runPhpCode's own handler never throws on a failing script. It runs
+     *    the code and, if the result carries errors, only console.warn()s
+     *    them (steps/request.js handleRunPhpCode()) — unlike the enrolUser
+     *    step, which routes its result through checkPhpResult()
+     *    (steps/check-result.js) and does throw on '"ok":false'. Whatever
+     *    this script echoes is discarded.
+     *  - even a step that DID throw would not abort the blueprint: the
+     *    executor catches a handler's exception, records the failure and
+     *    carries on, aborting only for a step marked `critical: true`
+     *    (executor.js:112-125, ADR-0005) — which this step is not.
+     * The same two levels are why build_blueprint()'s comment that
+     * "restoreCourse failures are non-fatal" is accurate; that step
+     * additionally swallows its own php.run() crash (moodle-restore.js
+     * :195-205).
+     *
+     * The fail()/set_exception_handler() preamble matches
+     * build_activity_restore_php() exactly, per the same reasoning recorded
+     * in that method's docblock (runPhpCode does not bootstrap Moodle, and
+     * Moodle's default exception handler would die(1) and take the WASM
+     * process with it). Declaring fail() twice in one PHP process would be a
+     * fatal redeclaration, but the two methods are mutually exclusive
+     * branches of the same `if` in build_blueprint(), so no blueprint ever
+     * carries both.
+     *
+     * @return string PHP source (without the leading <?php)
+     */
+    private static function build_course_enrolment_php(): string {
+        $enrolment = self::build_enrolment_php();
+
+        return <<<PHP
+define('CLI_SCRIPT', true);
+require('/www/moodle/config.php');
+global \$CFG, \$DB, \$USER;
+
+function fail(\$msg) {
+    while (ob_get_level()) { ob_end_clean(); }
+    echo json_encode(['ok' => false, 'error' => \$msg]);
+    exit(0);
+}
+set_exception_handler(function(\$e) { fail(\$e->getMessage()); });
+
+\$admin = get_admin();
+if (!\$admin) { fail('Administrator account not found.'); }
+\$USER = \$admin;
+
+\$course = \$DB->get_record_sql('SELECT * FROM {course} WHERE id <> ? ORDER BY id DESC', [SITEID], IGNORE_MULTIPLE);
+if (!\$course) { fail('No restored course to enrol into.'); }
+
+$enrolment
+echo json_encode(['ok' => true, 'courseid' => \$course->id, 'enrolled' => \$enrolled]);
+PHP;
+    }
+
+    /**
      * Build the runPhpCode step body for a single-activity Try-it: create a
      * fresh format_singleactivity course, then restore the activity backup
      * into it with TARGET_EXISTING_ADDING. See build_blueprint()'s call site
@@ -671,12 +877,30 @@ PHP;
      * instead of the restored activity, even though the restore itself
      * succeeded.
      *
+     * The trial's administrator is then enrolled into the course it just
+     * created, as both Editing teacher and Student — the shared fragment
+     * build_enrolment_php() generates, which needs exactly the $course and
+     * $admin this method already has in scope. It runs after
+     * rebuild_course_cache() so the course is fully consistent before an
+     * enrolment event fires against it, and it cannot fail the restore:
+     * the fragment carries its own try/catch and never calls fail(), because
+     * a trial that boots with a working course and no enrolment is a far
+     * better outcome than one that doesn't boot.
+     *
      * @param string $signedmbzurl
      * @return string PHP source (without the leading <?php — the runPhpCode
      *                 step handler adds it if missing)
      */
     private static function build_activity_restore_php(string $signedmbzurl): string {
-        $urlliteral = str_replace("'", "\\'", $signedmbzurl);
+        // Escape with addcslashes, not str_replace("'", "\\'"): interpolated
+        // into a single-quoted PHP string literal in the generated code below,
+        // and escaping the quote alone leaves a trailing backslash free to
+        // escape the closing quote and break out of the literal. Unreachable
+        // today — sign_url() builds $CFG->wwwroot plus int and hex-digest
+        // params (download_signer::sign_url()) — but the generated-code
+        // boundary should not depend on that staying true.
+        $urlliteral = addcslashes($signedmbzurl, "'\\");
+        $enrolment = self::build_enrolment_php();
 
         return <<<PHP
 define('CLI_SCRIPT', true);
@@ -753,7 +977,8 @@ if (\$restoredcm) {
     course_get_format(\$course)->update_course_format_options(['activitytype' => \$restoredcm->modname]);
 }
 
-echo json_encode(['ok' => true, 'courseid' => \$course->id]);
+$enrolment
+echo json_encode(['ok' => true, 'courseid' => \$course->id, 'enrolled' => \$enrolled]);
 PHP;
     }
 

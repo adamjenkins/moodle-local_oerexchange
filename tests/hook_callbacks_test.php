@@ -62,7 +62,7 @@ final class hook_callbacks_test extends \advanced_testcase {
         profile_manager::get_or_create_for_user((int) $user->id);
         profile_manager::save((int) $user->id, [
             'slug' => 'janedoe', 'bio' => 'A biology teacher.', 'expertise' => [],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true,
+            'visible' => true,
         ]);
 
         // The real request path a client hits (component-prefixed — see
@@ -124,7 +124,7 @@ final class hook_callbacks_test extends \advanced_testcase {
         profile_manager::get_or_create_for_user((int) $user->id);
         profile_manager::save((int) $user->id, [
             'slug' => 'janedoe', 'bio' => 'A biology teacher.', 'expertise' => [],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true,
+            'visible' => true,
         ]);
 
         $PAGE->set_url(new \moodle_url('/u/janedoe'));
@@ -155,7 +155,7 @@ final class hook_callbacks_test extends \advanced_testcase {
         profile_manager::get_or_create_for_user((int) $user->id);
         profile_manager::save((int) $user->id, [
             'slug' => 'hiddenone', 'bio' => '', 'expertise' => [],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => false,
+            'visible' => false,
         ]);
 
         $PAGE->set_url(new \moodle_url('/u/hiddenone'));
@@ -195,7 +195,7 @@ final class hook_callbacks_test extends \advanced_testcase {
         profile_manager::get_or_create_for_user((int) $user->id);
         profile_manager::save((int) $user->id, [
             'slug' => 'janedoe', 'bio' => 'A biology teacher.', 'expertise' => [],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true,
+            'visible' => true,
         ]);
 
         $PAGE->set_url(new \moodle_url('/course/view.php', ['id' => 2]));
@@ -204,5 +204,57 @@ final class hook_callbacks_test extends \advanced_testcase {
         hook_callbacks::before_standard_head_html_generation($hook);
 
         $this->assertSame('', $hook->get_output());
+    }
+
+    /**
+     * Regression test for the og:description multilang bug: the listener used
+     * to build the description with a bare strip_tags(), which runs no text
+     * filters at all, so a bilingual bio was advertised to every link-preview
+     * crawler in BOTH languages at once — and its HTML entities stayed
+     * encoded for html_writer to encode a second time.
+     *
+     * This drives the real listener end to end (not a pinned expression), so
+     * a regression to strip_tags() fails here.
+     */
+    public function test_og_description_collapses_a_multilang_bio_to_one_language(): void {
+        $this->resetAfterTest();
+        global $PAGE;
+
+        // Enable the exact filter trio these sinks depend on rather than
+        // trusting site configuration — same rationale as
+        // multilang_rendering_test::enable_multilang().
+        filter_set_global_state('multilang', TEXTFILTER_ON);
+        set_config('filterall', 1);
+        set_config('stringfilters', 'multilang');
+
+        $user = $this->getDataGenerator()->create_user(['firstname' => 'Jane', 'lastname' => 'Doe']);
+        profile_manager::get_or_create_for_user((int) $user->id);
+        profile_manager::save((int) $user->id, [
+            'slug' => 'janedoe',
+            'bio' => '<span lang="en" class="multilang">Chemistry &amp; biology teacher</span>'
+                . '<span lang="ja" class="multilang">化学と生物の教師</span>',
+            'expertise' => [],
+            'visible' => true,
+        ]);
+
+        $PAGE->set_url(new \moodle_url('/local_oerexchange/u/janedoe'));
+
+        $hook = $this->make_hook();
+        hook_callbacks::before_standard_head_html_generation($hook);
+
+        $html = $hook->get_output();
+
+        // One language only, and no leftover multilang scaffolding.
+        $this->assertStringContainsString('Chemistry', $html);
+        $this->assertStringNotContainsString('化学と生物の教師', $html);
+        $this->assertStringNotContainsString('multilang', $html);
+        // The literal markup the bug leaked into the preview. html_writer
+        // escapes attribute values, so an unfiltered bio would surface here
+        // as an escaped '&lt;span'.
+        $this->assertStringNotContainsString('&lt;span', $html);
+        // Escaped exactly once by html_writer, not twice: content_to_text()
+        // decodes '&amp;' back to '&' before html_writer re-encodes it.
+        $this->assertStringContainsString('&amp;', $html);
+        $this->assertStringNotContainsString('&amp;amp;', $html);
     }
 }

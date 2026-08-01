@@ -212,8 +212,15 @@ class stale_manager {
         }
 
         $url = new \moodle_url('/local/oerexchange/resource.php', ['id' => $resource->id]);
+        // Filter the title, then flatten it back to plain text — see
+        // coauthor_manager::notify_added() for why a FORMAT_PLAIN message
+        // needs both halves of that.
+        $title = content_to_text(
+            format_string($resource->title, true, ['context' => \context_system::instance()]),
+            FORMAT_HTML
+        );
         $a = (object) [
-            'title' => $resource->title,
+            'title' => $title,
             'url' => $url->out(false),
             'deadline' => userdate(self::removal_deadline($resource)),
         ];
@@ -230,7 +237,7 @@ class stale_manager {
         $message->smallmessage = $message->subject;
         $message->notification = 1;
         $message->contexturl = $a->url;
-        $message->contexturlname = $resource->title;
+        $message->contexturlname = $title;
         message_send($message);
     }
 }

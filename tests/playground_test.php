@@ -53,7 +53,9 @@ final class playground_test extends \advanced_testcase {
         );
 
         $steps = array_column($blueprint['steps'], 'step');
-        $this->assertSame(['installMoodle', 'login', 'installMoodlePlugin', 'restoreCourse'], $steps);
+        // The trailing runPhpCode is the enrolment step — see
+        // test_a_full_course_trial_enrols_the_trial_user_after_the_restore.
+        $this->assertSame(['installMoodle', 'login', 'installMoodlePlugin', 'restoreCourse', 'runPhpCode'], $steps);
         $this->assertSame('/course/view.php?id=2', $blueprint['landingPage']);
     }
 
@@ -126,7 +128,7 @@ final class playground_test extends \advanced_testcase {
         );
 
         $steps = array_column($blueprint['steps'], 'step');
-        $this->assertSame(['installMoodle', 'login', 'restoreCourse'], $steps);
+        $this->assertSame(['installMoodle', 'login', 'restoreCourse', 'runPhpCode'], $steps);
     }
 
     /**
@@ -143,7 +145,7 @@ final class playground_test extends \advanced_testcase {
         );
 
         $steps = array_column($blueprint['steps'], 'step');
-        $this->assertSame(['installMoodle', 'login', 'installMoodlePlugin', 'restoreCourse'], $steps);
+        $this->assertSame(['installMoodle', 'login', 'installMoodlePlugin', 'restoreCourse', 'runPhpCode'], $steps);
     }
 
     /**
@@ -159,7 +161,7 @@ final class playground_test extends \advanced_testcase {
         );
 
         $steps = array_column($blueprint['steps'], 'step');
-        $this->assertSame(['installMoodle', 'login', 'installMoodlePlugin', 'restoreCourse'], $steps);
+        $this->assertSame(['installMoodle', 'login', 'installMoodlePlugin', 'restoreCourse', 'runPhpCode'], $steps);
     }
 
     public function test_build_blueprint_uses_restorecourse_step_for_course_type(): void {
@@ -173,7 +175,14 @@ final class playground_test extends \advanced_testcase {
 
         $steps = array_column($blueprint['steps'], 'step');
         $this->assertContains('restoreCourse', $steps);
-        $this->assertNotContains('runPhpCode', $steps);
+        // The only runPhpCode a course-type trial carries is the enrolment
+        // step; the activity path's restore generator must never be reached.
+        foreach ($blueprint['steps'] as $step) {
+            if ($step['step'] === 'runPhpCode') {
+                $this->assertStringNotContainsString('TYPE_1ACTIVITY', $step['code']);
+                $this->assertStringContainsString('enrol_get_plugin', $step['code']);
+            }
+        }
     }
 
     /**
@@ -281,7 +290,7 @@ final class playground_test extends \advanced_testcase {
         // render Japanese. Nothing about this is visible to a step-list
         // assertion alone, which is why the order is asserted here explicitly.
         $steps = array_column($blueprint['steps'], 'step');
-        $this->assertSame(['installMoodle', 'installLanguagePack', 'login', 'restoreCourse'], $steps);
+        $this->assertSame(['installMoodle', 'installLanguagePack', 'login', 'restoreCourse', 'runPhpCode'], $steps);
 
         $langstep = $blueprint['steps'][1];
         $this->assertSame('ja', $langstep['language']);
@@ -701,6 +710,12 @@ final class playground_test extends \advanced_testcase {
      * Switch OFF and nothing configured: no settings step at all — this is
      * also the regression guard for every pre-existing step-list assertion
      * in this file that predates the sandbox-config switch.
+     *
+     * Originally asserted "no runPhpCode step at all", which stopped being
+     * the same statement once a course-type trial gained its enrolment step:
+     * narrowed to the settings step's own marker, exactly as
+     * test_the_language_step_always_precedes_login() had to be narrowed for
+     * the activity-restore step.
      */
     public function test_no_settings_step_when_nothing_is_configured(): void {
         $this->resetAfterTest();
@@ -715,7 +730,232 @@ final class playground_test extends \advanced_testcase {
             ''
         );
 
-        $this->assertNotContains('runPhpCode', array_column($blueprint['steps'], 'step'));
+        foreach ($blueprint['steps'] as $step) {
+            $this->assertFalse(
+                $step['step'] === 'runPhpCode' && str_contains($step['code'], 'filter_set_global_state'),
+                'nothing is configured, so no boot-time settings step may be emitted'
+            );
+        }
+    }
+
+    /**
+     * The generated PHP of the one step in a blueprint that does the
+     * enrolment: its own runPhpCode step on the course path, and the
+     * activity-restore step itself on the activity path (it creates the
+     * course, so it enrols inline). Identified by enrol_get_plugin(), which
+     * no other generated step in this class emits.
+     *
+     * @param array $blueprint
+     * @return string|null
+     */
+    private static function enrolment_code(array $blueprint): ?string {
+        foreach ($blueprint['steps'] as $step) {
+            if ($step['step'] === 'runPhpCode' && str_contains($step['code'], 'enrol_get_plugin')) {
+                return $step['code'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * A full-course trial must enrol its own user in the restored course, in
+     * a step of its own AFTER the restore: the upstream restoreCourse step
+     * runs in the browser and hands this class no course id, so there is
+     * nothing to enrol into until it has run.
+     */
+    public function test_a_full_course_trial_enrols_the_trial_user_after_the_restore(): void {
+        $blueprint = playground::build_blueprint(
+            'My Course',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'course'
+        );
+
+        $steps = array_column($blueprint['steps'], 'step');
+        $restore = array_search('restoreCourse', $steps, true);
+        $this->assertNotFalse($restore);
+
+        $enrolindex = null;
+        foreach ($blueprint['steps'] as $i => $step) {
+            if ($step['step'] === 'runPhpCode' && str_contains($step['code'], 'enrol_get_plugin')) {
+                $enrolindex = $i;
+            }
+        }
+        $this->assertNotNull($enrolindex, 'a full-course trial emitted no enrolment step');
+        $this->assertGreaterThan($restore, $enrolindex, 'the enrolment step must follow the restore');
+
+        $code = $blueprint['steps'][$enrolindex]['code'];
+        // The course id is unknowable at build time, so the step rediscovers
+        // it: the highest-id course that is not the site course.
+        $this->assertStringContainsString('{course}', $code);
+        $this->assertStringContainsString('ORDER BY id DESC', $code);
+        $this->assertStringContainsString('SITEID', $code);
+        // A runPhpCode step does not get Moodle bootstrapped for it
+        // (steps/request.js handleRunPhpCode only prepends "<?php"), so the
+        // preamble is this step's own responsibility, exactly as it is for
+        // the activity-restore step.
+        $this->assertStringContainsString("require('/www/moodle/config.php')", $code);
+    }
+
+    /**
+     * The activity path creates the course itself, so it already knows the
+     * id and enrols inline rather than in a second step — after
+     * rebuild_course_cache(), before the step's success output.
+     */
+    public function test_a_single_activity_trial_enrols_the_trial_user_in_the_course_it_creates(): void {
+        $blueprint = playground::build_blueprint(
+            'My Quiz',
+            'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+            [],
+            '',
+            'activity'
+        );
+
+        $runsteps = array_values(array_filter(
+            $blueprint['steps'],
+            fn($step) => $step['step'] === 'runPhpCode'
+        ));
+        $this->assertCount(1, $runsteps, 'the activity path must not need a second step to enrol');
+
+        $code = $runsteps[0]['code'];
+        $this->assertStringContainsString('TYPE_1ACTIVITY', $code);
+        $this->assertStringContainsString('enrol_get_plugin', $code);
+        $this->assertGreaterThan(
+            strpos($code, 'rebuild_course_cache'),
+            strpos($code, 'enrol_get_plugin'),
+            'the enrolment must happen after the course cache is rebuilt'
+        );
+        $this->assertGreaterThan(
+            strpos($code, 'enrol_get_plugin'),
+            strrpos($code, 'echo json_encode'),
+            'the enrolment must happen before the success output'
+        );
+        // Enrolling into the course this step created, not into a rediscovered
+        // one — the discovery query belongs to the course path alone.
+        $this->assertStringNotContainsString('ORDER BY id DESC', $code);
+    }
+
+    /**
+     * The project owner's decision: the trial's user holds BOTH roles, on
+     * both trial types. Resolved by shortname, never by a hardcoded numeric
+     * role id, because those are not stable across sites.
+     */
+    public function test_both_trial_types_enrol_as_editing_teacher_and_student(): void {
+        foreach (['course', 'activity'] as $resourcetype) {
+            $blueprint = playground::build_blueprint(
+                'A resource',
+                'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+                [],
+                '',
+                $resourcetype
+            );
+
+            $code = self::enrolment_code($blueprint);
+            $this->assertNotNull($code, "no enrolment for resource type $resourcetype");
+            $this->assertStringContainsString("'editingteacher'", $code, "resource type $resourcetype");
+            $this->assertStringContainsString("'student'", $code, "resource type $resourcetype");
+            $this->assertStringContainsString("get_field('role', 'id', ['shortname'", $code, $resourcetype);
+        }
+    }
+
+    /**
+     * A real enrolment, not a bare role assignment: only an enrolment puts
+     * the user on the Participants list and gives them a gradebook row. Two
+     * enrol_user() calls, one per role — verified against core
+     * (lib/enrollib.php:2177-2184 assigns the role on every call, and
+     * lib/accesslib.php:1622 keys the duplicate check on roleid) that the
+     * second call ADDS the second role rather than replacing the first, so
+     * no separate role_assign() is needed or wanted here.
+     *
+     * The manual instance is looked up and created if absent, because
+     * enrol_try_internal_enrol() — the obvious one-liner, and what upstream's
+     * own enrolUser step generates — silently returns false for a course with
+     * no manual instance (enrollib.php:1224-1226), which a restored course
+     * can legitimately be.
+     */
+    public function test_the_trial_enrolment_uses_the_manual_enrolment_plugin(): void {
+        foreach (['course', 'activity'] as $resourcetype) {
+            $code = self::enrolment_code(playground::build_blueprint(
+                'A resource',
+                'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+                [],
+                '',
+                $resourcetype
+            ));
+
+            $this->assertNotNull($code, "no enrolment for resource type $resourcetype");
+            $this->assertStringContainsString("enrol_get_plugin('manual')", $code, $resourcetype);
+            $this->assertStringContainsString('add_default_instance($course)', $code, $resourcetype);
+            $this->assertStringContainsString('enrol_user($instance, $admin->id, $roleid)', $code, $resourcetype);
+            $this->assertStringNotContainsString('role_assign(', $code, $resourcetype);
+            $this->assertStringNotContainsString('enrol_try_internal_enrol', $code, $resourcetype);
+        }
+    }
+
+    /**
+     * A trial that boots with a working course and no enrolment is a much
+     * better outcome than one that fails to boot, so the enrolment is
+     * wrapped in its own try/catch and never reaches the fail() helper that
+     * aborts the activity restore.
+     */
+    public function test_a_failed_enrolment_never_costs_the_user_the_trial(): void {
+        foreach (['course', 'activity'] as $resourcetype) {
+            $code = self::enrolment_code(playground::build_blueprint(
+                'A resource',
+                'https://exchange.example/local/oerexchange/download.php?v=1&exp=2&sig=abc',
+                [],
+                '',
+                $resourcetype
+            ));
+
+            $this->assertNotNull($code, "no enrolment for resource type $resourcetype");
+            $fragment = substr($code, (int) strpos($code, '$enrolled = [];'));
+            $this->assertStringContainsString('try {', $fragment, $resourcetype);
+            $this->assertStringContainsString('catch (\Throwable $e)', $fragment, $resourcetype);
+            $this->assertStringNotContainsString('fail(', $fragment, $resourcetype);
+        }
+    }
+
+    /**
+     * Ordering, both directions. The enrolment is content, so it goes after
+     * login (the constraint the language/settings steps impose, asserted in
+     * test_the_language_step_always_precedes_login) and after the restore
+     * that produces the course it enrols into — in every switch/language
+     * combination, not just the default one.
+     */
+    public function test_the_enrolment_step_follows_login_and_the_restore(): void {
+        $this->resetAfterTest();
+
+        foreach ([0, 1] as $bundled) {
+            set_config('sandboxbundled', $bundled, 'local_oerexchange');
+            foreach (['', 'ja'] as $language) {
+                $blueprint = playground::build_blueprint(
+                    'A resource',
+                    'https://x.invalid/r.mbz',
+                    [],
+                    '5.2',
+                    'course',
+                    $language
+                );
+
+                $steps = array_column($blueprint['steps'], 'step');
+                $login = array_search('login', $steps, true);
+                $restore = array_search('restoreCourse', $steps, true);
+                $enrolindex = null;
+                foreach ($blueprint['steps'] as $i => $step) {
+                    if ($step['step'] === 'runPhpCode' && str_contains($step['code'], 'enrol_get_plugin')) {
+                        $enrolindex = $i;
+                    }
+                }
+
+                $context = "bundled=$bundled, lang=$language";
+                $this->assertNotNull($enrolindex, "no enrolment step ($context)");
+                $this->assertGreaterThan($login, $enrolindex, "enrolment preceded login ($context)");
+                $this->assertGreaterThan($restore, $enrolindex, "enrolment preceded the restore ($context)");
+            }
+        }
     }
 
     public function test_build_launch_url_embeds_branch_and_base64_blueprint(): void {

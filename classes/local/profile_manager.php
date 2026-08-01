@@ -48,9 +48,6 @@ class profile_manager {
                 'slug' => $slug,
                 'bio' => '',
                 'expertise' => json_encode([]),
-                'orcidurl' => '',
-                'linkedinurl' => '',
-                'researchmapurl' => '',
                 'visible' => 1,
                 'timecreated' => $now,
                 'timemodified' => $now,
@@ -145,7 +142,7 @@ class profile_manager {
      * part of $data — they're always computed, never hand-entered.
      *
      * @param int $userid
-     * @param array $data slug, bio, expertise (array), orcidurl, linkedinurl, researchmapurl, visible (bool)
+     * @param array $data slug, bio, expertise (array), visible (bool)
      */
     public static function save(int $userid, array $data): void {
         global $DB;
@@ -164,9 +161,6 @@ class profile_manager {
                 'slug' => $data['slug'],
                 'bio' => $data['bio'],
                 'expertise' => json_encode(array_values($data['expertise'])),
-                'orcidurl' => $data['orcidurl'],
-                'linkedinurl' => $data['linkedinurl'],
-                'researchmapurl' => $data['researchmapurl'],
                 'visible' => $data['visible'] ? 1 : 0,
                 'timemodified' => time(),
             ]);

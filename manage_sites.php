@@ -92,7 +92,18 @@ function oerexchange_render_site_table(array $sites, bool $showapprove, bool $sh
                 ['class' => 'btn btn-sm btn-outline-danger']
             );
         }
-        $table->data[] = [s($site->name), s($site->url), s($site->contact), $actions];
+        // The site NAME is human-readable display text an administrator of the
+        // registering site chose (register.php captures it as PARAM_TEXT, which
+        // deliberately preserves multilang markup), so it goes through
+        // format_string() — which escapes internally, hence no s() around it.
+        // The url and contact (an email address) are not display prose: they
+        // are machine values, and stay plainly escaped.
+        $table->data[] = [
+            format_string($site->name, true, ['context' => context_system::instance()]),
+            s($site->url),
+            s($site->contact),
+            $actions,
+        ];
     }
     echo html_writer::table($table);
 }

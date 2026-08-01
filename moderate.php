@@ -142,9 +142,14 @@ if (empty($reports)) {
                 ['class' => 'btn btn-sm btn-outline-danger']
             );
         $table->data[] = [
-            $resource ? html_writer::link($resurl, s($resource->title))
+            $resource ? html_writer::link($resurl, format_string($resource->title, true, ['context' => $context]))
                 : get_string('resourcedeletedplaceholder', 'local_oerexchange'),
             get_string('reporttype_' . $rep->type, 'local_oerexchange'),
+            // Deliberately s(), NOT format_string(): a report's details are
+            // moderation *evidence*, and a moderator must see exactly what the
+            // reporter typed. Running the string filters here would let a
+            // reporter hide text from the moderator inside a multilang span
+            // for a language the moderator is not viewing in.
             s($rep->details),
             $actions,
         ];
@@ -177,7 +182,7 @@ if (empty($moderated)) {
             'restoreid' => $mod->id, 'sesskey' => sesskey(),
         ]);
         $table->data[] = [
-            html_writer::link($resurl, s($mod->title)),
+            html_writer::link($resurl, format_string($mod->title, true, ['context' => $context])),
             get_string('resourcestatus_' . $mod->status, 'local_oerexchange'),
             html_writer::link(
                 $restoreurl,
@@ -203,7 +208,7 @@ if (empty($failed)) {
         $resource = $DB->get_record('local_oerexchange_resources', ['id' => $v->resourceid]);
         $resurl = new moodle_url('/local/oerexchange/resource.php', ['id' => $v->resourceid]);
         $table->data[] = [
-            $resource ? html_writer::link($resurl, s($resource->title))
+            $resource ? html_writer::link($resurl, format_string($resource->title, true, ['context' => $context]))
                 : get_string('resourcedeletedplaceholder', 'local_oerexchange'),
             // Moderators see the full stored text — only the internal
             // author-safe marker is stripped, since it is plumbing rather

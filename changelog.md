@@ -3,6 +3,63 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.0.4] - 2026-08-01
+
+### Security
+
+- Custom profile field values shown on the public profile page are passed
+  through `clean_text()` before display. `profile_field_social::display_data()`
+  substitutes the raw stored value into `<a href="%%PLAIN%%">` with no
+  escaping, and the edit form's `PARAM_URL` is bypassed by every non-form
+  writer (`core_user_create_users`/`update_users` declare
+  `customfields[].value` as `PARAM_RAW`, as do uploaduser and LDAP/OAuth2
+  sync). Core accepts that because `/user/profile.php` honours
+  `$CFG->forceloginforprofiles`; this page is deliberately public. Applied to
+  every field type rather than allowlisting known-safe ones, so third-party
+  field types are covered and none is silently dropped.
+- The `.mbz` URL interpolated into the sandbox's generated PHP is escaped with
+  `addcslashes($url, "'\\")` instead of escaping the quote alone, so a trailing
+  backslash cannot break out of the generated string literal. Not reachable
+  with current inputs; hardened because it is a generated-code boundary.
+
+### Added
+
+- A "Try it" trial enrols its own user in the trial course as both Editing
+  teacher and Student, via the manual enrolment plugin, for full-course and
+  single-activity trials alike.
+- The public educator profile lists the site's additional user profile fields
+  that the administrator has set to "Visible to everyone" and the user has
+  filled in, rendered with each field's own display formatting (including a
+  text field's configured link format).
+
+### Changed
+
+- Educator profile descriptions are rendered with `format_text()` in
+  `FORMAT_MOODLE` instead of `FORMAT_PLAIN`, so site text filters — including
+  auto-linking and multilang — apply. HTML cleaning remains on.
+
+### Removed
+
+- **Breaking:** the `orcidurl`, `linkedinurl` and `researchmapurl` columns are
+  dropped from `local_oerexchange_profiles` and their stored values discarded.
+  The corresponding profile-edit inputs, public-profile links and privacy
+  metadata entries are gone. Superseded by the custom profile fields above.
+
+### Fixed
+
+- Resource titles, section titles, registering-site names, subject tags and
+  author-supplied text on `resource.php`, `moderate.php`, `manage_sites.php`,
+  `share_upload_mbz.php`, `share_upload_data.php` and the public profile page
+  now pass through `format_string()`/`format_text()` rather than bare `s()`,
+  so multilang markup is filtered instead of displayed literally.
+- The Open Graph description no longer strips tags off unfiltered text.
+- Resource titles in co-author and stale-resource notifications are filtered
+  and flattened to plain text before being placed in a `FORMAT_PLAIN` message.
+- Cover-image `alt` attributes no longer double-escape an ampersand: the
+  filtered value is decoded before `html_writer` escapes it once.
+- `s()` removed from the slug and expertise inputs' `value` attributes, which
+  `html_writer` already escapes.
+
 ## [1.0.3] - 2026-08-01
 
 ### Fixed

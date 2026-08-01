@@ -22,6 +22,15 @@ use core\tests\router\route_testcase;
 use local_oerexchange\local\profile_manager;
 use local_oerexchange\route\controller\profile_controller;
 
+defined('MOODLE_INTERNAL') || die();
+
+global $CFG;
+// PROFILE_VISIBLE_ALL / PROFILE_VISIBLE_PRIVATE (user/profile/lib.php:37,43)
+// live in a legacy lib rather than an autoloaded class, and are needed when
+// the create_custom_profile_field() array literals below are evaluated —
+// before that generator's own require_once would have run.
+require_once($CFG->dirroot . '/user/profile/lib.php');
+
 /**
  * Tests for profile_controller (GET /u/{slug}).
  *
@@ -58,7 +67,7 @@ final class profile_controller_test extends route_testcase {
         $user = $this->getDataGenerator()->create_user(['firstname' => 'Jane', 'lastname' => 'Doe']);
         profile_manager::get_or_create_for_user((int) $user->id);
         profile_manager::save((int) $user->id, ['slug' => 'janedoe', 'bio' => 'A biology teacher.',
-            'expertise' => [], 'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true]);
+            'expertise' => [], 'visible' => true]);
 
         $this->add_class_routes_to_route_loader(
             profile_controller::class,
@@ -119,8 +128,7 @@ final class profile_controller_test extends route_testcase {
         $creator = $this->getDataGenerator()->create_user(['firstname' => 'Rich', 'lastname' => 'Resources']);
         profile_manager::get_or_create_for_user((int) $creator->id);
         profile_manager::save((int) $creator->id, ['slug' => 'richres', 'bio' => 'Prolific.',
-            'expertise' => ['Biology', 'Chemistry'], 'orcidurl' => 'https://orcid.org/0000-0000-0000-0000',
-            'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true]);
+            'expertise' => ['Biology', 'Chemistry'], 'visible' => true]);
 
         // Give the creator enough published resources + downloads + rating to earn the badge.
         set_config('badge_trustedcontributor_minresources', 1, 'local_oerexchange');
@@ -178,8 +186,7 @@ final class profile_controller_test extends route_testcase {
         $this->resetAfterTest();
         $owner = $this->getDataGenerator()->create_user();
         profile_manager::get_or_create_for_user((int) $owner->id);
-        profile_manager::save((int) $owner->id, ['slug' => 'ownerview', 'bio' => '', 'expertise' => [],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true]);
+        profile_manager::save((int) $owner->id, ['slug' => 'ownerview', 'bio' => '', 'expertise' => [], 'visible' => true]);
 
         $this->add_class_routes_to_route_loader(profile_controller::class, '');
 
@@ -219,8 +226,7 @@ final class profile_controller_test extends route_testcase {
         $this->resetAfterTest();
         $creator = $this->getDataGenerator()->create_user();
         profile_manager::get_or_create_for_user((int) $creator->id);
-        profile_manager::save((int) $creator->id, ['slug' => 'thumbcreator', 'bio' => '', 'expertise' => [],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true]);
+        profile_manager::save((int) $creator->id, ['slug' => 'thumbcreator', 'bio' => '', 'expertise' => [], 'visible' => true]);
 
         $siteid = $DB->insert_record('local_oerexchange_sites', (object) [
             'name' => 'S', 'url' => 'https://x', 'contact' => 'x@x.com', 'serviceuserid' => null,
@@ -274,12 +280,323 @@ final class profile_controller_test extends route_testcase {
         $this->assertStringNotContainsString($noimageurlfragment, $body);
     }
 
+    /**
+     * Task 2: the three hardcoded portfolio links that used to sit here are
+     * gone; their slot now holds the user's additional user profile fields
+     * (admin page /user/profile/index.php) that are set to "Visible to
+     * everyone" — and only those, and only when they hold a value.
+     *
+     * Deliberately asserted as an anonymous, not-logged-in visitor
+     * (setUser(null)): this page is public by design (see the controller's
+     * class docblock) and the decision is that "Visible to everyone" is read
+     * literally, so there is no isloggedin() gate and no
+     * $CFG->forceloginforprofiles consultation to satisfy.
+     */
+    public function test_public_custom_profile_fields_are_shown_to_an_anonymous_visitor(): void {
+        $this->resetAfterTest();
+
+        $this->getDataGenerator()->create_custom_profile_field([
+            'datatype' => 'text',
+            'shortname' => 'oerpublicfield',
+            'name' => 'Research group',
+            'visible' => PROFILE_VISIBLE_ALL,
+        ]);
+        $this->getDataGenerator()->create_custom_profile_field([
+            'datatype' => 'text',
+            'shortname' => 'oerprivatefield',
+            'name' => 'Home telephone',
+            'visible' => PROFILE_VISIBLE_PRIVATE,
+        ]);
+        $this->getDataGenerator()->create_custom_profile_field([
+            'datatype' => 'text',
+            'shortname' => 'oerblankfield',
+            'name' => 'Office number',
+            'visible' => PROFILE_VISIBLE_ALL,
+        ]);
+
+        $user = $this->getDataGenerator()->create_user([
+            'profile_field_oerpublicfield' => 'Marine Ecology Lab',
+            'profile_field_oerprivatefield' => 'Do not publish this',
+            // Note: profile_field_oerblankfield is deliberately left unset.
+        ]);
+        profile_manager::get_or_create_for_user((int) $user->id);
+        profile_manager::save((int) $user->id, ['slug' => 'fielduser', 'bio' => '', 'expertise' => [], 'visible' => true]);
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+        $this->setUser(null);
+
+        $response = $this->process_request('GET', 'u/fielduser', route_loader_interface::ROUTE_GROUP_PAGE);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+
+        // Visible to everyone AND populated: heading, field name and value.
+        $this->assertStringContainsString(get_string('profilefieldsheading', 'local_oerexchange'), $body);
+        $this->assertStringContainsString('Research group', $body);
+        $this->assertStringContainsString('Marine Ecology Lab', $body);
+
+        // Not visible to everyone: absent despite holding a value. This is the
+        // deliberate divergence from core's show_field_content(), which would
+        // reveal it to a viewer holding moodle/user:viewalldetails.
+        $this->assertStringNotContainsString('Home telephone', $body);
+        $this->assertStringNotContainsString('Do not publish this', $body);
+
+        // Visible to everyone but empty for this user: omitted entirely.
+        $this->assertStringNotContainsString('Office number', $body);
+    }
+
+    /**
+     * The owner viewing their OWN public profile still sees only the
+     * "Visible to everyone" fields — this is the case the whole divergence
+     * from core exists for, and the one the anonymous-visitor test above
+     * cannot reach.
+     *
+     * Core's profile_field_base::is_visible() (user/profile/lib.php) returns
+     * true for a PROFILE_VISIBLE_PRIVATE field when
+     * $this->userid == $USER->id, so a show_field_content()-based
+     * implementation would show the owner a field no visitor can see. On a
+     * page whose entire purpose is "this is what the public sees", that would
+     * actively mislead the person deciding what to publish.
+     */
+    public function test_a_private_field_stays_hidden_even_from_the_profiles_own_owner(): void {
+        $this->resetAfterTest();
+
+        $this->getDataGenerator()->create_custom_profile_field([
+            'datatype' => 'text',
+            'shortname' => 'oerpublicfield',
+            'name' => 'Research group',
+            'visible' => PROFILE_VISIBLE_ALL,
+        ]);
+        $this->getDataGenerator()->create_custom_profile_field([
+            'datatype' => 'text',
+            'shortname' => 'oerprivatefield',
+            'name' => 'Home telephone',
+            'visible' => PROFILE_VISIBLE_PRIVATE,
+        ]);
+
+        $user = $this->getDataGenerator()->create_user([
+            'profile_field_oerpublicfield' => 'Marine Ecology Lab',
+            'profile_field_oerprivatefield' => 'Do not publish this',
+        ]);
+        profile_manager::get_or_create_for_user((int) $user->id);
+        profile_manager::save((int) $user->id, ['slug' => 'owneruser', 'bio' => '', 'expertise' => [], 'visible' => true]);
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+        $this->setUser($user);
+
+        $response = $this->process_request('GET', 'u/owneruser', route_loader_interface::ROUTE_GROUP_PAGE);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+
+        $this->assertStringContainsString('Research group', $body);
+        $this->assertStringContainsString('Marine Ecology Lab', $body);
+        $this->assertStringNotContainsString('Home telephone', $body);
+        $this->assertStringNotContainsString('Do not publish this', $body);
+    }
+
+    /**
+     * A 'social' profile field substitutes its RAW stored value into
+     * `<a href="%%PLAIN%%">` with no escaping of its own
+     * (user/profile/field/social/field.class.php + classes/helper.php), and
+     * the edit form's PARAM_URL is bypassed by every non-form writer — the
+     * web-service create/update_users functions declare customfields[].value
+     * as PARAM_RAW, as do uploaduser and directory sync. Core tolerates that
+     * because /user/profile.php honours $CFG->forceloginforprofiles; this
+     * page is deliberately public, so it must neutralise the payload itself.
+     */
+    public function test_a_social_field_cannot_publish_a_javascript_url(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+
+        // A social field carries its network key in BOTH columns, and each is
+        // read by different core code — get this wrong and the test passes
+        // vacuously. `name` is the key that set_field() swaps for a localised
+        // label via profilefield_social\helper::get_networks(); `param1` is
+        // the key display_data() looks up in get_network_urls(), falling
+        // through to the bare stored string when it does not match. 'url' is
+        // the network whose template is `<a href="%%PLAIN%%">%%PLAIN%%</a>` —
+        // the raw value straight into an href.
+        $field = $this->getDataGenerator()->create_custom_profile_field([
+            'datatype' => 'social',
+            'shortname' => 'oersocialfield',
+            'name' => 'url',
+            'param1' => 'url',
+            'visible' => PROFILE_VISIBLE_ALL,
+        ]);
+
+        $user = $this->getDataGenerator()->create_user();
+        // Written straight to the column, exactly as a PARAM_RAW web-service
+        // or directory-sync write would — the edit form is not involved.
+        $DB->insert_record('user_info_data', (object) [
+            'userid' => $user->id,
+            'fieldid' => $field->id,
+            'data' => 'javascript:alert(1)',
+            'dataformat' => FORMAT_HTML,
+        ]);
+
+        profile_manager::get_or_create_for_user((int) $user->id);
+        profile_manager::save((int) $user->id, ['slug' => 'socialuser', 'bio' => '', 'expertise' => [], 'visible' => true]);
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+        $this->setUser(null);
+
+        $response = $this->process_request('GET', 'u/socialuser', route_loader_interface::ROUTE_GROUP_PAGE);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+
+        // The field itself still renders — the fix neutralises, it does not
+        // silently drop whole field types.
+        $this->assertStringContainsString(get_string('webpage', 'profilefield_social'), $body);
+        $this->assertStringContainsString('javascript:alert(1)', $body);
+        // But never as a live href: clean_text() strips the dangerous scheme
+        // while leaving the (now inert) anchor and its text.
+        $this->assertStringNotContainsString('href="javascript:', $body);
+        $this->assertStringNotContainsString("href='javascript:", $body);
+    }
+
+    /**
+     * The removed portfolio links must not reappear in any form: no ORCID/
+     * LinkedIn/ResearchMap labels, and no attempt to read a column that no
+     * longer exists (which would surface as a dml exception, not a 200).
+     */
+    public function test_removed_portfolio_links_are_gone_from_the_page(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        profile_manager::get_or_create_for_user((int) $user->id);
+        profile_manager::save((int) $user->id, ['slug' => 'nolinks', 'bio' => '', 'expertise' => [], 'visible' => true]);
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+
+        $response = $this->process_request('GET', 'u/nolinks', route_loader_interface::ROUTE_GROUP_PAGE);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+        $this->assertStringNotContainsString('ORCID', $body);
+        $this->assertStringNotContainsString('ResearchMap', $body);
+        // NB deliberately not asserting on 'LinkedIn': share_targets::ALL
+        // includes a LinkedIn share button (share_targets.php:45), on by
+        // default, which legitimately puts that word on this page.
+        // No custom profile fields exist in this test, so the block's heading
+        // must not be emitted either.
+        $this->assertStringNotContainsString(get_string('profilefieldsheading', 'local_oerexchange'), $body);
+    }
+
+    /**
+     * Task 3: a multilang span in a resource title must be filtered down to a
+     * single language by format_string(), not escaped by s() into visible
+     * literal `<span lang="en" class="multilang">` markup — in both the card
+     * title and the cover image's alt attribute. The alt attribute is inside
+     * html_writer::empty_tag(), which already runs s() over attribute values
+     * (lib/classes/output/html_writer.php:113), so the old inner s() there was
+     * a double-escape: it produced "&amp;lt;span ..." in the rendered alt.
+     */
+    public function test_multilang_resource_title_is_filtered_not_escaped(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        // Enable the exact filter trio this sink depends on, rather than
+        // relying on site configuration (matching multilang_rendering_test).
+        filter_set_global_state('multilang', TEXTFILTER_ON);
+        set_config('filterall', 1);
+        set_config('stringfilters', 'multilang');
+
+        $creator = $this->getDataGenerator()->create_user();
+        profile_manager::get_or_create_for_user((int) $creator->id);
+        profile_manager::save((int) $creator->id, ['slug' => 'mluser', 'bio' => '', 'expertise' => [], 'visible' => true]);
+
+        $siteid = $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'S', 'url' => 'https://x', 'contact' => 'x@x.com', 'serviceuserid' => null,
+            'status' => 'active', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+        $title = '<span lang="en" class="multilang">Marine Biology</span>'
+            . '<span lang="ja" class="multilang">海洋生物学</span>';
+        $resourceid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => $title, 'summary' => '', 'language' => '', 'tags' => '',
+            'licenseshortname' => 'CC BY', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => $creator->id, 'siteid' => $siteid, 'status' => 'published',
+            'downloadcount' => 0, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => time() - 100, 'timemodified' => time() - 100,
+        ]);
+
+        // A cover image, so the alt-attribute sink is actually exercised.
+        get_file_storage()->create_file_from_string([
+            'contextid' => \context_system::instance()->id,
+            'component' => 'local_oerexchange',
+            'filearea' => 'coverimage',
+            'itemid' => $resourceid,
+            'filepath' => '/',
+            'filename' => 'cover.png',
+        ], 'fake-png-bytes');
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+
+        $response = $this->process_request('GET', 'u/mluser', route_loader_interface::ROUTE_GROUP_PAGE);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+
+        // Filtered down to exactly one language...
+        $this->assertStringContainsString('Marine Biology', $body);
+        $this->assertStringNotContainsString('海洋生物学', $body);
+        // ...with no literal multilang markup left anywhere on the page, in
+        // either the raw form (unfiltered) or the escaped form (s()'d).
+        $this->assertStringNotContainsString('class="multilang"', $body);
+        $this->assertStringNotContainsString('class=&quot;multilang&quot;', $body);
+        // The alt attribute specifically: no double-escaped markup, and the
+        // filtered title present inside it.
+        $this->assertStringNotContainsString('&amp;lt;span', $body);
+        $this->assertStringContainsString(
+            'alt="' . s(get_string('thumbnailalt', 'local_oerexchange', 'Marine Biology')) . '"',
+            $body
+        );
+    }
+
+    /**
+     * Task 3: the bio is rendered with FORMAT_MOODLE, not FORMAT_PLAIN, so
+     * text filters actually run over it (FORMAT_PLAIN runs none). Cleaning
+     * stays on — no 'noclean' is passed — so a script tag in a bio must not
+     * survive into the page.
+     */
+    public function test_bio_is_filtered_and_still_cleaned(): void {
+        $this->resetAfterTest();
+        filter_set_global_state('multilang', TEXTFILTER_ON);
+        set_config('filterall', 1);
+        set_config('stringfilters', 'multilang');
+
+        $user = $this->getDataGenerator()->create_user();
+        profile_manager::get_or_create_for_user((int) $user->id);
+        profile_manager::save((int) $user->id, [
+            'slug' => 'biouser',
+            'bio' => '<span lang="en" class="multilang">A biology teacher.</span>'
+                . '<span lang="ja" class="multilang">生物の教員です。</span>'
+                . "\n<script>alert(1)</script>",
+            'expertise' => [],
+            'visible' => true,
+        ]);
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+
+        $response = $this->process_request('GET', 'u/biouser', route_loader_interface::ROUTE_GROUP_PAGE);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $body = (string) $response->getBody();
+
+        // Filters ran: one language survives, no literal multilang markup.
+        $this->assertStringContainsString('A biology teacher.', $body);
+        $this->assertStringNotContainsString('生物の教員です。', $body);
+        $this->assertStringNotContainsString('class="multilang"', $body);
+        // Cleaning stayed on.
+        $this->assertStringNotContainsString('<script>alert(1)</script>', $body);
+    }
+
     public function test_hidden_profile_renders_404(): void {
         $this->resetAfterTest();
         $user = $this->getDataGenerator()->create_user();
         profile_manager::get_or_create_for_user((int) $user->id);
-        profile_manager::save((int) $user->id, ['slug' => 'hiddenone', 'bio' => '', 'expertise' => [],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => false]);
+        profile_manager::save((int) $user->id, ['slug' => 'hiddenone', 'bio' => '', 'expertise' => [], 'visible' => false]);
 
         $this->add_class_routes_to_route_loader(
             profile_controller::class,
@@ -312,8 +629,7 @@ final class profile_controller_test extends route_testcase {
         $this->resetAfterTest();
         $user = $this->getDataGenerator()->create_user();
         profile_manager::get_or_create_for_user((int) $user->id);
-        profile_manager::save((int) $user->id, ['slug' => 'hiddentwo', 'bio' => '', 'expertise' => [],
-            'orcidurl' => '', 'linkedinurl' => '', 'researchmapurl' => '', 'visible' => false]);
+        profile_manager::save((int) $user->id, ['slug' => 'hiddentwo', 'bio' => '', 'expertise' => [], 'visible' => false]);
 
         $this->add_class_routes_to_route_loader(
             profile_controller::class,

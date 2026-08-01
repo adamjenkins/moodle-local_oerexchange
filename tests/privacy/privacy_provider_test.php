@@ -235,7 +235,6 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
         \local_oerexchange\local\profile_manager::get_or_create_for_user((int) $user->id);
         \local_oerexchange\local\profile_manager::save((int) $user->id, [
             'slug' => 'exportme', 'bio' => 'my bio', 'expertise' => ['maths', 'physics'],
-            'orcidurl' => 'https://orcid.org/0000', 'linkedinurl' => '', 'researchmapurl' => '',
             'visible' => true,
         ]);
 
@@ -277,8 +276,7 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
 
         \local_oerexchange\local\profile_manager::get_or_create_for_user((int) $user->id);
         \local_oerexchange\local\profile_manager::save((int) $user->id, [
-            'slug' => 'deleteme', 'bio' => 'bio', 'expertise' => [], 'orcidurl' => '',
-            'linkedinurl' => '', 'researchmapurl' => '', 'visible' => true,
+            'slug' => 'deleteme', 'bio' => 'bio', 'expertise' => [], 'visible' => true,
         ]);
         $DB->insert_record('local_oerexchange_badges', (object) [
             'userid' => $user->id, 'badgekey' => 'trusted_contributor', 'timeawarded' => time(),
