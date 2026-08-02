@@ -84,6 +84,50 @@ if (optional_param('savebake', 0, PARAM_INT) && confirm_sesskey()) {
 
 $ingestor = new ingestor();
 
+// Deleting an entry throws away its mirrored ZIP as well as the row, so it
+// asks first. Disabling, the reversible option, stays a one-click toggle.
+$deleteid = optional_param('deleteid', 0, PARAM_INT);
+if ($deleteid) {
+    $entry = $DB->get_record('local_oerexchange_pluginallowlist', ['id' => $deleteid], '*', MUST_EXIST);
+    $name = $entry->component ?: ($entry->plugintype . '_' . $entry->pluginname);
+
+    if (optional_param('confirmdelete', 0, PARAM_INT)) {
+        // Deliberately require_sesskey(), not confirm_sesskey(): the latter RETURNS false
+        // rather than throwing, so combining it into this condition would send
+        // a stale or forged request quietly back to the confirmation screen —
+        // indistinguishable, to whoever sent it, from never having asked. A
+        // request that deletes data should fail loudly when it fails.
+        require_sesskey();
+
+        $removed = $ingestor->delete((int) $entry->id);
+        redirect(
+            $pageurl,
+            get_string('allowlistdeleted', 'local_oerexchange', s((string) $removed)),
+            null,
+            \core\output\notification::NOTIFY_SUCCESS
+        );
+    }
+
+    $message = get_string('allowlistdeleteconfirm', 'local_oerexchange', (object) [
+        'plugin' => s($name),
+        'branch' => s($entry->moodlebranch),
+    ]);
+    $dependents = $ingestor->count_dependents((int) $entry->id);
+    if ($dependents > 0) {
+        $message .= html_writer::empty_tag('br') . html_writer::empty_tag('br')
+            . get_string('allowlistdeletedependents', 'local_oerexchange', $dependents);
+    }
+
+    echo $OUTPUT->header();
+    echo $OUTPUT->confirm(
+        $message,
+        new moodle_url($pageurl, ['deleteid' => $entry->id, 'confirmdelete' => 1, 'sesskey' => sesskey()]),
+        $pageurl
+    );
+    echo $OUTPUT->footer();
+    die;
+}
+
 // Stage 2: the admin has seen the plan and pressed Add.
 //
 // Read as PARAM_RAW, not PARAM_INT: a named submit button submits its own
@@ -410,12 +454,19 @@ function local_oerexchange_allowlist_render_entries(bool $cansandbox): string {
             'value' => 1,
         ] + ($e->bake ? ['checked' => 'checked'] : []) + ($cansandbox ? [] : ['disabled' => 'disabled']);
 
+        $deleteurl = new moodle_url($pageurl, ['deleteid' => $e->id, 'sesskey' => $sesskey]);
+
         $table->data[] = [
             $name,
             s($e->moodlebranch),
             s($e->status),
             html_writer::empty_tag('input', $bakeattrs),
-            html_writer::link($toggleurl, $label, ['class' => 'btn btn-sm btn-outline-secondary']),
+            html_writer::link($toggleurl, $label, ['class' => 'btn btn-sm btn-outline-secondary me-1'])
+                . html_writer::link(
+                    $deleteurl,
+                    get_string('allowlistdelete', 'local_oerexchange'),
+                    ['class' => 'btn btn-sm btn-outline-danger']
+                ),
         ];
     }
 

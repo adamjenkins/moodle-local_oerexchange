@@ -303,6 +303,99 @@ final class ingestor_test extends \advanced_testcase {
         $this->assertSame(entry_plan::ADD, $previewed->primary()->action);
     }
 
+    public function test_deleting_an_entry_removes_the_row_and_its_mirrored_zip(): void {
+        // Deletion, unlike disabling, has to reclaim the stored ZIP — that is
+        // the only part of an entry with any real size to it.
+        $this->resetAfterTest();
+        global $DB;
+
+        (new ingestor())->commit($this->plan('mod_thing', []));
+        $row = $DB->get_record('local_oerexchange_pluginallowlist', ['moodlebranch' => '5.2']);
+
+        $fs = get_file_storage();
+        $context = \context_system::instance();
+        $this->assertCount(1, $fs->get_area_files(
+            $context->id,
+            'local_oerexchange',
+            'allowlist',
+            $row->itemid,
+            'id',
+            false
+        ));
+
+        $removed = (new ingestor())->delete((int) $row->id);
+
+        $this->assertSame('mod_thing', $removed);
+        $this->assertFalse($DB->record_exists('local_oerexchange_pluginallowlist', ['id' => $row->id]));
+        $this->assertSame([], $fs->get_area_files(
+            $context->id,
+            'local_oerexchange',
+            'allowlist',
+            $row->itemid,
+            'id',
+            false
+        ));
+
+        // Only the one branch goes; the other is a separate entry.
+        $this->assertTrue($DB->record_exists('local_oerexchange_pluginallowlist', ['moodlebranch' => '5.0']));
+    }
+
+    public function test_deleting_a_parent_keeps_its_dependencies_but_unlinks_them(): void {
+        // A dependency can be shared, so deleting plugins the admin did not
+        // name would be a worse surprise than leaving one behind. What must
+        // not survive is the dangling parent reference.
+        $this->resetAfterTest();
+        global $DB;
+
+        $this->publish('local_helper', []);
+        (new ingestor())->commit($this->plan('mod_thing', ['local_helper' => 'any']));
+
+        $parent = $DB->get_record(
+            'local_oerexchange_pluginallowlist',
+            ['component' => 'mod_thing', 'moodlebranch' => '5.2']
+        );
+        $child = $DB->get_record(
+            'local_oerexchange_pluginallowlist',
+            ['component' => 'local_helper', 'moodlebranch' => '5.2']
+        );
+        $this->assertSame((int) $parent->id, (int) $child->parentid);
+
+        $ingestor = new ingestor();
+        $this->assertSame(1, $ingestor->count_dependents((int) $parent->id));
+        $ingestor->delete((int) $parent->id);
+
+        $child = $DB->get_record('local_oerexchange_pluginallowlist', ['id' => $child->id]);
+        $this->assertNotFalse($child, 'the dependency must survive');
+        $this->assertNull($child->parentid, 'its parent link must not dangle');
+        $this->assertSame('active', $child->status);
+    }
+
+    public function test_deleting_something_already_gone_is_harmless(): void {
+        // Two admins with the page open, both pressing Delete.
+        $this->resetAfterTest();
+
+        $this->assertNull((new ingestor())->delete(999999));
+    }
+
+    public function test_a_deleted_plugin_can_simply_be_added_again(): void {
+        // Deletion must not leave anything behind that blocks a re-add — the
+        // unique index would reject a leftover row.
+        $this->resetAfterTest();
+        global $DB;
+
+        $ingestor = new ingestor();
+        $ingestor->commit($this->plan('mod_thing', []));
+        foreach ($DB->get_records('local_oerexchange_pluginallowlist') as $row) {
+            $ingestor->delete((int) $row->id);
+        }
+        $this->assertSame(0, $DB->count_records('local_oerexchange_pluginallowlist'));
+
+        $result = $ingestor->commit($this->plan('mod_thing', []));
+
+        $this->assertSame(2, $result->added);
+        $this->assertSame(0, $result->refreshed);
+    }
+
     /**
      * Build a real plan, the way the admin page and CLI both do.
      *

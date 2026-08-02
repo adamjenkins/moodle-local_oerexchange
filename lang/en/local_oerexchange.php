@@ -45,6 +45,12 @@ $string['allowlistconfidence_overridden'] = 'You chose to disregard the Moodle v
 $string['allowlistconfidence_unverified'] = 'The plugin says nothing about which Moodle versions it supports, so every version the sandbox runs is offered. Untick any you do not want.';
 $string['allowlistconfirm'] = 'Add these entries';
 $string['allowlistcurrent'] = 'Plugins currently on the allowlist';
+$string['allowlistdelete'] = 'Delete';
+$string['allowlistdeleteconfirm'] = 'Delete <strong>{$a->plugin}</strong> for Moodle {$a->branch} from the allowlist?
+
+Its mirrored ZIP is deleted too, and sandbox trials will stop being able to install it. This cannot be undone — if you only want to stop offering it for now, use Disable instead.';
+$string['allowlistdeleted'] = '{$a} removed from the allowlist.';
+$string['allowlistdeletedependents'] = '{$a} other entr(ies) were added as dependencies of this one. They are kept, and simply stop being marked as its dependencies.';
 $string['allowlistdepthreached'] = 'Dependencies were followed {$a} levels deep and stopped there. Anything deeper is not included.';
 $string['allowlistdisable'] = 'Disable';
 $string['allowlistempty'] = 'No plugins on the allowlist yet.';

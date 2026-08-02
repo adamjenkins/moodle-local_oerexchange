@@ -32,6 +32,12 @@ $string['allowlistbake'] = 'バンドルに組み込む';
 $string['allowlistbake_help'] = 'チェックすると、このプラグインは試用が起動した瞬間にダウンロード・インストールされるのではなく、ビルドマシン上でのビルド時にサンドボックスバンドルへ組み込まれます。このチェックは意図を記録するだけです — 実際に反映されるのは、ビルドマシンにアクセスできる人がダウンロードした設定ファイルを使ってビルドを実行した後です。実際にデプロイされたバンドルのスタンプはExchange側で別途確認され、ここでの設定と一致しない場合は警告が表示されます。';
 $string['allowlistbranch'] = 'Moodleブランチ';
 $string['allowlistconfidence_overridden'] = 'プラグインが宣言しているMoodleバージョンを無視する選択をしたため、サンドボックスが動作させるすべてのバージョンが一覧に表示されています。';
+$string['allowlistdelete'] = '削除';
+$string['allowlistdeleteconfirm'] = 'Moodle {$a->branch} 用の <strong>{$a->plugin}</strong> を許可リストから削除しますか？
+
+ミラーされたZIPも削除され、サンドボックスの試用でインストールできなくなります。この操作は取り消せません。一時的に提供を止めたいだけであれば、「無効にする」を使用してください。';
+$string['allowlistdeleted'] = '{$a} を許可リストから削除しました。';
+$string['allowlistdeletedependents'] = '他に {$a} 件のエントリがこのプラグインの依存として追加されています。これらは削除されず、依存としての表示がなくなるだけです。';
 $string['allowlistdisable'] = '無効化';
 $string['allowlistempty'] = '許可リストにはまだプラグインがありません。';
 $string['allowlistenable'] = '有効化';

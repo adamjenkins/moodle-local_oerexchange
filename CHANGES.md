@@ -106,6 +106,16 @@ worth actually opening a trial for such a plugin.
 The same thing is available from a shell as
 `cli/add_allowlist_plugin.php --url=… --dry-run`.
 
+**Entries can now be deleted, not only disabled.** Each row on the allowlist
+has a **Delete** button beside Disable. Disabling is still the reversible
+option — the entry stays on the list and can be switched back on. Delete
+removes the entry and its mirrored ZIP for good, which is what you want for
+something added by mistake, and it asks first.
+
+Deleting a plugin that others were added as dependencies of does **not** delete
+those: a dependency can be shared, so they are kept and simply stop being
+marked as belonging to it. The confirmation tells you how many there are.
+
 ## The upload page tells you the size limit before you upload
 
 The largest file this Exchange accepts was previously invisible: it had no

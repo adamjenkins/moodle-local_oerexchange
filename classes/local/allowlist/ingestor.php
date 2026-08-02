@@ -175,6 +175,61 @@ final class ingestor {
     }
 
     /**
+     * Remove an allowlist entry entirely, with its mirrored ZIP.
+     *
+     * Distinct from disabling it. A disabled entry stays on the list and can
+     * be switched back on; this is for an entry that should not be there at
+     * all — added by mistake, or superseded — and it reclaims the stored ZIP,
+     * which is the only part with any real size to it.
+     *
+     * Anything added as a dependency of this entry is deliberately KEPT, with
+     * its parent link cleared. A dependency can be shared, and quietly
+     * deleting plugins the admin did not name would be a worse surprise than
+     * leaving one behind; the confirmation screen says how many there are so
+     * the decision is informed.
+     *
+     * @param int $id the entry's id
+     * @return string|null the component removed, or null if it was already gone
+     */
+    public function delete(int $id): ?string {
+        global $DB;
+
+        $entry = $DB->get_record(self::TABLE, ['id' => $id]);
+        if (!$entry) {
+            return null;
+        }
+
+        // The itemid is the row's own id for anything this plugin wrote; fall back
+        // to the id for a row whose itemid was never populated.
+        $itemid = (int) ($entry->itemid ?: $entry->id);
+        get_file_storage()->delete_area_files(
+            \context_system::instance()->id,
+            'local_oerexchange',
+            self::FILEAREA,
+            $itemid
+        );
+
+        // Do this before the delete: a dangling parentid would render as a
+        // missing "added as a dependency of" note rather than as nothing.
+        $DB->set_field(self::TABLE, 'parentid', null, ['parentid' => $entry->id]);
+        $DB->delete_records(self::TABLE, ['id' => $entry->id]);
+
+        return $entry->component ?: ($entry->plugintype . '_' . $entry->pluginname);
+    }
+
+    /**
+     * How many entries were added as dependencies of this one.
+     *
+     * @param int $id
+     * @return int
+     */
+    public function count_dependents(int $id): int {
+        global $DB;
+
+        return $DB->count_records(self::TABLE, ['parentid' => $id]);
+    }
+
+    /**
      * Mirror the plugin ZIP into the entry's file area.
      *
      * Replaces whatever was there: an entry being refreshed must not end up

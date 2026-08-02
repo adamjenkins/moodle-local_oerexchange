@@ -66,6 +66,13 @@ All notable changes to this project are documented in this file, in
   is always the plugin's own name, whatever the source archive called it.
 - New `cli/add_allowlist_plugin.php` (`--url`/`--zip`, `--bake`, `--dry-run`)
   running the same pipeline as the admin page.
+- Allowlist entries can be deleted, not just disabled — `ingestor::delete()`
+  plus a confirmation step on `manage_allowlist.php`. Removes the row and its
+  mirrored ZIP; dependents are kept with their `parentid` cleared rather than
+  cascade-deleted, since a dependency may be shared. The confirmation reports
+  how many dependents exist. The mutating step uses `require_sesskey()` rather
+  than `confirm_sesskey()`, which returns false instead of throwing and would
+  have sent a stale request silently back to the confirmation screen.
 - An admin can now allowlist a plugin for Moodle versions it does not declare
   support for ("Add it for Moodle versions it does not claim to support", or
   `--ignore-supported`). A stale `$plugin->supported` range is common and
