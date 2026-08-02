@@ -257,6 +257,7 @@ echo html_writer::empty_tag('input', [
     'type' => 'file', 'name' => 'datafile', 'id' => 'oerexchange-data-file', 'class' => 'form-control mb-2',
     'required' => 'required',
 ]);
+echo \local_oerexchange\local\upload_form_ui::size_hint();
 
 echo html_writer::empty_tag('input', [
     'type' => 'submit',

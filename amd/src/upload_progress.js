@@ -142,9 +142,74 @@ const send = async(form, region, bar, label, submit) => {
 };
 
 /**
- * Wire the upload form on this page.
+ * Human-readable bytes, in the same shape PHP's display_size() produces.
+ *
+ * @param {number} bytes
+ * @returns {string}
  */
-export const init = () => {
+const formatSize = (bytes) => {
+    const units = ['bytes', 'KB', 'MB', 'GB'];
+    let value = bytes;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit++;
+    }
+
+    return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`;
+};
+
+/**
+ * Say what the chosen file means before anything is sent: too big to accept
+ * at all, or acceptable but awkward for the in-browser trial.
+ *
+ * The trial notes are advisory — the file uploads and publishes either way —
+ * so they are worded as consequences, not refusals.
+ *
+ * @param {HTMLElement} advice the region under the file input
+ * @param {File} file
+ * @param {object} limits maxbytes, trialwarnbytes, trialmaxbytes
+ */
+const describeFile = async(advice, file, limits) => {
+    advice.className = 'small mb-2';
+
+    if (limits.maxbytes && file.size > limits.maxbytes) {
+        advice.classList.add('text-danger');
+        advice.textContent = await getString('uploadtoobig', 'local_oerexchange', {
+            size: formatSize(file.size),
+            max: formatSize(limits.maxbytes),
+        });
+        return;
+    }
+
+    if (limits.trialmaxbytes && file.size > limits.trialmaxbytes) {
+        advice.classList.add('text-muted');
+        advice.textContent = await getString('uploadtrialblocked', 'local_oerexchange', {
+            size: formatSize(file.size),
+            limit: formatSize(limits.trialmaxbytes),
+        });
+        return;
+    }
+
+    if (limits.trialwarnbytes && file.size > limits.trialwarnbytes) {
+        advice.classList.add('text-muted');
+        advice.textContent = await getString('uploadtrialslow', 'local_oerexchange', {
+            size: formatSize(file.size),
+            limit: formatSize(limits.trialwarnbytes),
+        });
+        return;
+    }
+
+    advice.textContent = '';
+};
+
+/**
+ * Wire the upload form on this page.
+ *
+ * @param {object} limits maxbytes, trialwarnbytes, trialmaxbytes — all in bytes,
+ *                        0 meaning "no such limit on this site"
+ */
+export const init = (limits = {}) => {
     const form = document.querySelector('[data-region="oerexchange-upload-form"]');
     const region = document.querySelector('[data-region="oerexchange-upload-progress"]');
     if (!form || !region) {
@@ -155,14 +220,39 @@ export const init = () => {
     if (!bar || !label) {
         return;
     }
+    const advice = document.querySelector('[data-region="oerexchange-upload-advice"]');
+    const fileinput = form.querySelector('input[type="file"]');
+
+    if (advice && fileinput) {
+        fileinput.addEventListener('change', () => {
+            if (!fileinput.files || !fileinput.files.length) {
+                advice.textContent = '';
+                return;
+            }
+            describeFile(advice, fileinput.files[0], limits).catch(Notification.exception);
+        });
+    }
 
     form.addEventListener('submit', (event) => {
-        const file = form.querySelector('input[type="file"]');
-        if (!file || !file.files || !file.files.length) {
+        if (!fileinput || !fileinput.files || !fileinput.files.length) {
             // Nothing chosen: let the browser's own `required` validation
             // speak. Intercepting here would suppress it.
             return;
         }
+
+        if (limits.maxbytes && fileinput.files[0].size > limits.maxbytes) {
+            // Refuse here rather than sending hundreds of megabytes for the
+            // server to reject on arrival. This is a courtesy, not a control:
+            // resource_manager::publish() enforces the same number on every
+            // path, including this form with JavaScript disabled.
+            event.preventDefault();
+            if (advice) {
+                describeFile(advice, fileinput.files[0], limits).catch(Notification.exception);
+                advice.focus?.();
+            }
+            return;
+        }
+
         event.preventDefault();
         send(form, region, bar, label, form.querySelector('[type="submit"]'))
             .catch(Notification.exception);

@@ -46,6 +46,12 @@ class size_advice {
     public const DEFAULT_WARN_BYTES = 50 * 1024 * 1024;
 
     /**
+     * Default maximum accepted upload, bytes — the value this plugin has
+     * always enforced, now with a setting in front of it.
+     */
+    public const DEFAULT_MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+
+    /**
      * The configured threshold above which a trial is called slow, in bytes.
      *
      * A threshold of 0 disables the warning entirely (an admin who does not
@@ -73,6 +79,52 @@ class size_advice {
         $threshold = self::warn_threshold();
 
         return $threshold > 0 && $bytes > $threshold;
+    }
+
+    /**
+     * The size above which this site declines to offer a trial at all, in bytes.
+     *
+     * Zero — the default — means no cap, which is deliberately what an
+     * upgrading site keeps: a large trial measurably WORKS (359 MiB booted in
+     * 4 min 15 s on 2026-08-02), so turning the button off for everyone would
+     * take away something that functions. An admin who would rather not offer
+     * a four-minute trial opts in.
+     *
+     * @return int bytes; 0 means "never refuse"
+     */
+    public static function max_trial_bytes(): int {
+        return max(0, (int) get_config('local_oerexchange', 'sandboxmaxbytes'));
+    }
+
+    /**
+     * Whether this site refuses to offer an in-browser trial for this size.
+     *
+     * @param int $bytes the .mbz size
+     * @return bool
+     */
+    public static function is_trial_blocked(int $bytes): bool {
+        $max = self::max_trial_bytes();
+
+        return $max > 0 && $bytes > $max;
+    }
+
+    /**
+     * The largest backup this Exchange accepts at all, in bytes.
+     *
+     * The single definition of a limit that publish() enforces, the upload
+     * pages display, the upload JavaScript pre-checks and get_config()
+     * advertises to client sites — it was written out three times before, so
+     * a site that changed it could have told a client one number and enforced
+     * another.
+     *
+     * Zero (or unset) means the 500 MB default rather than "unlimited": that
+     * is what the `?:` this replaces has always done, and quietly turning an
+     * existing 0 into no-limit-at-all on upgrade would be the wrong surprise.
+     *
+     * @return int bytes
+     */
+    public static function max_upload_bytes(): int {
+        return (int) get_config('local_oerexchange', 'maxbackupbytes') ?: self::DEFAULT_MAX_UPLOAD_BYTES;
     }
 
     /**

@@ -142,13 +142,30 @@ resource big enough to make an in-browser trial slow carries a note beside
 **Try it** saying so and pointing at Download instead.
 
 **Warn about slow trials above** (`sandboxwarnbytes`) sets that threshold. Its
-default, 50 MiB, is the sandbox engine's own fast-download budget: below it, a
-trial fetches the backup with a visible percentage; above it, the engine falls
-back to a download inside its WebAssembly PHP that reports no progress at all.
-A 359 MB course measured here booted successfully but took 4 minutes 15
-seconds, nearly four of them apparently idle. Set it to 0 to never warn.
-Nothing is ever refused on size — the maximum a site accepts at all is the
-separate `maxbackupbytes` config (500 MB by default).
+default, 50 MiB, is the *stock* sandbox engine's fast-download budget: below
+it, a trial fetches the backup with a visible percentage; above it, the engine
+falls back to a download inside its WebAssembly PHP that reports no progress at
+all. A 359 MB course measured on the stock budget booted successfully but took
+4 minutes 15 seconds, nearly four of them apparently idle. Set it to 0 to never
+warn.
+
+**Keep this in step with your sandbox.** The companion `oer-sandbox` kit can
+raise that budget when it builds the bundle
+(`OER_FAST_DOWNLOAD_MAX_MB`, default 384). If yours is built that way, set this
+setting to the same number — otherwise the Exchange warns about resources the
+sandbox now handles quickly. On the reference deployment, raising the budget to
+384 MiB took the same 359 MB course from 4 min 15 s to **23.8 seconds**, with a
+percentage throughout.
+
+**Never offer a trial above** (`sandboxmaxbytes`, 0 = no limit) is the hard
+version: above it no Try it button is rendered and a direct link to the trial
+is refused, with the size and the limit explained in place of the button. It is
+off by default, because a large trial does work — it is only slow.
+
+**Maximum upload size** (`maxbackupbytes`, 500 MB) is the one limit that
+actually refuses an upload. It is enforced on every publish path, shown on the
+upload pages, checked in the browser before a large file is sent, and
+advertised to registered client sites so their share forms can check it first.
 
 ## Licence display
 

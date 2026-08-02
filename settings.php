@@ -96,6 +96,18 @@ if ($hassiteconfig) {
         PARAM_INT
     ));
 
+    // The hard cap, as opposed to the warning above: above this size no "Try
+    // it" button is offered at all and sandbox_launch.php refuses a direct
+    // hit. Zero by default — see size_advice::max_trial_bytes() for why an
+    // upgrading site must keep the button it already has.
+    $settings->add(new admin_setting_configtext(
+        'local_oerexchange/sandboxmaxbytes',
+        get_string('settings_sandboxmaxbytes', 'local_oerexchange'),
+        get_string('settings_sandboxmaxbytes_desc', 'local_oerexchange'),
+        0,
+        PARAM_INT
+    ));
+
     // Anonymous access, corrected against what the code actually does
     // (verified live, 2026-07-19 - an earlier draft of this setting
     // wrongly assumed resource.php and "Try it" required login; neither
@@ -127,6 +139,23 @@ if ($hassiteconfig) {
     // the only thing between a visitor and it is the front page, which
     // sends them to the login form whenever forcelogin is on. This lets an
     // admin open that one door without opening the whole site.
+    // The one limit that actually refuses an upload. It has been enforced
+    // since the first release, hidden behind set_config() with no way for an
+    // admin to see it, while being advertised to every registered client site
+    // through the get_config web service — so a client's share form could
+    // offer a size this Exchange was about to reject.
+    $settings->add(new admin_setting_configtext(
+        'local_oerexchange/maxbackupbytes',
+        get_string('settings_maxbackupbytes', 'local_oerexchange'),
+        get_string(
+            'settings_maxbackupbytes_desc',
+            'local_oerexchange',
+            display_size(\local_oerexchange\local\size_advice::DEFAULT_MAX_UPLOAD_BYTES)
+        ),
+        \local_oerexchange\local\size_advice::DEFAULT_MAX_UPLOAD_BYTES,
+        PARAM_INT
+    ));
+
     $settings->add(new admin_setting_heading(
         'local_oerexchange/publiclandingheading',
         get_string('settings_publiclandingheading', 'local_oerexchange'),

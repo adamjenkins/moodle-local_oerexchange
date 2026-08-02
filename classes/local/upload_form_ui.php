@@ -36,7 +36,16 @@ class upload_form_ui {
     public static function progress_region(): string {
         global $PAGE;
 
-        $PAGE->requires->js_call_amd('local_oerexchange/upload_progress', 'init');
+        // The limits the JavaScript needs before it starts an upload: the
+        // maximum this site accepts (refusing here saves the user sending
+        // hundreds of megabytes only to be rejected on arrival — publish()
+        // enforces the same number regardless), and the two sandbox
+        // thresholds, which are advisory only.
+        $PAGE->requires->js_call_amd('local_oerexchange/upload_progress', 'init', [[
+            'maxbytes' => size_advice::max_upload_bytes(),
+            'trialwarnbytes' => size_advice::warn_threshold(),
+            'trialmaxbytes' => size_advice::max_trial_bytes(),
+        ]]);
 
         $bar = \html_writer::tag('div', '', [
             'class' => 'progress-bar',
@@ -65,5 +74,39 @@ class upload_form_ui {
                 ]),
             ['class' => 'd-none mt-2', 'data-region' => 'oerexchange-upload-progress']
         );
+    }
+
+    /**
+     * The "maximum accepted size" line, and the region the file-size advice
+     * lands in once a file has been chosen.
+     *
+     * Rendered whether or not JavaScript runs: the limit is worth stating up
+     * front either way, and it was previously invisible everywhere — a hidden
+     * config an admin could not read and an author could only discover by
+     * being rejected after a long upload.
+     *
+     * @return string HTML to echo under the file input
+     */
+    public static function size_hint(): string {
+        return \html_writer::tag(
+            'div',
+            get_string('uploadmaxsize', 'local_oerexchange', self::format_limit(size_advice::max_upload_bytes())),
+            ['class' => 'small text-muted mb-2']
+        ) . \html_writer::tag('div', '', [
+            'class' => 'small mb-2',
+            'data-region' => 'oerexchange-upload-advice',
+            'role' => 'status',
+            'aria-live' => 'polite',
+        ]);
+    }
+
+    /**
+     * Human-readable bytes, for a limit shown to a user.
+     *
+     * @param int $bytes
+     * @return string
+     */
+    private static function format_limit(int $bytes): string {
+        return size_advice::format($bytes);
     }
 }

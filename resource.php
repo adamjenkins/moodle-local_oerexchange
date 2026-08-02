@@ -925,6 +925,24 @@ if ($sandboxenabled && $version && $resource->type !== 'data' && !empty($resourc
             : get_string('tryitdisabledbyauthor', 'local_oerexchange'),
         ['class' => 'alert alert-info py-2 px-3 mb-2']
     );
+} else if (
+    $sandboxenabled && $version && $resource->type !== 'data'
+        && \local_oerexchange\local\size_advice::is_trial_blocked((int) $version->filesize)
+) {
+    // Over the site's hard cap for trials. Say so and say how big it is —
+    // a missing button reads as a broken page, which is the same reasoning
+    // the author opt-out branch above applies. The Download button rendered
+    // immediately below is the way through, so this text points at it.
+    echo html_writer::tag(
+        'div',
+        get_string('tryittoolarge', 'local_oerexchange', (object) [
+            'size' => \local_oerexchange\local\size_advice::format((int) $version->filesize),
+            'max' => \local_oerexchange\local\size_advice::format(
+                \local_oerexchange\local\size_advice::max_trial_bytes()
+            ),
+        ]),
+        ['class' => 'alert alert-info py-2 px-3 mb-2']
+    );
 } else if ($sandboxenabled && $version && $resource->type !== 'data') {
     // A 'data' resource is not a Moodle backup — there is nothing to
     // restore, so "Try it" is never offered for it (see sandbox_launch.php's

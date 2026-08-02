@@ -105,6 +105,61 @@ final class size_advice_test extends \advanced_testcase {
         $this->assertFalse(size_advice::is_slow_trial(512));
     }
 
+    public function test_no_trial_cap_by_default(): void {
+        $this->resetAfterTest();
+
+        // An upgrading site must keep the button it already has: a large
+        // trial is slow, not broken (359 MiB booted in 4 min 15 s).
+        $this->assertSame(0, size_advice::max_trial_bytes());
+        $this->assertFalse(size_advice::is_trial_blocked(376453940));
+    }
+
+    public function test_a_configured_trial_cap_blocks_above_it_only(): void {
+        $this->resetAfterTest();
+
+        set_config('sandboxmaxbytes', 200 * 1024 * 1024, 'local_oerexchange');
+
+        $this->assertTrue(size_advice::is_trial_blocked(376453940));
+        $this->assertFalse(size_advice::is_trial_blocked(200 * 1024 * 1024));
+        $this->assertFalse(size_advice::is_trial_blocked(1024));
+    }
+
+    public function test_the_upload_limit_defaults_to_500mb(): void {
+        $this->resetAfterTest();
+
+        $this->assertSame(500 * 1024 * 1024, size_advice::DEFAULT_MAX_UPLOAD_BYTES);
+        $this->assertSame(500 * 1024 * 1024, size_advice::max_upload_bytes());
+    }
+
+    public function test_a_zero_upload_limit_means_the_default_not_unlimited(): void {
+        $this->resetAfterTest();
+
+        // The `?:` this helper replaced has always behaved this way; a site
+        // sitting on a stored 0 must not silently become unlimited.
+        set_config('maxbackupbytes', 0, 'local_oerexchange');
+
+        $this->assertSame(size_advice::DEFAULT_MAX_UPLOAD_BYTES, size_advice::max_upload_bytes());
+    }
+
+    public function test_the_upload_limit_is_the_one_publish_enforces(): void {
+        $this->resetAfterTest();
+        // The get_config function is called over a web-service token, i.e.
+        // always as a real user; validate_context() refuses an anonymous one.
+        $this->setUser($this->getDataGenerator()->create_user());
+
+        set_config('maxbackupbytes', 1024, 'local_oerexchange');
+
+        // Same source of truth as resource_manager::publish() and the
+        // get_config web service — the three used to carry their own copy of
+        // the expression, so a changed setting could be advertised and
+        // enforced differently.
+        $this->assertSame(1024, size_advice::max_upload_bytes());
+        $this->assertSame(
+            size_advice::max_upload_bytes(),
+            \local_oerexchange\external\get_config::execute()['maxbackupbytes']
+        );
+    }
+
     public function test_sizes_for_reports_the_newest_ready_version(): void {
         $this->resetAfterTest();
 

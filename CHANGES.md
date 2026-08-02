@@ -92,6 +92,32 @@ worth actually opening a trial for such a plugin.
 The same thing is available from a shell as
 `cli/add_allowlist_plugin.php --url=… --dry-run`.
 
+## The upload page tells you the size limit before you upload
+
+The largest file this Exchange accepts was previously invisible: it had no
+setting an administrator could see, and an author could only discover it by
+uploading a large backup and being rejected on arrival. The upload pages now
+state it, and if you pick a file over the limit your browser says so
+immediately and sends nothing. The same limit is still enforced on the server
+for every path, including client sites sharing over the web service.
+
+**Maximum upload size** is now an ordinary setting (Site administration →
+Plugins → Local plugins → OER Exchange), defaulting to the 500 MB this plugin
+has always enforced.
+
+Picking a file that is fine to upload but awkward for the in-browser trial now
+says so too, at the moment you choose it rather than after publishing.
+
+## Turning off trials for very large resources
+
+**Never offer a trial above** is a new setting for administrators who would
+rather a visitor downloaded a large resource than waited for it. Above the size
+you set, the Try it button is not shown — the resource page explains why and
+points at Download — and a direct link to a trial is refused.
+
+It is **off by default**, and deliberately so: a large trial does work. What it
+does is take time.
+
 ## A warning before a slow in-browser trial
 
 **Try it** boots a whole Moodle in the visitor's browser, and it must download
@@ -107,8 +133,15 @@ still there.
 
 A new setting, **Warn about slow trials above** (Site administration → Plugins
 → Local plugins → OER Exchange), sets the threshold. Its default, 50 MB, is the
-exact size at which the sandbox stops reporting download progress. Set it to 0
-to switch the warning off entirely.
+size at which a stock sandbox stops reporting download progress. Set it to 0 to
+switch the warning off entirely.
+
+If your sandbox is built by the companion `oer-sandbox` kit, that kit can now
+raise the size a trial downloads at full speed (its `OER_FAST_DOWNLOAD_MAX_MB`
+build option, 384 MB by default) — set this setting to the same number so the
+Exchange stops warning about resources your sandbox handles quickly. On the
+reference deployment that took the same 359 MB course from 4 minutes 15 seconds
+to **23.8 seconds**, with a percentage shown throughout.
 
 ## Under the hood
 
@@ -117,13 +150,21 @@ to switch the warning off entirely.
   co-author, or a moderator) and never returns raw server error text.
 - New AMD modules `local_oerexchange/upload_progress` and
   `local_oerexchange/publish_status`.
-- New setting `sandboxwarnbytes` (default 52428800). The separate maximum
-  upload size a site will accept at all is unchanged.
+- New settings `sandboxwarnbytes` (52428800), `sandboxmaxbytes` (0 — no trial
+  cap) and `maxbackupbytes` (524288000 — the limit this plugin already
+  enforced, now visible and editable).
+- The maximum accepted upload size now has one definition
+  (`size_advice::max_upload_bytes()`) behind the three places that used to
+  carry their own copy of it: `publish()`, the `get_config` web service and the
+  upload pages. A site that changed it could previously advertise one number to
+  a client site and enforce another.
 
 ## Checks run for this release
 
 `scripts/verify-gates` (proving each gate fires on known-bad input) followed by
 `scripts/phpcs-ci` — clean; `local_moodlecheck` — clean (docblock/signature
-consistency only); PHPUnit — 407 tests, 1055 assertions, all passing. The
-progress bar, the publish-status updates, both upload outcomes, the file sizes
-and the slow-trial warning were each verified in a browser against a live site.
+consistency only); PHPUnit — 492 tests, 1260 assertions, all passing. Verified
+in a browser against a live site: the progress bar, the publish-status updates,
+both upload outcomes, the file sizes, the slow-trial warning, the trial cap
+(both the resource page and a direct link to the trial), the stated upload
+limit, and a file over that limit being refused before anything was sent.

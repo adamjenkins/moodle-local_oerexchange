@@ -24,6 +24,15 @@ note from `CHANGES.md` when it is tagged.
   Backed by a new AJAX-only external function,
   `local_oerexchange_get_publish_status`, gated on the same
   author/co-author/moderator check as every other author-side action.
+- `sandboxmaxbytes` (default 0, no cap): above it no "Try it" button is
+  rendered and `sandbox_launch.php` refuses a direct hit, both explaining the
+  size and the limit. Off by default deliberately — a large trial works, it is
+  only slow, so an upgrading site keeps the button it already has.
+- `maxbackupbytes` is now an admin setting instead of a hidden config, and the
+  upload pages state it. The JavaScript refuses an over-limit file before
+  sending it and, for a file that is acceptable but awkward for the sandbox,
+  says so when it is chosen; `publish()` enforces the same number on every
+  path regardless.
 - Resource pages and catalogue cards show the file size, and a resource large
   enough to make an in-browser trial slow carries a warning next to "Try it"
   explaining what to expect and pointing at the download instead. Measured
@@ -84,6 +93,12 @@ note from `CHANGES.md` when it is tagged.
 - Removed the now-unused `allowlistplugintype`, `allowlistpluginname`,
   `allowlistsourceurl` and `allowlistsha256` strings (the fields they labelled
   no longer exist).
+- The maximum accepted upload size has one definition,
+  `size_advice::max_upload_bytes()`, replacing the copy of
+  `get_config(...) ?: 500 * 1024 * 1024` that `resource_manager::publish()`,
+  `external\get_config` and (now) the upload pages each carried. A site that
+  changed the value could previously advertise one number to client sites and
+  enforce another.
 
 ### Fixed
 

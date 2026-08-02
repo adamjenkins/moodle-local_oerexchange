@@ -49,10 +49,10 @@ class get_config extends external_api {
         self::validate_parameters(self::execute_parameters(), []);
         self::validate_context(\context_system::instance());
 
-        $maxbytes = (int) get_config('local_oerexchange', 'maxbackupbytes') ?: (500 * 1024 * 1024);
-
+        // The same definition publish() enforces and the upload pages display,
+        // so a client site is never told a limit this Exchange will not honour.
         return [
-            'maxbackupbytes' => $maxbytes,
+            'maxbackupbytes' => \local_oerexchange\local\size_advice::max_upload_bytes(),
             'sandboxenabled' => (bool) get_config('local_oerexchange', 'sandboxenabled'),
             // The admin's allowed list, not every licence this site knows:
             // publish_resource rejects anything off this list, so this is

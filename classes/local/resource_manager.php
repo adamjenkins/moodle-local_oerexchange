@@ -75,7 +75,7 @@ class resource_manager {
         }
         $draftfile = reset($draftfiles);
 
-        $maxbytes = (int) get_config('local_oerexchange', 'maxbackupbytes') ?: (500 * 1024 * 1024);
+        $maxbytes = size_advice::max_upload_bytes();
         if ($draftfile->get_filesize() > $maxbytes) {
             throw new \moodle_exception('error_backuptoolarge', 'local_oerexchange');
         }

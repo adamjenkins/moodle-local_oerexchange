@@ -89,6 +89,21 @@ if (!$latest) {
 }
 $version = reset($latest);
 
+if (\local_oerexchange\local\size_advice::is_trial_blocked((int) $version->filesize)) {
+    // The site's hard cap on trial size. resource.php explains it in place of
+    // the button; this is the defence-in-depth check for a direct hit on this
+    // endpoint, in the same shape as the data-resource and author-opt-out
+    // checks above. It matters more than those two: past the cap a trial is
+    // not merely pointless but expensive — the visitor's browser downloads
+    // the whole backup before anything can happen.
+    throw new moodle_exception('tryittoolarge', 'local_oerexchange', '', (object) [
+        'size' => \local_oerexchange\local\size_advice::format((int) $version->filesize),
+        'max' => \local_oerexchange\local\size_advice::format(
+            \local_oerexchange\local\size_advice::max_trial_bytes()
+        ),
+    ]);
+}
+
 $branch = playground::map_branch($version->moodleversion ?: '5.2');
 
 $allowedinstalls = [];

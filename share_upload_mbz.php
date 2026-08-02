@@ -250,6 +250,7 @@ echo html_writer::empty_tag('input', [
     'type' => 'file', 'name' => 'mbzfile', 'id' => 'oerexchange-upload-file', 'class' => 'form-control mb-2',
     'accept' => '.mbz', 'required' => 'required',
 ]);
+echo \local_oerexchange\local\upload_form_ui::size_hint();
 
 echo html_writer::empty_tag('input', [
     'type' => 'submit',
