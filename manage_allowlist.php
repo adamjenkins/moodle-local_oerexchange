@@ -171,9 +171,9 @@ if ($data = $form->get_data()) {
 echo $OUTPUT->header();
 
 if ($resolveerror !== null) {
-    // s() because this message is plain text that interpolates the URL the
-    // admin just typed (error_allowlistdownloadfailed), and get_string() does
-    // not escape its $a. Not load-bearing against XSS on current Moodle —
+    // Escaped because this message is plain text that interpolates the URL
+    // the admin just typed (error_allowlistdownloadfailed), and get_string()
+    // does not escape its $a. Not load-bearing against XSS on current Moodle —
     // \core\output\notification::export_for_template() runs the message
     // through clean_text() before the template's {{{ }}} sees it
     // (lib/classes/output/notification.php:198), verified by rendering a
