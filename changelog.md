@@ -3,6 +3,29 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.0.6] - 2026-08-02
+
+### Added
+
+- Allowlist entries can be deleted, not just disabled — `ingestor::delete()`
+  plus a confirmation step on `manage_allowlist.php`. Removes the row and its
+  mirrored ZIP; dependents are kept with their `parentid` cleared rather than
+  cascade-deleted, since a dependency may be shared, and the confirmation
+  reports how many exist. The mutating step uses `require_sesskey()` rather
+  than `confirm_sesskey()`, which returns false instead of throwing and would
+  have sent a stale request silently back to the confirmation screen.
+
+### Fixed
+
+- `db/install.xml` declared the `component` column added in 1.0.5 as
+  `NOTNULL="true" DEFAULT=""`. XMLDB rejects an empty-string default on a CHAR
+  NOT NULL column, fixes it itself, and reports via `debugging()` — so the
+  schema was never wrong, but the message fails any moodle-plugin-ci run,
+  taking the install step and every step after it with it. Declared without a
+  default now, matching its neighbours in the same table; `db/upgrade.php`'s
+  `add_field` matches, as core does for this case. No version bump was needed
+  for the schema itself, only for the release.
+
 ## [1.0.5] - 2026-08-02
 
 ### Added

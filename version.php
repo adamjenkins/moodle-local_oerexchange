@@ -32,7 +32,7 @@ $plugin->component = 'local_oerexchange';
 // sandboxmaxbytes/maxbackupbytes settings — admin_apply_default_settings()
 // only writes a new setting's default during an upgrade, so without a bump
 // the values exist in the tree and nowhere in config_plugins.
-$plugin->version   = 2026080301;
+$plugin->version   = 2026080302;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass
@@ -42,5 +42,5 @@ $plugin->version   = 2026080301;
 // earlier off-by-one estimate of nine.
 $plugin->requires  = 2025041400;
 $plugin->supported = [500, 502];
-$plugin->release   = '1.0.5';
+$plugin->release   = '1.0.6';
 $plugin->maturity  = MATURITY_STABLE;
