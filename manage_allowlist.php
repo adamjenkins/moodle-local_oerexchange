@@ -171,7 +171,16 @@ if ($data = $form->get_data()) {
 echo $OUTPUT->header();
 
 if ($resolveerror !== null) {
-    echo $OUTPUT->notification($resolveerror, \core\output\notification::NOTIFY_ERROR);
+    // s() because this message is plain text that interpolates the URL the
+    // admin just typed (error_allowlistdownloadfailed), and get_string() does
+    // not escape its $a. Not load-bearing against XSS on current Moodle —
+    // \core\output\notification::export_for_template() runs the message
+    // through clean_text() before the template's {{{ }}} sees it
+    // (lib/classes/output/notification.php:198), verified by rendering a
+    // script-tag URL through this page with and without this call. It is here
+    // because the template's own docblock asks for an already-cleaned string,
+    // and clean_text() sanitises HTML rather than escaping text.
+    echo $OUTPUT->notification(s($resolveerror), \core\output\notification::NOTIFY_ERROR);
 }
 
 if ($plan !== null) {
@@ -292,7 +301,9 @@ function local_oerexchange_allowlist_render_plan(ingest_plan $plan, core_rendere
     }
 
     foreach ($plan->messages as $message) {
-        $html .= $output->notification($message, \core\output\notification::NOTIFY_WARNING);
+        // Same reasoning as the resolve error above: plain text, so escape it
+        // rather than leaving it to clean_text()'s HTML sanitising.
+        $html .= $output->notification(s($message), \core\output\notification::NOTIFY_WARNING);
     }
 
     if ($plan->is_empty()) {
