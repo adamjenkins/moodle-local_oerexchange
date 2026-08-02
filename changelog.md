@@ -60,6 +60,17 @@ note from `CHANGES.md` when it is tagged.
   is always the plugin's own name, whatever the source archive called it.
 - New `cli/add_allowlist_plugin.php` (`--url`/`--zip`, `--bake`, `--dry-run`)
   running the same pipeline as the admin page.
+- An admin can now allowlist a plugin for Moodle versions it does not declare
+  support for ("Add it for Moodle versions it does not claim to support", or
+  `--ignore-supported`). A stale `$plugin->supported` range is common and
+  otherwise makes a working plugin unaddable, since it maps to no deployed
+  branch. Cascades to dependencies — a forced parent with an unforced
+  dependency is still broken. Deliberately does **not** override
+  `$plugin->incompatible`, which is a positive assertion of breakage rather
+  than an omission. The confirmation page names the branches being added
+  against the plugin's declaration, and each such row records
+  `ingestor::NOTE_OVERRIDDEN` in `notes` so the entry stays explicable later;
+  a refresh that no longer needs the override clears it.
 
 ### Changed
 

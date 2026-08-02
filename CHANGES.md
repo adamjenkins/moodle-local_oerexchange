@@ -72,6 +72,23 @@ If you tick **Bake into bundle** when adding, it applies to the plugin's
 dependencies too — a baked plugin whose dependency only arrives when a trial
 boots would not actually work.
 
+**When a plugin's declared versions are just out of date.** Plugins frequently
+carry an old supported range because nobody updated the line, and run perfectly
+well on newer Moodle regardless. Previously such a plugin could not be
+allowlisted at all — it matched no version the sandbox runs, and that was that.
+
+Tick **"Add it for Moodle versions it does not claim to support"** and it is
+listed for every version the sandbox runs, whatever its `version.php` says.
+This covers its dependencies as well, since listing one without the other would
+not work. What it deliberately does *not* override is a plugin declaring itself
+outright **incompatible** with a version — that is the maintainer saying it is
+broken, not forgetting to update a line.
+
+The confirmation page names exactly which versions you are adding it for
+against its own declaration, and those entries stay marked in the list
+afterwards, so nobody later mistakes a deliberate decision for a bug. It is
+worth actually opening a trial for such a plugin.
+
 The same thing is available from a shell as
 `cli/add_allowlist_plugin.php --url=… --dry-run`.
 
