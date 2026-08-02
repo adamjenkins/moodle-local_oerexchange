@@ -1,9 +1,23 @@
 # Release notes — 1.0.5
 
-> **Draft.** More work is going into this release. Before tagging: remove this
-> note, add the remaining entries, set the date on the `[1.0.5]` heading in
-> `changelog.md`, and bump `$plugin->version` if any code changed after
-> `2026080200`.
+## Before you upgrade: this release changes the database
+
+Upgrading runs a migration on the sandbox plugin allowlist
+(`local_oerexchange_pluginallowlist`). It adds four columns, and then makes the
+combination of plugin type, plugin name and Moodle version **unique** — which
+is what lets re-adding a plugin update its entry instead of quietly creating a
+second one.
+
+**If your allowlist already contains more than one entry for the same plugin
+and the same Moodle version, the extras are deleted.** Earlier versions did not
+prevent those, so they can exist. The migration keeps the most recently added
+entry of each set and removes the others, together with their mirrored ZIP
+files; anything recorded only on a removed entry — its enabled/disabled state,
+its "bake into bundle" flag — goes with it.
+
+Most sites have no duplicates and will notice nothing. If you want to check
+first, look at Site administration → Plugins → Local plugins → OER Exchange →
+Plugin allowlist for a plugin listed twice against the same Moodle version.
 
 ## You can now see what your upload is doing
 

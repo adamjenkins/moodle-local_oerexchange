@@ -3,10 +3,7 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
-## [1.0.5] - unreleased (draft)
-
-Further work is going into this release; set the date here and remove the draft
-note from `CHANGES.md` when it is tagged.
+## [1.0.5] - 2026-08-02
 
 ### Added
 
@@ -86,8 +83,19 @@ note from `CHANGES.md` when it is tagged.
 - `local_oerexchange_pluginallowlist` gains `component`, `parentid`,
   `pluginversion` and `pluginrelease`, and its `(plugintype, pluginname,
   moodlebranch)` index becomes UNIQUE so re-adding a plugin updates its entry
-  instead of duplicating it. The upgrade backfills `component` and removes any
-  pre-existing duplicates before adding the index.
+  instead of duplicating it. **The upgrade is destructive where duplicates
+  exist**: it backfills `component`, then deletes every row of a duplicate set
+  except the most recently added one, along with that row's mirrored ZIP,
+  before adding the index. 1.0.4's index was NOTUNIQUE and its add handler
+  inserted unconditionally, so duplicates are reachable through ordinary admin
+  use. Disclosed at the top of CHANGES.md.
+  The de-duplication reads its groups with `get_recordset_sql()`, not
+  `get_records_sql()` — the latter keys on the first selected column, so two
+  duplicate sets sharing a `plugintype` (`mod` twice, the ordinary case)
+  collapsed into one and the survivor broke the UNIQUE index add. That happens
+  before `upgrade_plugin_savepoint()`, so it aborted the whole site upgrade
+  with no way forward on retry. Regression test:
+  `tests/local/allowlist/upgrade_dedup_test.php`.
 - The allowlist add form is now a `moodleform`, replacing direct `$_FILES`
   handling that validated neither size nor type and bypassed the File API.
 - Removed the now-unused `allowlistplugintype`, `allowlistpluginname`,

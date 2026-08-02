@@ -288,27 +288,58 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
 
         // The (type, name, branch) index becomes unique, which is what makes
         // re-adding a plugin update its entry instead of duplicating it.
-        // Nothing enforced that before, so any duplicates have to go first or
-        // the index cannot be created and the whole upgrade fails. Keep the
-        // most recently modified row of each group — it is the one whose
-        // mirrored ZIP the admin most recently chose.
-        $duplicates = $DB->get_records_sql("
-            SELECT plugintype, pluginname, moodlebranch, MAX(id) AS keepid, COUNT(*) AS rowcount
+        // Nothing enforced that before — 1.0.4's index was NOTUNIQUE and the
+        // old add form inserted unconditionally — so ordinary admin use could
+        // produce duplicates, and they have to go before the index can be
+        // created. Keep the most recently ADDED row of each set (MAX(id));
+        // note that is not necessarily the most recently *modified* one, since
+        // toggling an entry's status bumps timemodified on an older row.
+        //
+        // get_recordset_sql(), NOT get_records_sql(): the latter keys its
+        // returned array on the FIRST COLUMN, so two duplicate sets that share
+        // a plugintype — 'mod' twice, the ordinary case — would collapse into
+        // one entry and the second set would survive un-deduplicated. The
+        // unique index below would then throw, and because that happens before
+        // upgrade_plugin_savepoint() the whole site upgrade aborts and every
+        // retry fails identically, needing manual SQL to recover. A recordset
+        // does no keying at all.
+        $rs = $DB->get_recordset_sql("
+            SELECT MAX(id) AS keepid, plugintype, pluginname, moodlebranch
               FROM {local_oerexchange_pluginallowlist}
           GROUP BY plugintype, pluginname, moodlebranch
             HAVING COUNT(*) > 1");
-        foreach ($duplicates as $duplicate) {
-            $DB->delete_records_select(
-                'local_oerexchange_pluginallowlist',
-                'plugintype = :plugintype AND pluginname = :pluginname
-                     AND moodlebranch = :moodlebranch AND id <> :keepid',
-                [
-                    'plugintype' => $duplicate->plugintype,
-                    'pluginname' => $duplicate->pluginname,
-                    'moodlebranch' => $duplicate->moodlebranch,
-                    'keepid' => $duplicate->keepid,
-                ]
-            );
+        $duplicatesets = [];
+        foreach ($rs as $duplicate) {
+            $duplicatesets[] = (object) [
+                'keepid' => $duplicate->keepid,
+                'plugintype' => $duplicate->plugintype,
+                'pluginname' => $duplicate->pluginname,
+                'moodlebranch' => $duplicate->moodlebranch,
+            ];
+        }
+        $rs->close();
+
+        $fs = get_file_storage();
+        $systemcontext = context_system::instance();
+        foreach ($duplicatesets as $duplicate) {
+            $conditions = 'plugintype = :plugintype AND pluginname = :pluginname
+                               AND moodlebranch = :moodlebranch AND id <> :keepid';
+            $params = [
+                'plugintype' => $duplicate->plugintype,
+                'pluginname' => $duplicate->pluginname,
+                'moodlebranch' => $duplicate->moodlebranch,
+                'keepid' => $duplicate->keepid,
+            ];
+
+            // Drop each doomed row's mirrored ZIP as well as the row. An entry's
+            // itemid is its own row id, so deleting the row alone would strand
+            // the file with nothing left to reach it — the same cleanup the
+            // 2026072100 step above does for the 'resource' area.
+            foreach ($DB->get_fieldset_select('local_oerexchange_pluginallowlist', 'id', $conditions, $params) as $id) {
+                $fs->delete_area_files($systemcontext->id, 'local_oerexchange', 'allowlist', $id);
+            }
+
+            $DB->delete_records_select('local_oerexchange_pluginallowlist', $conditions, $params);
         }
 
         $oldindex = new xmldb_index('typenamebranch', XMLDB_INDEX_NOTUNIQUE, ['plugintype', 'pluginname', 'moodlebranch']);
