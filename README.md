@@ -123,6 +123,33 @@ A "site key" issued on approval **is a real core web service token**, minted
 against a dedicated, non-interactive Moodle account created for that site
 (`local_oerexchange\local\site_manager`) — not a custom auth scheme.
 
+## Uploading, and knowing what happened next
+
+A share is published asynchronously: the file is stored immediately, and an
+adhoc task validates the backup on the next cron run before the resource
+appears in the catalogue. Both upload pages therefore show a **progress bar**
+while the file is being sent (course backups here routinely run to hundreds of
+megabytes, which a plain form post reports to nobody), and then land on the new
+resource's own page, which says **"Checking your upload…"** and updates itself
+to either *Published* or the rejection reason — no reload, no guesswork. The
+progress bar is progressive enhancement: with JavaScript off, the same form
+posts to the same address and the same thing happens, minus the bar.
+
+## File size and the sandbox
+
+Resource pages and catalogue cards show each resource's file size, and a
+resource big enough to make an in-browser trial slow carries a note beside
+**Try it** saying so and pointing at Download instead.
+
+**Warn about slow trials above** (`sandboxwarnbytes`) sets that threshold. Its
+default, 50 MiB, is the sandbox engine's own fast-download budget: below it, a
+trial fetches the backup with a visible percentage; above it, the engine falls
+back to a download inside its WebAssembly PHP that reports no progress at all.
+A 359 MB course measured here booted successfully but took 4 minutes 15
+seconds, nearly four of them apparently idle. Set it to 0 to never warn.
+Nothing is ever refused on size — the maximum a site accepts at all is the
+separate `maxbackupbytes` config (500 MB by default).
+
 ## Licence display
 
 **Show licence codes in capitals** (`uppercaselicencenames`, on by default)
