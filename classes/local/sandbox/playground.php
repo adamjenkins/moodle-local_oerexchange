@@ -39,6 +39,30 @@ class playground {
     const DEPLOYED_BRANCHES = ['5.0', '5.2'];
 
     /**
+     * The core $version each deployed branch starts at — its branching
+     * version, the value a plugin's $plugin->requires is compared against.
+     *
+     * Used by allowlist\branch_mapper when a candidate plugin declares no
+     * $plugin->supported range and the only thing to go on is its minimum
+     * core version. Keep in step with DEPLOYED_BRANCHES above: a branch
+     * missing from this map cannot be reasoned about that way and is simply
+     * dropped from an inferred result rather than guessed at.
+     *
+     * Values read from each branch's own public/version.php, where the
+     * comment on $version spells out the branching date:
+     * - 5.0 => 2025041400 (already the floor this plugin's own version.php
+     *   requires, see version.php:33)
+     * - 5.2 => 2026042000 (branching date 20260420, from
+     *   /srv/lms/moodle/public/version.php:32 on the 5.2.1+ test site)
+     *
+     * @var array<string, int>
+     */
+    const BRANCH_CORE_VERSIONS = [
+        '5.0' => 2025041400,
+        '5.2' => 2026042000,
+    ];
+
+    /**
      * Signed-download link TTL, seconds.
      */
     const SIGNED_URL_TTL = 900;

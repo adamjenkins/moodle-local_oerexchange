@@ -36,6 +36,45 @@ rejected.
 Resource pages and catalogue cards now show how big each resource is. Until
 now, the only way to find out was to start the download.
 
+## Adding a sandbox plugin is now one box, not two formfuls
+
+Putting a plugin on the sandbox allowlist used to mean typing its type, its
+name, a Moodle version and a source URL, then uploading a zip you had
+repackaged yourself so its top-level folder was the plugin's own directory
+name — and then doing the whole thing again for the second Moodle version.
+
+Now you paste the plugin's address, or upload its zip, and press **Look it
+up**. A GitHub repository address works directly: its latest release is used,
+or its default branch if it has never cut one. Nothing is saved until you have
+seen a summary of exactly what will be added and pressed **Add these entries**.
+
+Everything else is read out of the package:
+
+- **The plugin type, name and release number**, so there is nothing to type.
+- **Which Moodle versions it supports** — and an entry is created for each one
+  the sandbox runs. A plugin supporting both 5.0 and 5.2 now takes one
+  submission instead of two. The summary tells you whether the plugin declared
+  its supported versions outright, whether they were inferred from the minimum
+  Moodle version it requires, or whether it said nothing and every version is
+  simply being offered.
+- **Other plugins it needs.** These are fetched, added as active entries, and
+  shown as dependencies of the plugin that asked for them. Ones that ship with
+  Moodle are skipped, because a trial already has them. Ones published nowhere
+  public are listed as *"Needed, but no download found"* so you can add them
+  yourself — they are never silently omitted.
+
+Two smaller things fall out of this. You no longer repackage a zip: whatever
+its top-level folder is called, it is repacked under the plugin's real
+directory name. And re-adding a plugin now updates it and replaces its stored
+zip, instead of quietly creating a second set of entries.
+
+If you tick **Bake into bundle** when adding, it applies to the plugin's
+dependencies too — a baked plugin whose dependency only arrives when a trial
+boots would not actually work.
+
+The same thing is available from a shell as
+`cli/add_allowlist_plugin.php --url=… --dry-run`.
+
 ## A warning before a slow in-browser trial
 
 **Try it** boots a whole Moodle in the visitor's browser, and it must download

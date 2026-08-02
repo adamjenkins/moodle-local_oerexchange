@@ -260,5 +260,73 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026080101, 'local', 'oerexchange');
     }
 
+    if ($oldversion < 2026080300) {
+        // The allowlist now derives its own metadata from a plugin's ZIP and
+        // pulls in that plugin's dependencies, so an entry records what it
+        // is (component, version, release) and, when it was added
+        // automatically, what pulled it in (parentid).
+        $table = new xmldb_table('local_oerexchange_pluginallowlist');
+
+        $fields = [
+            new xmldb_field('component', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, '', 'timemodified'),
+            new xmldb_field('parentid', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'component'),
+            new xmldb_field('pluginversion', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'parentid'),
+            new xmldb_field('pluginrelease', XMLDB_TYPE_CHAR, '30', null, null, null, null, 'pluginversion'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+
+        // Backfill component for rows added through the old form, which only
+        // ever stored the type and name separately.
+        $DB->execute("
+            UPDATE {local_oerexchange_pluginallowlist}
+               SET component = " . $DB->sql_concat('plugintype', "'_'", 'pluginname') . "
+             WHERE component = '' OR component IS NULL");
+
+        // The (type, name, branch) index becomes unique, which is what makes
+        // re-adding a plugin update its entry instead of duplicating it.
+        // Nothing enforced that before, so any duplicates have to go first or
+        // the index cannot be created and the whole upgrade fails. Keep the
+        // most recently modified row of each group — it is the one whose
+        // mirrored ZIP the admin most recently chose.
+        $duplicates = $DB->get_records_sql("
+            SELECT plugintype, pluginname, moodlebranch, MAX(id) AS keepid, COUNT(*) AS rowcount
+              FROM {local_oerexchange_pluginallowlist}
+          GROUP BY plugintype, pluginname, moodlebranch
+            HAVING COUNT(*) > 1");
+        foreach ($duplicates as $duplicate) {
+            $DB->delete_records_select(
+                'local_oerexchange_pluginallowlist',
+                'plugintype = :plugintype AND pluginname = :pluginname
+                     AND moodlebranch = :moodlebranch AND id <> :keepid',
+                [
+                    'plugintype' => $duplicate->plugintype,
+                    'pluginname' => $duplicate->pluginname,
+                    'moodlebranch' => $duplicate->moodlebranch,
+                    'keepid' => $duplicate->keepid,
+                ]
+            );
+        }
+
+        $oldindex = new xmldb_index('typenamebranch', XMLDB_INDEX_NOTUNIQUE, ['plugintype', 'pluginname', 'moodlebranch']);
+        if ($dbman->index_exists($table, $oldindex)) {
+            $dbman->drop_index($table, $oldindex);
+        }
+        $newindex = new xmldb_index('typenamebranch', XMLDB_INDEX_UNIQUE, ['plugintype', 'pluginname', 'moodlebranch']);
+        if (!$dbman->index_exists($table, $newindex)) {
+            $dbman->add_index($table, $newindex);
+        }
+
+        $parentindex = new xmldb_index('parentid', XMLDB_INDEX_NOTUNIQUE, ['parentid']);
+        if (!$dbman->index_exists($table, $parentindex)) {
+            $dbman->add_index($table, $parentindex);
+        }
+
+        upgrade_plugin_savepoint(true, 2026080300, 'local', 'oerexchange');
+    }
+
     return true;
 }

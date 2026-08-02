@@ -27,18 +27,45 @@ defined('MOODLE_INTERNAL') || die();
 $string['activesites'] = 'Active sites';
 $string['activitytypelabel'] = 'Activity type (Moodle module name)';
 $string['addreview'] = 'Share your adaptation story';
+$string['allowlistaction_add'] = 'Will be added';
+$string['allowlistaction_core'] = 'Ships with Moodle — nothing to do';
+$string['allowlistaction_nobranches'] = 'Supports no Moodle version the sandbox runs';
+$string['allowlistaction_refresh'] = 'Already listed — will be refreshed';
+$string['allowlistaction_unresolved'] = 'Needed, but no download found';
 $string['allowlistadd'] = 'Add allowlist entry';
+$string['allowlistadded'] = 'Allowlist updated: {$a->rows} entr(ies) across {$a->plugins} plugin(s).';
+$string['allowlistaddedasdependency'] = 'Added automatically as a dependency of {$a}.';
+$string['allowlistaddintro'] = 'Give the address of a plugin, or upload its ZIP. Everything else — the plugin type and name, which Moodle versions it supports, and any other plugins it needs — is read from the package itself. You will see exactly what will be added before anything is saved.';
 $string['allowlistbake'] = 'Bake into bundle';
 $string['allowlistbake_help'] = 'When ticked, this plugin is installed into the sandbox bundle at build time on the build machine, instead of being downloaded and installed the moment a trial boots. Ticking this box only records the intent — it takes effect the next time someone with access to the build machine runs a build from a downloaded configuration file. The Exchange separately checks the deployed bundle\'s stamp and warns if what is actually deployed does not match what is configured here.';
 $string['allowlistbranch'] = 'Moodle branch';
+$string['allowlistconfidence_declared'] = 'The plugin declares it supports these versions.';
+$string['allowlistconfidence_inferred'] = 'The plugin does not say which versions it supports; these are the ones new enough for the Moodle version it requires.';
+$string['allowlistconfidence_unverified'] = 'The plugin says nothing about which Moodle versions it supports, so every version the sandbox runs is offered. Untick any you do not want.';
+$string['allowlistconfirm'] = 'Add these entries';
+$string['allowlistcurrent'] = 'Plugins currently on the allowlist';
+$string['allowlistdepthreached'] = 'Dependencies were followed {$a} levels deep and stopped there. Anything deeper is not included.';
 $string['allowlistdisable'] = 'Disable';
 $string['allowlistempty'] = 'No plugins on the allowlist yet.';
 $string['allowlistenable'] = 'Enable';
-$string['allowlistpluginname'] = 'Plugin name (frankenstyle, without type prefix)';
-$string['allowlistplugintype'] = 'Plugin type';
-$string['allowlistsha256'] = 'SHA-256';
-$string['allowlistsourceurl'] = 'Source ZIP URL';
+$string['allowlistlimitreached'] = 'This plugin pulls in more than {$a} others; the list was cut off at that point.';
+$string['allowlistneedsource'] = 'Give an address or upload a ZIP file.';
+$string['allowlistnothingtoadd'] = 'Nothing here can be added to the allowlist.';
+$string['allowlistnotindirectory'] = '{$a} is not published in the Moodle plugins directory, so it could not be downloaded automatically. Paste a URL for it and add it separately.';
+$string['allowlistonesource'] = 'Give an address or upload a file, not both.';
+$string['allowlistplanexpired'] = 'That took too long — the downloaded files are no longer available. Please start again.';
+$string['allowlistplanheading'] = 'What will be added';
+$string['allowlistplanwhat'] = 'What will happen';
+$string['allowlistplugin'] = 'Plugin';
+$string['allowlistresolve'] = 'Look it up';
 $string['allowlistupload'] = 'ZIP file';
+$string['allowlisturl'] = 'Plugin address';
+$string['allowlisturl_help'] = 'Any of:
+
+* a link to a plugin ZIP file, for example https://example.org/mod_thing.zip
+* a GitHub repository, for example https://github.com/owner/moodle-mod_thing — the latest release is used, or the default branch if the repository has no releases
+
+Leave this empty if you are uploading a file instead.';
 $string['approvesuccess'] = 'Site approved. The site key has been emailed to {$a}.';
 $string['attemptedintrial'] = 'Attempted in trial — may not fully work';
 $string['attributionchain'] = 'Adapted from: {$a}';
@@ -72,6 +99,14 @@ $string['error_advancedname'] = 'Not a usable setting name: "{$a}". Use letters,
 $string['error_advancedsyntax'] = 'This line is not a name=value pair: "{$a}".';
 $string['error_advancedtoomany'] = 'Too many advanced settings — reduce the list.';
 $string['error_advancedvalue'] = 'The value for "{$a}" cannot be used — it contains characters that are not allowed.';
+$string['error_allowlistdownloadfailed'] = 'Could not download {$a->url} — the server answered {$a->status}.';
+$string['error_allowlistnobranches'] = 'This plugin does not support any Moodle version the sandbox runs ({$a}), so there is nothing to add. You can still add it by ticking a branch yourself, but it is unlikely to work in a trial.';
+$string['error_allowlistnotarepo'] = 'That GitHub address does not name a repository. Use the form https://github.com/owner/repository.';
+$string['error_allowlistnotazip'] = 'What was downloaded is not a ZIP file. Check the address points at a plugin package rather than a web page.';
+$string['error_allowlistnothttps'] = 'Enter a full https:// address.';
+$string['error_allowlistnoversionphp'] = 'This ZIP does not contain a Moodle plugin: no version.php was found in it.';
+$string['error_allowlistreponotfound'] = 'No GitHub repository found at {$a}, or it publishes nothing that can be downloaded.';
+$string['error_allowlistziptoobig'] = 'That download is larger than this site accepts for a plugin.';
 $string['error_backuptoolarge'] = 'This backup exceeds the maximum accepted size.';
 $string['error_coauthorambiguous'] = 'More than one account uses that email address. Add this person by their username instead.';
 $string['error_coauthorexists'] = 'That person is already a co-author of this resource.';

@@ -29,7 +29,7 @@ $plugin->component = 'local_oerexchange';
 // are only re-read on upgrade, so without this the publish-status poller
 // gets "Access control exception" on an already-installed site) and for the
 // two new AMD modules, whose cached revision is keyed on this number.
-$plugin->version   = 2026080200;
+$plugin->version   = 2026080300;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass

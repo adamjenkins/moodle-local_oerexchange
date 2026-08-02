@@ -204,12 +204,17 @@
         <FIELD NAME="notes" TYPE="text" NOTNULL="false"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="component" TYPE="char" LENGTH="100" NOTNULL="true" DEFAULT="" COMMENT="Frankenstyle name, derived from the ZIP's version.php - plugintype/pluginname split out for the existing consumers"/>
+        <FIELD NAME="parentid" TYPE="int" LENGTH="10" NOTNULL="false" COMMENT="The entry that pulled this one in as a dependency; null when an admin added it directly"/>
+        <FIELD NAME="pluginversion" TYPE="int" LENGTH="10" NOTNULL="false" COMMENT="The mirrored ZIP's own $plugin-&gt;version"/>
+        <FIELD NAME="pluginrelease" TYPE="char" LENGTH="30" NOTNULL="false" COMMENT="The mirrored ZIP's own $plugin-&gt;release, for display"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
       <INDEXES>
-        <INDEX NAME="typenamebranch" UNIQUE="false" FIELDS="plugintype, pluginname, moodlebranch"/>
+        <INDEX NAME="typenamebranch" UNIQUE="true" FIELDS="plugintype, pluginname, moodlebranch" COMMENT="Unique: re-adding a plugin updates its entry in place rather than duplicating it"/>
+        <INDEX NAME="parentid" UNIQUE="false" FIELDS="parentid"/>
       </INDEXES>
     </TABLE>
 

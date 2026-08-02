@@ -33,8 +33,55 @@ note from `CHANGES.md` when it is tagged.
   percentage. The threshold is the new `sandboxwarnbytes` setting, defaulting
   to that same 50 MiB; set it to 0 to never warn. Nothing is refused on size.
 
+- The sandbox plugin allowlist now derives its own metadata. An admin supplies
+  a plugin ZIP URL, a GitHub repository URL or an upload, and the plugin type,
+  name, release, supported Moodle versions and dependencies are read from the
+  package's own `version.php`; the resulting plan is previewed and confirmed
+  before anything is written. Previously all of it was hand-typed, once per
+  Moodle branch, with the ZIP repackaged by hand. New pipeline in
+  `classes/local/allowlist/`, reusing `\core\update\validator` (the same
+  validation Moodle's own ZIP installer performs) and `\core\update\api`
+  (dependency-component lookup only). `$plugin->supported`,
+  `$plugin->incompatible` and `$plugin->dependencies` are read by a new
+  `version_php_scanner`, which tokenises rather than including the file —
+  core's own parser reads none of the three
+  (`lib/classes/update/validator.php:537-540`).
+- One allowlist entry is now created per supported Moodle branch from a single
+  submission. `$plugin->supported` is read as the two-element RANGE core
+  defines it to be (`lib/classes/plugininfo/base.php:313-320`), falling back to
+  `$plugin->requires` (flagged inferred) and then to every deployed branch
+  (flagged unverified).
+- Declared dependencies are resolved, downloaded, allowlisted as active, and
+  recorded against the entry that pulled them in (new `parentid` column).
+  Standard Moodle plugins are skipped; unresolvable ones are surfaced to the
+  admin rather than dropped. The bake flag cascades from a plugin to its
+  dependencies.
+- Mirrored ZIPs are normalised on ingest so the archive's single root directory
+  is always the plugin's own name, whatever the source archive called it.
+- New `cli/add_allowlist_plugin.php` (`--url`/`--zip`, `--bake`, `--dry-run`)
+  running the same pipeline as the admin page.
+
+### Changed
+
+- `local_oerexchange_pluginallowlist` gains `component`, `parentid`,
+  `pluginversion` and `pluginrelease`, and its `(plugintype, pluginname,
+  moodlebranch)` index becomes UNIQUE so re-adding a plugin updates its entry
+  instead of duplicating it. The upgrade backfills `component` and removes any
+  pre-existing duplicates before adding the index.
+- The allowlist add form is now a `moodleform`, replacing direct `$_FILES`
+  handling that validated neither size nor type and bypassed the File API.
+- Removed the now-unused `allowlistplugintype`, `allowlistpluginname`,
+  `allowlistsourceurl` and `allowlistsha256` strings (the fields they labelled
+  no longer exist).
+
 ### Fixed
 
+- `oer-sandbox`'s `bake.sh` and `build-bundle-with-plugins.sh` mapped a plugin
+  type to its directory with a hardcoded `mod|block|local` case that aborted the
+  bake on anything else. Now a shared `oer_plugin_type_dir()` in
+  `scripts/common.sh` carrying Moodle's full plugin-type map, generated from
+  `core_component::get_plugin_types()`. Automatic dependencies make a `qtype_`,
+  `filter_` or `tool_` entry reachable without anyone typing it.
 - Sharing a backup used to end on the catalogue with a notification reading
   just "Share" — the submit button's own label, passed to `redirect()` by
   mistake — and the new resource's id was discarded. Both upload pages now land
