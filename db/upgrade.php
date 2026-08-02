@@ -268,7 +268,13 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         $table = new xmldb_table('local_oerexchange_pluginallowlist');
 
         $fields = [
-            new xmldb_field('component', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, '', 'timemodified'),
+            // No default, matching install.xml. XMLDB refuses '' on a NOT NULL
+            // char ("must have one meaningful DEFAULT declared or none") and
+            // says so via debugging(), which is a hard failure under
+            // moodle-plugin-ci. Existing rows get the column empty and are
+            // backfilled immediately below. Same shape core uses, e.g.
+            // mod/assign/db/upgrade.php:125.
+            new xmldb_field('component', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, null, 'timemodified'),
             new xmldb_field('parentid', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'component'),
             new xmldb_field('pluginversion', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'parentid'),
             new xmldb_field('pluginrelease', XMLDB_TYPE_CHAR, '30', null, null, null, null, 'pluginversion'),
