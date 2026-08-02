@@ -39,5 +39,5 @@ $plugin->version   = 2026080200;
 // earlier off-by-one estimate of nine.
 $plugin->requires  = 2025041400;
 $plugin->supported = [500, 502];
-$plugin->release   = '1.0.4';
+$plugin->release   = '1.0.5';
 $plugin->maturity  = MATURITY_STABLE;

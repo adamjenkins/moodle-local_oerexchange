@@ -1,123 +1,73 @@
-# Release notes — 1.0.4
+# Release notes — 1.0.5
 
-## Multilingual titles and descriptions now display correctly
+> **Draft.** More work is going into this release. Before tagging: remove this
+> note, add the remaining entries, set the date on the `[1.0.5]` heading in
+> `changelog.md`, and bump `$plugin->version` if any code changed after
+> `2026080200`.
 
-If your site uses the multilang filter to publish bilingual content, resource
-titles and descriptions on several pages showed the raw
-`<span lang="en" class="multilang">…</span>` markup as visible text instead of
-the language the visitor is reading in. The cause was the same everywhere:
-those values were HTML-escaped for safety but never passed through Moodle's
-text filters. Fixed on the resource page, the moderation pages, the registered
-sites page, the upload pages, the public educator profile, and the Open Graph
-description used for link previews.
+## You can now see what your upload is doing
 
-**Site requirement:** for titles and other short strings, Moodle only runs the
-multilang filter when that filter is set to apply to *content and headings*
-rather than content alone (Site administration → Plugins → Filters → Manage
-filters). Long descriptions are filtered either way. No plugin can change this;
-if titles still show markup after upgrading, that setting is why.
+Sharing a large course backup used to look like nothing was happening. The
+browser reports nothing during an ordinary form upload, and a course backup
+here can run to hundreds of megabytes — so the page simply sat there, sometimes
+for minutes, with a Share button that appeared to have been ignored.
 
-## Text filters now apply to educator profile descriptions
+The upload pages now show a progress bar with a percentage while the file is
+being sent, followed by a distinct **"Upload complete — validating…"** stage
+once the last byte has left your browser and the server takes over. The Share
+button is disabled while the upload runs, so a second click cannot start it
+again. If JavaScript is switched off, the form still works exactly as before.
 
-A profile description was previously rendered as plain text, so a URL in it
-stayed a bare URL and no filter ran. Descriptions now go through Moodle's
-standard text formatting, so auto-linking, multilang and any other filter your
-site enables all work — with Moodle's HTML cleaning applied, as everywhere else.
+## And what happened to it afterwards
 
-## Educator profiles show your site's own profile fields
+Publishing is not instant: your file is stored straight away, but the backup is
+validated by a scheduled task, usually within a minute, and only then does the
+resource appear in the catalogue.
 
-The three fixed "ORCID URL", "LinkedIn URL" and "ResearchMap URL" boxes have
-been removed. In their place, a public profile now lists whichever of the
-site's **additional user profile fields** (Site administration → Users →
-User profile fields) the administrator has set to **"Visible to everyone"**,
-and which the user has filled in. Fields set to any other visibility, and
-fields the user left blank, do not appear.
+Clicking Share used to take you to the catalogue with a one-word notification
+reading "Share" — no link, no status, and the catalogue is the one page that
+cannot show a resource still waiting to be validated. You now land on your new
+resource's own page, which says **"Checking your upload…"** and then updates
+itself, without a reload, to either *Published* or the reason the backup was
+rejected.
 
-This puts the choice of what a profile can advertise in the administrator's
-hands: an ORCID field, a personal site, a department, a mentoring flag —
-whatever suits your community — including fields configured to display as
-links, which render as links here.
+## File sizes are visible before you click
 
-**This upgrade permanently deletes the three old columns and any URLs stored
-in them.** There is no migration: if those values matter to you, export them
-before upgrading. Re-create them afterwards as additional user profile fields
-if you want them back.
+Resource pages and catalogue cards now show how big each resource is. Until
+now, the only way to find out was to start the download.
 
-## "Try it" trials now enrol you in the trial course
+## A warning before a slow in-browser trial
 
-A trial previously left you as a site administrator who was not a member of
-the course you had come to look at, so the Participants list was empty and
-anything that depends on being enrolled — the gradebook, activity completion,
-switching role to Student — behaved oddly or not at all. A trial now enrols
-its own user in the trial course as both **Editing teacher** and **Student**,
-through the manual enrolment plugin, for both full-course and single-activity
-trials.
+**Try it** boots a whole Moodle in the visitor's browser, and it must download
+the entire backup before it can start. Past a certain size the sandbox stops
+reporting progress on that download, so a large resource looks like a broken
+button for several minutes. Measured on a 359 MB course: it does work, but it
+takes about four minutes, almost all of it apparently idle.
 
-## The catalogue can now be your site's front page for visitors
+Resources above the threshold now carry a note beside the Try it button saying
+how big the file is, what to expect, and that downloading it and restoring it
+on your own Moodle is quicker. **Nothing is refused on size** — the button is
+still there.
 
-If your Exchange has **"Force users to log in"** switched on, someone arriving
-at your site's home page was sent straight to the login form — so the
-catalogue, the whole point of a public Exchange, was invisible to anyone
-without an account. Browsing the catalogue itself has never required logging
-in; only the front page stood in the way.
+A new setting, **Warn about slow trials above** (Site administration → Plugins
+→ Local plugins → OER Exchange), sets the threshold. Its default, 50 MB, is the
+exact size at which the sandbox stops reporting download progress. Set it to 0
+to switch the warning off entirely.
 
-A new setting, **"Show the catalogue to visitors at the site home page"**
-(Site administration → Plugins → Local plugins → OER Exchange), changes that.
-With it on, a visitor who is not logged in and opens your site's home page is
-shown the catalogue **at that address** — the page is served in place, so the
-address bar stays on your site's home page rather than jumping to a longer
-URL, and searching from there keeps them there.
+## Under the hood
 
-**It opens one door, not the site.** "Force users to log in" still applies to
-everything else: courses, dashboards, administration and the rest all behave
-exactly as before. The setting is **off by default**, so upgrading changes
-nothing until you deliberately turn it on. Administrators can always reach the
-normal front page at `/?redirect=0`. Guests are treated as visitors and see
-the catalogue too, and the catalogue is not served while the site is in
-maintenance mode.
+- New AJAX-only web service function `local_oerexchange_get_publish_status`,
+  which answers only for resources the caller may edit (its author, a
+  co-author, or a moderator) and never returns raw server error text.
+- New AMD modules `local_oerexchange/upload_progress` and
+  `local_oerexchange/publish_status`.
+- New setting `sandboxwarnbytes` (default 52428800). The separate maximum
+  upload size a site will accept at all is unchanged.
 
-Logged-in users are not affected by this setting. To send them to the
-catalogue as well, this release also adds an **"OER catalogue"** option to
-Moodle's own *Site administration → Appearance → Navigation → Default home
-page for users*, which you can also let users choose individually. Note the
-two work slightly differently, because Moodle handles the logged-in case
-itself: a logged-in user is taken to the catalogue's own address, whereas a
-visitor sees it at the site home page address.
+## Checks run for this release
 
-## Licence codes are shown consistently, and you can choose the style
-
-A resource's licence code is now displayed the same way everywhere — on
-resource pages, catalogue cards, the browse block, and on connected client
-sites. Previously the client plugin showed `CC-SA-4.0` while this site showed
-`cc-sa-4.0` for the same resource.
-
-A new setting, **Show licence codes in capitals**, chooses between the two; it
-is on by default, so codes appear as `CC-SA-4.0`. This affects appearance only:
-the licence is stored, filtered and sent to client sites exactly as it was
-published, so text you copy from a page still matches, and screen readers read
-the code out rather than spelling out capital letters. The licence filter
-dropdown keeps the stored spelling either way. If you would rather style this
-in your theme, the codes are wrapped in `.oer-licence-name`.
-
-## Security
-
-Because the profile page is public, the values of the custom profile fields it
-shows are now passed through Moodle's HTML cleaner before display. Moodle's
-"social" profile field type places a stored value directly into a link's
-address without escaping it, and the checks on that value are bypassed when a
-profile is written by a web service, a bulk user upload, or LDAP/OAuth2
-directory sync rather than by the profile form. Core tolerates this because
-its own profile pages can be hidden from anonymous visitors; this page cannot.
-Legitimate links, dates and checkbox values are unaffected.
-
-## Also fixed
-
-- A registering site's name is filtered on the moderation and site-management
-  pages.
-- Resource titles in co-author and stale-resource notification messages no
-  longer contain multilang markup.
-- A cover image's alternative text no longer double-escapes an ampersand in
-  the title.
-
-Beyond the usual `admin/cli/upgrade.php`, no action is required after
-upgrading — but note the permanent data removal described above.
+`scripts/verify-gates` (proving each gate fires on known-bad input) followed by
+`scripts/phpcs-ci` — clean; `local_moodlecheck` — clean (docblock/signature
+consistency only); PHPUnit — 407 tests, 1055 assertions, all passing. The
+progress bar, the publish-status updates, both upload outcomes, the file sizes
+and the slow-trial warning were each verified in a browser against a live site.
