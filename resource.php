@@ -468,6 +468,21 @@ if ($version && $version->moodleversion) {
         ['class' => 'small text-muted']
     );
 }
+if ($version && $version->filesize) {
+    // Shown to everyone, not just the author: how big the file is decides
+    // whether downloading it is reasonable on this connection and whether a
+    // sandbox trial will take minutes, and until now the only way to find out
+    // was to start the download.
+    echo html_writer::tag(
+        'p',
+        get_string(
+            'filesizelabel',
+            'local_oerexchange',
+            \local_oerexchange\local\size_advice::format((int) $version->filesize)
+        ),
+        ['class' => 'small text-muted']
+    );
+}
 if ($resource->forkedfromid) {
     $parent = $DB->get_record('local_oerexchange_resources', ['id' => $resource->forkedfromid]);
     if ($parent) {
@@ -616,6 +631,34 @@ if ($cancontrolthumbnail) {
                 . html_writer::tag('div', s($authormessage), ['class' => 'mt-1']),
             ['class' => 'alert alert-danger py-2 px-3 mb-2']
         );
+    }
+
+    // While validation is still running, say so and keep saying so: a new
+    // upload lands here 'pending' and only becomes a catalogue entry when
+    // parse_backup_task runs on the next cron tick. Without this the author
+    // saw a static "Pending" with no indication that anything was in flight,
+    // no idea how long to wait, and no way to learn the outcome short of
+    // reloading on a hunch. The poller replaces this region in place and
+    // reloads once the answer is in.
+    if ($newestversion && $newestversion->status === 'parsing') {
+        echo html_writer::tag(
+            'div',
+            html_writer::tag('span', '', [
+                'class' => 'spinner-border spinner-border-sm me-2',
+                'aria-hidden' => 'true',
+            ])
+                . html_writer::tag('span', get_string('publishchecking', 'local_oerexchange')),
+            [
+                'class' => 'alert alert-info py-2 px-3 mb-2 d-flex align-items-center',
+                // The status role and aria-live matter because the text is
+                // replaced by JavaScript as the answer arrives: a screen-reader
+                // user must hear the outcome without re-navigating here.
+                'role' => 'status',
+                'aria-live' => 'polite',
+                'data-region' => 'oerexchange-publish-status',
+            ]
+        );
+        $PAGE->requires->js_call_amd('local_oerexchange/publish_status', 'init', [(int) $resource->id]);
     }
 
     // The abandoned-courseware warning, mirrored from the notification so an
@@ -893,6 +936,22 @@ if ($sandboxenabled && $version && $resource->type !== 'data' && !empty($resourc
         ['class' => 'btn btn-success me-2', 'target' => '_blank']
     );
     echo html_writer::tag('div', get_string('tryitloadinghint', 'local_oerexchange'), ['class' => 'small text-muted d-inline']);
+    if (\local_oerexchange\local\size_advice::is_slow_trial((int) $version->filesize)) {
+        // The whole .mbz has to reach the visitor's browser before the trial
+        // can start, and past the sandbox engine's fast-path budget that
+        // download reports no progress whatsoever. Saying so beats a button
+        // that looks broken for several minutes — and the download link
+        // beside it is the better route for a backup this size anyway.
+        echo html_writer::tag(
+            'div',
+            get_string(
+                'tryitslowwarning',
+                'local_oerexchange',
+                \local_oerexchange\local\size_advice::format((int) $version->filesize)
+            ),
+            ['class' => 'alert alert-info mt-2 mb-0 py-2 px-3 small']
+        );
+    }
     if ($hasunreliableplugin) {
         echo html_writer::tag(
             'div',

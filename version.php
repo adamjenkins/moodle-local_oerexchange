@@ -25,10 +25,11 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_oerexchange';
-// Bumped for db/hooks.php: hook registrations are cached, so without a
-// version bump an already-installed site never picks up the after_config
-// and extend_default_homepage callbacks added for the public landing page.
-$plugin->version   = 2026080102;
+// Bumped for the new AJAX external function (db/services.php registrations
+// are only re-read on upgrade, so without this the publish-status poller
+// gets "Access control exception" on an already-installed site) and for the
+// two new AMD modules, whose cached revision is keyed on this number.
+$plugin->version   = 2026080200;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass

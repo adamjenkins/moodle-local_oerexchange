@@ -70,6 +70,20 @@ $functions = [
         'ajax'        => false,
     ],
 
+    // AJAX-only, and deliberately NOT added to the 'OER Exchange service'
+    // below: this one is called by the author's own browser on this site
+    // (core/ajax, session-authenticated), never by a registered client site
+    // over a token. See the class docblock for why it is separate from
+    // get_share_status.
+    'local_oerexchange_get_publish_status' => [
+        'classname'   => 'local_oerexchange\external\get_publish_status',
+        'methodname'  => 'execute',
+        'description' => 'Publish/validation state of one of the caller\'s own resources, for the author\'s page.',
+        'type'        => 'read',
+        'ajax'        => true,
+        'loginrequired' => true,
+    ],
+
     'local_oerexchange_get_config' => [
         'classname'   => 'local_oerexchange\external\get_config',
         'methodname'  => 'execute',

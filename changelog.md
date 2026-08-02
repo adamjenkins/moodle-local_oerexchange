@@ -3,6 +3,41 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [Unreleased]
+
+### Added
+
+- The upload pages now show a real progress bar while a backup is being sent,
+  with a percentage, a distinct "validating" stage once the last byte has left
+  the browser, and the Share button disabled for the duration. Course backups
+  here reach hundreds of megabytes (the largest on the live Exchange is 359 MB)
+  and a plain multipart POST reports nothing at all to the user, so the page
+  simply sat there for minutes. Progressive enhancement: the form posts to the
+  same URL with the same sesskey and still works with JavaScript disabled.
+- After an upload, the resource page tells the author what is happening to it:
+  "Checking your upload…", then either "Published" or the rejection reason,
+  without reloading. Publishing is asynchronous (a backup is validated by an
+  adhoc task on the next cron run), and there was previously nothing to say so.
+  Backed by a new AJAX-only external function,
+  `local_oerexchange_get_publish_status`, gated on the same
+  author/co-author/moderator check as every other author-side action.
+- Resource pages and catalogue cards show the file size, and a resource large
+  enough to make an in-browser trial slow carries a warning next to "Try it"
+  explaining what to expect and pointing at the download instead. Measured
+  2026-08-02: a 359 MB backup does boot in the sandbox, but takes 4 min 15 s,
+  of which 3 min 54 s is a download reporting no progress — above the sandbox
+  engine's 50 MiB fast-path budget it falls back to an in-PHP download with no
+  percentage. The threshold is the new `sandboxwarnbytes` setting, defaulting
+  to that same 50 MiB; set it to 0 to never warn. Nothing is refused on size.
+
+### Fixed
+
+- Sharing a backup used to end on the catalogue with a notification reading
+  just "Share" — the submit button's own label, passed to `redirect()` by
+  mistake — and the new resource's id was discarded. Both upload pages now land
+  on the new resource's own page with a message that says what happened, which
+  is also the one page that can show a resource that is still pending.
+
 ## [1.0.4] - 2026-08-01
 
 ### Security

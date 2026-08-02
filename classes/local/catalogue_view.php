@@ -286,6 +286,10 @@ final class catalogue_view {
 
         // One query for the whole page's cover images rather than one per card.
         $coverurls = cover_image::urls_for(array_keys($resources));
+        // Likewise for sizes: how big a resource is decides whether it is
+        // worth downloading on this connection, and it used to be invisible
+        // until the download had already started.
+        $sizes = size_advice::sizes_for(array_keys($resources));
 
         $html .= \html_writer::start_tag('div', ['class' => 'oerexchange-list row row-cols-1 row-cols-md-3 g-3']);
         foreach ($resources as $r) {
@@ -331,11 +335,11 @@ final class catalogue_view {
             // CSS class rather than transforming the text. The filter dropdown
             // above deliberately keeps the stored spelling — its labels are
             // also its values, matched against the column in get_records_sql().
-            $html .= \html_writer::tag(
-                'div',
-                $typelabel . ' · ' . licence_display::html($r->licenseshortname),
-                ['class' => 'small text-muted']
-            );
+            $meta = $typelabel . ' · ' . licence_display::html($r->licenseshortname);
+            if (!empty($sizes[$r->id])) {
+                $meta .= ' · ' . s(size_advice::format($sizes[$r->id]));
+            }
+            $html .= \html_writer::tag('div', $meta, ['class' => 'small text-muted']);
             $html .= \html_writer::tag(
                 'div',
                 get_string('downloadcountlabel', 'local_oerexchange', $r->downloadcount) . ' · '

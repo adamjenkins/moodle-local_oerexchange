@@ -25,6 +25,7 @@
 
 use local_oerexchange\local\allowed_licenses;
 use local_oerexchange\local\resource_manager;
+use local_oerexchange\local\upload_response;
 
 require(__DIR__ . '/../../config.php');
 // Filelib.php's free functions (file_get_unused_draft_itemid(), get_file_storage(),
@@ -121,27 +122,48 @@ if (data_submitted() && confirm_sesskey()) {
             'filename' => clean_param($_FILES['mbzfile']['name'], PARAM_FILE),
         ], $_FILES['mbzfile']['tmp_name']);
 
-        resource_manager::publish($draftitemid, (int) $USER->id, $updating ? $updating->siteid : null, [
-            'type' => $type,
-            'title' => $title,
-            'summary' => $summary,
-            'language' => $language,
-            'tags' => $tags,
-            'licenseshortname' => $licenseshortname,
-            'activitytype' => $type === 'activity' ? $activitytype : null,
-        ], $updating ? (int) $updating->id : null);
+        [$newresourceid] = resource_manager::publish(
+            $draftitemid,
+            (int) $USER->id,
+            $updating ? $updating->siteid : null,
+            [
+                'type' => $type,
+                'title' => $title,
+                'summary' => $summary,
+                'language' => $language,
+                'tags' => $tags,
+                'licenseshortname' => $licenseshortname,
+                'activitytype' => $type === 'activity' ? $activitytype : null,
+            ],
+            $updating ? (int) $updating->id : null
+        );
 
         if ($updating) {
-            redirect(
-                new moodle_url('/local/oerexchange/resource.php', ['id' => $updating->id]),
-                get_string('replacefilequeued', 'local_oerexchange')
-            );
+            $target = new moodle_url('/local/oerexchange/resource.php', ['id' => $updating->id]);
+            $message = get_string('replacefilequeued', 'local_oerexchange');
+        } else {
+            // Only an actual choice is remembered — update mode carries the
+            // stored licence through without asking.
+            allowed_licenses::remember($licenseshortname);
+            // The author's own new resource page, NOT the catalogue: publishing
+            // is asynchronous (the resource is 'pending' until parse_backup_task
+            // validates the backup), so the catalogue is the one page that
+            // cannot yet show what they just uploaded. This page can, and it
+            // polls until the answer arrives. The old redirect sent them to
+            // the catalogue with the SUBMIT BUTTON'S OWN LABEL ("Share") as
+            // the notification — no link, no status, no way to tell whether
+            // anything had worked.
+            $target = new moodle_url('/local/oerexchange/resource.php', ['id' => $newresourceid]);
+            $message = get_string('uploadqueued', 'local_oerexchange');
         }
-        // Only an actual choice is remembered — update mode carries the
-        // stored licence through without asking.
-        allowed_licenses::remember($licenseshortname);
-        redirect(new moodle_url('/local/oerexchange/index.php'), get_string('uploadsubmit', 'local_oerexchange'));
+        if (upload_response::wanted()) {
+            upload_response::success($target, $message);
+        }
+        redirect($target, $message, null, \core\output\notification::NOTIFY_SUCCESS);
     } catch (moodle_exception $e) {
+        if (upload_response::wanted()) {
+            upload_response::failure($e->getMessage());
+        }
         $error = $e->getMessage();
     }
 }
@@ -156,6 +178,7 @@ echo html_writer::start_tag('form', [
     'method' => 'post',
     'action' => new moodle_url('/local/oerexchange/share_upload_mbz.php', $pageparams),
     'enctype' => 'multipart/form-data',
+    'data-region' => 'oerexchange-upload-form',
 ]);
 echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
 
@@ -233,6 +256,7 @@ echo html_writer::empty_tag('input', [
     'value' => get_string($updating ? 'replacefilesubmit' : 'uploadsubmit', 'local_oerexchange'),
     'class' => 'btn btn-primary',
 ]);
+echo \local_oerexchange\local\upload_form_ui::progress_region();
 echo html_writer::end_tag('form');
 
 echo $OUTPUT->footer();

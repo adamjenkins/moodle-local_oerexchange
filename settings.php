@@ -77,6 +77,25 @@ if ($hassiteconfig) {
         0
     ));
 
+    // Above this size a trial stops reporting progress (the sandbox engine's
+    // own fast-download budget is 50 MiB; over it the backup is fetched
+    // inside PHP with no percentage shown at all), so this is where the
+    // resource page starts warning visitors what they are in for rather than
+    // leaving them on a button that appears to do nothing for minutes.
+    // Nothing is ever refused on size here — see size_advice's docblock for
+    // the 2026-08-02 measurement behind the default.
+    $settings->add(new admin_setting_configtext(
+        'local_oerexchange/sandboxwarnbytes',
+        get_string('settings_sandboxwarnbytes', 'local_oerexchange'),
+        get_string(
+            'settings_sandboxwarnbytes_desc',
+            'local_oerexchange',
+            display_size(\local_oerexchange\local\size_advice::DEFAULT_WARN_BYTES)
+        ),
+        \local_oerexchange\local\size_advice::DEFAULT_WARN_BYTES,
+        PARAM_INT
+    ));
+
     // Anonymous access, corrected against what the code actually does
     // (verified live, 2026-07-19 - an earlier draft of this setting
     // wrongly assumed resource.php and "Try it" required login; neither
