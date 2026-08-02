@@ -41,6 +41,7 @@ $string['allowlistbake_help'] = 'When ticked, this plugin is installed into the 
 $string['allowlistbranch'] = 'Moodle branch';
 $string['allowlistconfidence_declared'] = 'The plugin declares it supports these versions.';
 $string['allowlistconfidence_inferred'] = 'The plugin does not say which versions it supports; these are the ones new enough for the Moodle version it requires.';
+$string['allowlistconfidence_overridden'] = 'You chose to disregard the Moodle versions this plugin declares, so every version the sandbox runs is listed.';
 $string['allowlistconfidence_unverified'] = 'The plugin says nothing about which Moodle versions it supports, so every version the sandbox runs is offered. Untick any you do not want.';
 $string['allowlistconfirm'] = 'Add these entries';
 $string['allowlistcurrent'] = 'Plugins currently on the allowlist';
@@ -48,11 +49,19 @@ $string['allowlistdepthreached'] = 'Dependencies were followed {$a} levels deep 
 $string['allowlistdisable'] = 'Disable';
 $string['allowlistempty'] = 'No plugins on the allowlist yet.';
 $string['allowlistenable'] = 'Enable';
+$string['allowlistignoresupported'] = 'Add it for Moodle versions it does not claim to support';
+$string['allowlistignoresupported_help'] = 'Plugins often declare an old range of supported Moodle versions simply because nobody updated the line, and work perfectly well on newer ones.
+
+Tick this to list the plugin for every Moodle version the sandbox runs, whatever its version.php says. This applies to any plugins it depends on as well, since listing one without the other would not work.
+
+The one thing it does not override is a plugin explicitly declaring itself **incompatible** with a version — that is the maintainer stating it is broken, rather than forgetting to update a line.';
 $string['allowlistlimitreached'] = 'This plugin pulls in more than {$a} others; the list was cut off at that point.';
 $string['allowlistneedsource'] = 'Give an address or upload a ZIP file.';
 $string['allowlistnothingtoadd'] = 'Nothing here can be added to the allowlist.';
 $string['allowlistnotindirectory'] = '{$a} is not published in the Moodle plugins directory, so it could not be downloaded automatically. Paste a URL for it and add it separately.';
 $string['allowlistonesource'] = 'Give an address or upload a file, not both.';
+$string['allowlistoverriddenbranches'] = 'Being added for {$a}, which this plugin does not claim to support. It may not work in a trial — worth testing one.';
+$string['allowlistoverriddennote'] = 'Added for a Moodle version this plugin does not claim to support.';
 $string['allowlistplanexpired'] = 'That took too long — the downloaded files are no longer available. Please start again.';
 $string['allowlistplanheading'] = 'What will be added';
 $string['allowlistplanwhat'] = 'What will happen';
@@ -100,7 +109,7 @@ $string['error_advancedsyntax'] = 'This line is not a name=value pair: "{$a}".';
 $string['error_advancedtoomany'] = 'Too many advanced settings — reduce the list.';
 $string['error_advancedvalue'] = 'The value for "{$a}" cannot be used — it contains characters that are not allowed.';
 $string['error_allowlistdownloadfailed'] = 'Could not download {$a->url} — the server answered {$a->status}.';
-$string['error_allowlistnobranches'] = 'This plugin does not support any Moodle version the sandbox runs ({$a}), so there is nothing to add. You can still add it by ticking a branch yourself, but it is unlikely to work in a trial.';
+$string['error_allowlistnobranches'] = 'This plugin does not claim to support any Moodle version the sandbox runs ({$a}), so there is nothing to add. If you think its declared range is simply out of date, tick "Add it for Moodle versions it does not claim to support" and try again.';
 $string['error_allowlistnotarepo'] = 'That GitHub address does not name a repository. Use the form https://github.com/owner/repository.';
 $string['error_allowlistnotazip'] = 'What was downloaded is not a ZIP file. Check the address points at a plugin package rather than a web page.';
 $string['error_allowlistnothttps'] = 'Enter a full https:// address.';

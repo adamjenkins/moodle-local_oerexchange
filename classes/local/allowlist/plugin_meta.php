@@ -81,9 +81,17 @@ final class plugin_meta {
      * The branches this plugin should be allowlisted for.
      *
      * @param string[]|null $deployed defaults to the deployed sandbox set
+     * @param bool $ignoredeclared disregard the plugin's own supported range
+     *                             and minimum version
      * @return branch_selection
      */
-    public function branches(?array $deployed = null): branch_selection {
-        return branch_mapper::branches_for($this->supported, $this->requires, $this->incompatible, $deployed);
+    public function branches(?array $deployed = null, bool $ignoredeclared = false): branch_selection {
+        return branch_mapper::branches_for(
+            $this->supported,
+            $this->requires,
+            $this->incompatible,
+            $deployed,
+            $ignoredeclared
+        );
     }
 }

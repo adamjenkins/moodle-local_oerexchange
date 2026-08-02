@@ -57,6 +57,9 @@ final class dependency_walker {
      * @param component_locator $locator turns a component name into a URL
      * @param string[]|null $deployed branches to plan for; defaults to the
      *                                deployed sandbox set
+     * @param bool $ignoredeclared disregard each plugin's declared supported
+     *                             range, for the plugin asked for and its
+     *                             dependencies alike
      */
     public function __construct(
         /** @var source_resolver */
@@ -67,6 +70,14 @@ final class dependency_walker {
         private readonly component_locator $locator,
         /** @var string[]|null branches to plan for */
         private readonly ?array $deployed = null,
+        /**
+         * @var bool disregard each plugin's declared supported range. Applied
+         * to dependencies as well as to the plugin the admin asked for: a
+         * forced plugin whose dependency was still filtered out by its own
+         * stale range would be listed for a branch its dependency is not,
+         * which is the broken half-state the whole override exists to avoid.
+         */
+        private readonly bool $ignoredeclared = false,
     ) {
     }
 
@@ -184,7 +195,7 @@ final class dependency_walker {
      * @return entry_plan
      */
     private function entry_for(plugin_meta $meta, string $role, ?string $parent): entry_plan {
-        $branches = $meta->branches($this->deployed);
+        $branches = $meta->branches($this->deployed, $this->ignoredeclared);
 
         // ADD here is provisional. The ingestor re-labels an entry REFRESH
         // once it has looked for an existing row; the walker does no DB work

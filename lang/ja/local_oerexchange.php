@@ -31,9 +31,18 @@ $string['allowlistadd'] = '許可リストに項目を追加';
 $string['allowlistbake'] = 'バンドルに組み込む';
 $string['allowlistbake_help'] = 'チェックすると、このプラグインは試用が起動した瞬間にダウンロード・インストールされるのではなく、ビルドマシン上でのビルド時にサンドボックスバンドルへ組み込まれます。このチェックは意図を記録するだけです — 実際に反映されるのは、ビルドマシンにアクセスできる人がダウンロードした設定ファイルを使ってビルドを実行した後です。実際にデプロイされたバンドルのスタンプはExchange側で別途確認され、ここでの設定と一致しない場合は警告が表示されます。';
 $string['allowlistbranch'] = 'Moodleブランチ';
+$string['allowlistconfidence_overridden'] = 'プラグインが宣言しているMoodleバージョンを無視する選択をしたため、サンドボックスが動作させるすべてのバージョンが一覧に表示されています。';
 $string['allowlistdisable'] = '無効化';
 $string['allowlistempty'] = '許可リストにはまだプラグインがありません。';
 $string['allowlistenable'] = '有効化';
+$string['allowlistignoresupported'] = '対応を明示していないMoodleバージョンにも追加する';
+$string['allowlistignoresupported_help'] = 'プラグインが古い対応バージョン範囲を宣言しているのは、単にその記述が更新されていないだけということが多く、実際には新しいバージョンでも問題なく動作します。
+
+これをチェックすると、version.phpの記述にかかわらず、サンドボックスが動作させるすべてのMoodleバージョンにプラグインを登録します。依存するプラグインにも同様に適用されます。片方だけを登録しても動作しないためです。
+
+唯一上書きしないのは、プラグインがあるバージョンとの**非互換**を明示している場合です。これは記述の更新漏れではなく、動作しないと開発者が述べているものだからです。';
+$string['allowlistoverriddenbranches'] = '{$a}向けに追加されます。このプラグインは対応を明示していません。試用で動作しない可能性があるため、実際に試すことをおすすめします。';
+$string['allowlistoverriddennote'] = 'このプラグインが対応を明示していないMoodleバージョン向けに追加されました。';
 $string['allowlistupload'] = 'ZIPファイル';
 $string['approvesuccess'] = 'サイトを承認しました。サイトキーは {$a} 宛にメールで送信されました。';
 $string['attemptedintrial'] = '試用でインストールを試みます — 完全には動作しない場合があります';

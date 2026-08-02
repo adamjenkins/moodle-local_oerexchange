@@ -206,18 +206,78 @@ final class dependency_walker_test extends \advanced_testcase {
         $this->assertFalse($plan->entries[1]->is_writable());
     }
 
+    public function test_the_override_rescues_a_plugin_whose_declared_range_is_stale(): void {
+        // Without it this plugin is unaddable: it claims 4.0-4.5, the sandbox
+        // runs 5.0 and 5.2, so it maps to no branch at all.
+        $this->resetAfterTest();
+
+        $meta = (new zip_inspector())->inspect(
+            $this->builder->build('mod_thing', [], '[400, 405]'),
+            make_request_directory()
+        );
+
+        $normal = $this->walk($meta);
+        $this->assertSame(entry_plan::NO_BRANCHES, $normal->primary()->action);
+        $this->assertTrue($normal->is_empty());
+
+        $forced = $this->walk($meta, true);
+        $this->assertSame(entry_plan::ADD, $forced->primary()->action);
+        $this->assertSame(['5.0', '5.2'], $forced->primary()->branches->branches);
+        $this->assertSame(branch_mapper::OVERRIDDEN, $forced->primary()->branches->confidence);
+    }
+
+    public function test_the_override_reaches_dependencies_too(): void {
+        // A forced plugin listed for 5.2 whose dependency was still filtered
+        // out by its own stale range would produce exactly the broken trial
+        // the override is meant to avoid.
+        $this->resetAfterTest();
+
+        $this->publish('local_stale', [], '[400, 405]');
+
+        $meta = (new zip_inspector())->inspect(
+            $this->builder->build('mod_thing', ['local_stale' => 'any'], '[400, 405]'),
+            make_request_directory()
+        );
+
+        $forced = $this->walk($meta, true);
+
+        $this->assertCount(2, $forced->entries);
+        $dependency = $forced->entries[1];
+        $this->assertSame('local_stale', $dependency->component);
+        $this->assertSame(entry_plan::ADD, $dependency->action);
+        $this->assertSame(['5.0', '5.2'], $dependency->branches->branches);
+    }
+
+    public function test_the_override_leaves_a_conforming_plugin_alone(): void {
+        // Its branches are the same either way; only the confidence differs,
+        // and the admin is told nothing was actually overridden.
+        $this->resetAfterTest();
+
+        $meta = (new zip_inspector())->inspect(
+            $this->builder->build('mod_thing', [], '[500, 502]'),
+            make_request_directory()
+        );
+
+        $forced = $this->walk($meta, true);
+
+        $this->assertSame(['5.0', '5.2'], $forced->primary()->branches->branches);
+        $this->assertSame([], $forced->primary()->branches->declined);
+    }
+
     /**
      * Run a walk with the fakes wired up.
      *
      * @param plugin_meta $root
+     * @param bool $ignoredeclared disregard declared supported ranges
      * @return ingest_plan
      */
-    private function walk(plugin_meta $root): ingest_plan {
+    private function walk(plugin_meta $root, bool $ignoredeclared = false): ingest_plan {
         $walker = new dependency_walker(
             new source_resolver($this->fetcher),
             new zip_inspector(),
             $this->locator,
             ['5.0', '5.2'],
+            $ignoredeclared,
         );
 
         return $walker->walk($root, make_request_directory());

@@ -58,6 +58,15 @@ final class branch_mapper {
     public const UNVERIFIED = 'unverified';
 
     /**
+     * The admin chose to disregard what the plugin declares.
+     *
+     * A narrow $plugin->supported is very often simply stale — the plugin
+     * works on a newer Moodle and its maintainer never bumped the line — and
+     * without a way to say so, such a plugin cannot be allowlisted at all.
+     */
+    public const OVERRIDDEN = 'overridden';
+
+    /**
      * Branches this plugin should be allowlisted for.
      *
      * @param int[]|null $supported $plugin->supported as scanned, or null
@@ -65,6 +74,9 @@ final class branch_mapper {
      * @param int|null $incompatible $plugin->incompatible, or null
      * @param string[]|null $deployed dotted branch labels to choose from;
      *                                defaults to the deployed sandbox set
+     * @param bool $ignoredeclared disregard $plugin->supported and
+     *                             $plugin->requires and offer every deployed
+     *                             branch — see OVERRIDDEN
      * @return branch_selection
      */
     public static function branches_for(
@@ -72,8 +84,32 @@ final class branch_mapper {
         ?int $requires,
         ?int $incompatible = null,
         ?array $deployed = null,
+        bool $ignoredeclared = false,
     ): branch_selection {
         $deployed ??= playground::DEPLOYED_BRANCHES;
+
+        if ($ignoredeclared) {
+            // What the plugin would have got on its own, so the admin can be
+            // told precisely which branches they are adding against its word
+            // rather than just that something was overridden.
+            $declared = self::branches_for($supported, $requires, $incompatible, $deployed);
+
+            // Note that $plugin->incompatible is deliberately still applied. A stale
+            // supported range is an omission; incompatible is the maintainer
+            // positively asserting the plugin is broken from that branch on,
+            // which is a different kind of statement and not what "the
+            // maintainer forgot to bump it" describes.
+            $branches = self::filter(
+                $deployed,
+                static fn (int $branch): bool => $incompatible === null || $branch < $incompatible
+            );
+
+            return new branch_selection(
+                $branches,
+                self::OVERRIDDEN,
+                array_values(array_diff($branches, $declared->branches)),
+            );
+        }
 
         if (self::is_wellformed_range($supported)) {
             $confidence = self::DECLARED;

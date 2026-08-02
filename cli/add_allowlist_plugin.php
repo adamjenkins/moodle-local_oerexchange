@@ -47,6 +47,7 @@ use local_oerexchange\local\allowlist\zip_inspector;
     'url' => null,
     'zip' => null,
     'bake' => false,
+    'ignore-supported' => false,
     'dry-run' => false,
     'help' => false,
 ], [
@@ -68,6 +69,12 @@ if ($options['help'] || (empty($options['url']) && empty($options['zip']))) {
       --zip=PATH    A plugin ZIP already on this machine.
       --bake        Also flag the entries to be baked into the sandbox bundle.
                     Cascades to dependencies.
+      --ignore-supported
+                    List the plugin for every Moodle version the sandbox runs,
+                    whatever its version.php declares. For a plugin whose
+                    supported range is simply out of date. Cascades to
+                    dependencies. Still honours an explicit
+                    \$plugin->incompatible.
       -n, --dry-run Show what would be added and change nothing.
       -h, --help    This text.
 
@@ -102,7 +109,13 @@ try {
 }
 
 cli_writeln('Reading dependencies ...');
-$walker = new dependency_walker($resolver, $inspector, new directory_component_locator());
+$walker = new dependency_walker(
+    $resolver,
+    $inspector,
+    new directory_component_locator(),
+    null,
+    (bool) $options['ignore-supported']
+);
 $ingestor = new ingestor();
 $plan = $ingestor->preview($walker->walk($meta, $workdir));
 
@@ -154,6 +167,14 @@ function print_plan(ingest_plan $plan): void {
             . str_pad($branches, 14)
             . get_string('allowlistaction_' . $entry->action, 'local_oerexchange')
         );
+
+        if ($entry->branches !== null && $entry->branches->declined !== []) {
+            cli_writeln('      ! ' . get_string(
+                'allowlistoverriddenbranches',
+                'local_oerexchange',
+                implode(', ', $entry->branches->declined)
+            ));
+        }
 
         foreach ($entry->messages as $message) {
             cli_writeln('      ! ' . $message);

@@ -36,14 +36,24 @@ final class branch_selection {
      *
      * @param string[] $branches dotted branch labels, e.g. ['5.0', '5.2'],
      *                           in the order they are deployed
-     * @param string $confidence one of branch_mapper's DECLARED, INFERRED or
-     *                           UNVERIFIED
+     * @param string $confidence one of branch_mapper's DECLARED, INFERRED,
+     *                           UNVERIFIED or OVERRIDDEN
+     * @param string[] $declined branches included only because the admin
+     *                           overrode what the plugin declares
      */
     public function __construct(
         /** @var string[] dotted branch labels this plugin should be listed for */
         public readonly array $branches,
         /** @var string how the branch list was arrived at */
         public readonly string $confidence,
+        /**
+         * @var string[] the branches in $branches that the plugin's own
+         * declarations would have excluded. Empty unless the admin overrode
+         * them. Named separately from $branches because the admin is owed the
+         * specifics — "you are adding 5.2, which this plugin does not claim to
+         * support" is actionable in a way that "overridden" is not.
+         */
+        public readonly array $declined = [],
     ) {
     }
 

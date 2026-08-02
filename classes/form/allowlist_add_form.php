@@ -59,6 +59,13 @@ class allowlist_add_form extends \moodleform {
             ['accepted_types' => ['.zip'], 'maxbytes' => source_resolver::MAX_ZIP_BYTES]
         );
 
+        $mform->addElement(
+            'advcheckbox',
+            'ignoresupported',
+            get_string('allowlistignoresupported', 'local_oerexchange')
+        );
+        $mform->addHelpButton('ignoresupported', 'allowlistignoresupported', 'local_oerexchange');
+
         $mform->addElement('advcheckbox', 'bake', get_string('allowlistbake', 'local_oerexchange'));
         $mform->addHelpButton('bake', 'allowlistbake', 'local_oerexchange');
         if (!$cansandbox) {

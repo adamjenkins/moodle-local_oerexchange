@@ -41,6 +41,17 @@ final class ingestor {
     private const FILEAREA = 'allowlist';
 
     /**
+     * Marker written to notes when an entry exists only because an admin
+     * overrode the plugin's declared Moodle versions.
+     *
+     * A fixed ASCII token rather than a sentence, so it stays comparable
+     * whatever language the admin was working in. Without it, an entry
+     * listing a plugin for a branch its own version.php disowns looks like a
+     * bug to whoever finds it next.
+     */
+    public const NOTE_OVERRIDDEN = 'branches-overridden';
+
+    /**
      * Re-label a plan against what is already on the allowlist.
      *
      * The walker cannot do this itself without a database, and keeping it
@@ -128,6 +139,9 @@ final class ingestor {
                     'pluginrelease' => $meta->release,
                     'parentid' => $entry->parent !== null ? ($rowids[$entry->parent][$branch] ?? null) : null,
                     'timemodified' => $now,
+                    // Set on every write, including a refresh: an entry that
+                    // stops being an override must stop being marked as one.
+                    'notes' => in_array($branch, $entry->branches->declined, true) ? self::NOTE_OVERRIDDEN : '',
                 ];
 
                 // The bake flag cascades from the plugin the admin asked for
@@ -144,7 +158,6 @@ final class ingestor {
                     $id = (int) $existing->id;
                     $refreshed++;
                 } else {
-                    $record->notes = '';
                     $record->timecreated = $now;
                     $record->itemid = null;
                     $id = (int) $DB->insert_record(self::TABLE, $record);

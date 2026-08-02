@@ -139,6 +139,58 @@ final class branch_mapper_test extends \basic_testcase {
         $this->assertSame(510, branch_mapper::branch_number('5.10'));
     }
 
+    public function test_the_override_lists_every_deployed_branch_despite_a_narrow_range(): void {
+        // The case this exists for: a plugin declaring 4.0-4.5 because its
+        // maintainer never bumped the line, which in practice runs fine on
+        // 5.x. Without the override it produces no entries at all.
+        $result = branch_mapper::branches_for([400, 405], null, null, self::DEPLOYED, true);
+
+        $this->assertSame(['5.0', '5.2'], $result->branches);
+        $this->assertSame(branch_mapper::OVERRIDDEN, $result->confidence);
+    }
+
+    public function test_the_override_records_which_branches_the_plugin_disowns(): void {
+        // The admin is owed the specifics, not just "overridden": these are
+        // exactly the branches nobody has claimed the plugin works on.
+        $result = branch_mapper::branches_for([400, 405], null, null, self::DEPLOYED, true);
+
+        $this->assertSame(['5.0', '5.2'], $result->declined);
+    }
+
+    public function test_the_override_ignores_a_too_new_requires_as_well(): void {
+        // Ignoring what the plugin declares has to mean requires too, or a
+        // plugin with no supported range and a stale requires stays unaddable.
+        $result = branch_mapper::branches_for(null, 2099010100, null, self::DEPLOYED, true);
+
+        $this->assertSame(['5.0', '5.2'], $result->branches);
+        $this->assertSame(branch_mapper::OVERRIDDEN, $result->confidence);
+    }
+
+    public function test_the_override_still_honours_an_explicit_incompatible(): void {
+        // A stale supported range is an omission; incompatible is a positive
+        // assertion that the plugin is BROKEN from that branch on. Overriding
+        // the first should not quietly override the second.
+        $result = branch_mapper::branches_for([400, 405], null, 502, self::DEPLOYED, true);
+
+        $this->assertSame(['5.0'], $result->branches);
+        $this->assertSame(branch_mapper::OVERRIDDEN, $result->confidence);
+    }
+
+    public function test_a_branch_only_the_declared_range_allowed_is_not_listed_as_declined(): void {
+        // 5.0 is inside the declared range, so it is not something the admin
+        // is overriding — only 5.2 is.
+        $result = branch_mapper::branches_for([404, 500], null, null, self::DEPLOYED, true);
+
+        $this->assertSame(['5.0', '5.2'], $result->branches);
+        $this->assertSame(['5.2'], $result->declined);
+    }
+
+    public function test_without_the_override_nothing_is_declined(): void {
+        $result = branch_mapper::branches_for([500, 502], null, null, self::DEPLOYED);
+
+        $this->assertSame([], $result->declined);
+    }
+
     public function test_a_branch_with_no_known_core_version_is_skipped_on_the_inferred_path(): void {
         // Inference needs the branch's core version; there is no honest
         // answer for a branch not in the map, so it drops out rather than

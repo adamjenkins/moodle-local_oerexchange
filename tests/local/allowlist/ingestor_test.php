@@ -234,6 +234,56 @@ final class ingestor_test extends \advanced_testcase {
         $this->assertSame(['mod_thing'], $components);
     }
 
+    public function test_an_overridden_branch_is_marked_on_the_row(): void {
+        // Months later, a row listing a plugin for a branch its own
+        // version.php disowns looks like a bug unless the row says why.
+        $this->resetAfterTest();
+        global $DB;
+
+        (new ingestor())->commit($this->plan('mod_thing', [], supported: '[400, 405]', ignoredeclared: true));
+
+        $rows = $DB->get_records('local_oerexchange_pluginallowlist', [], 'moodlebranch');
+        $this->assertCount(2, $rows);
+        foreach ($rows as $row) {
+            $this->assertSame(ingestor::NOTE_OVERRIDDEN, $row->notes, $row->moodlebranch);
+        }
+    }
+
+    public function test_a_branch_the_plugin_does_claim_is_not_marked_as_overridden(): void {
+        // Only the branches actually added against the plugin's word carry
+        // the marker, even when the override was switched on.
+        $this->resetAfterTest();
+        global $DB;
+
+        (new ingestor())->commit($this->plan('mod_thing', [], supported: '[404, 500]', ignoredeclared: true));
+
+        $this->assertSame('', $DB->get_field(
+            'local_oerexchange_pluginallowlist',
+            'notes',
+            ['component' => 'mod_thing', 'moodlebranch' => '5.0']
+        ));
+        $this->assertSame(ingestor::NOTE_OVERRIDDEN, $DB->get_field(
+            'local_oerexchange_pluginallowlist',
+            'notes',
+            ['component' => 'mod_thing', 'moodlebranch' => '5.2']
+        ));
+    }
+
+    public function test_refreshing_without_the_override_clears_the_marker(): void {
+        // The plugin bumped its supported range; the entry is no longer an
+        // override and must stop claiming to be one.
+        $this->resetAfterTest();
+        global $DB;
+
+        $ingestor = new ingestor();
+        $ingestor->commit($this->plan('mod_thing', [], supported: '[400, 405]', ignoredeclared: true));
+        $ingestor->commit($this->plan('mod_thing', [], supported: '[500, 502]'));
+
+        foreach ($DB->get_records('local_oerexchange_pluginallowlist') as $row) {
+            $this->assertSame('', $row->notes, $row->moodlebranch);
+        }
+    }
+
     public function test_preview_labels_a_plugin_already_on_the_list_as_a_refresh(): void {
         $this->resetAfterTest();
 
@@ -259,10 +309,18 @@ final class ingestor_test extends \advanced_testcase {
      * @param string $component
      * @param array $dependencies
      * @param int $version
+     * @param string|null $supported array literal for $plugin->supported
+     * @param bool $ignoredeclared disregard the declared supported range
      * @return ingest_plan
      */
-    private function plan(string $component, array $dependencies, int $version = 2026070100): ingest_plan {
-        $zip = $this->builder->build($component, $dependencies, null, $version);
+    private function plan(
+        string $component,
+        array $dependencies,
+        int $version = 2026070100,
+        ?string $supported = null,
+        bool $ignoredeclared = false,
+    ): ingest_plan {
+        $zip = $this->builder->build($component, $dependencies, $supported, $version);
         $meta = (new zip_inspector())->inspect(
             $zip,
             make_request_directory(),
@@ -274,6 +332,7 @@ final class ingestor_test extends \advanced_testcase {
             new zip_inspector(),
             $this->locator,
             ['5.0', '5.2'],
+            $ignoredeclared,
         );
 
         return $walker->walk($meta, make_request_directory());

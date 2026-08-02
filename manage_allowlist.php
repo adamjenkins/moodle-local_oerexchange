@@ -153,7 +153,13 @@ if ($data = $form->get_data()) {
 
         $meta = $inspector->inspect($resolved->zipfilepath, $workdir, $resolved->sourceurl);
 
-        $walker = new dependency_walker($resolver, $inspector, new directory_component_locator());
+        $walker = new dependency_walker(
+            $resolver,
+            $inspector,
+            new directory_component_locator(),
+            null,
+            !empty($data->ignoresupported)
+        );
         $plan = $ingestor->preview($walker->walk($meta, $workdir));
 
         $SESSION->local_oerexchange_allowlistplan = $plan;
@@ -273,6 +279,19 @@ function local_oerexchange_allowlist_render_plan(ingest_plan $plan, core_rendere
                 ['class' => 'small text-muted']
             );
         }
+        // Name the branches being added against the plugin's own word, rather
+        // than only saying that something was overridden.
+        if ($entry->branches !== null && $entry->branches->declined !== []) {
+            $name .= html_writer::tag(
+                'div',
+                get_string(
+                    'allowlistoverriddenbranches',
+                    'local_oerexchange',
+                    s(implode(', ', $entry->branches->declined))
+                ),
+                ['class' => 'small text-warning']
+            );
+        }
         foreach ($entry->messages as $message) {
             $name .= html_writer::tag('div', s($message), ['class' => 'small text-warning']);
         }
@@ -369,6 +388,15 @@ function local_oerexchange_allowlist_render_entries(bool $cansandbox): string {
                 'div',
                 get_string('allowlistaddedasdependency', 'local_oerexchange', s($names[$e->parentid])),
                 ['class' => 'small text-muted']
+            );
+        }
+        // Without this, a row listing a plugin for a branch its own
+        // version.php disowns reads as a bug rather than a decision.
+        if ($e->notes === ingestor::NOTE_OVERRIDDEN) {
+            $name .= html_writer::tag(
+                'div',
+                get_string('allowlistoverriddennote', 'local_oerexchange'),
+                ['class' => 'small text-warning']
             );
         }
 
