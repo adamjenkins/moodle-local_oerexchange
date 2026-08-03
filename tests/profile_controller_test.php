@@ -655,4 +655,260 @@ final class profile_controller_test extends route_testcase {
         $this->assertSame($missingresponse->getStatusCode(), $hiddenresponse->getStatusCode());
         $this->assertSame((string) $missingresponse->getBody(), (string) $hiddenresponse->getBody());
     }
+
+    /**
+     * A data resource's badge must say "Data resource", not "Course".
+     *
+     * The regression this pins: the type badge was a two-way ternary over a
+     * three-value column —
+     *   $r->type === 'activity' ? typeactivity : typecourse
+     * — so every resource that was not an activity was labelled a Course,
+     * including data resources, while the catalogue one click away rendered
+     * the correct three-way label. Reverting resource_type::label() to that
+     * ternary must make this test fail.
+     *
+     * @return void
+     */
+    public function test_data_resource_badge_is_not_labelled_course(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        $creator = $this->getDataGenerator()->create_user(['firstname' => 'Dana', 'lastname' => 'Types']);
+        profile_manager::get_or_create_for_user((int) $creator->id);
+        profile_manager::save((int) $creator->id, ['slug' => 'danatypes', 'bio' => '',
+            'expertise' => [], 'visible' => true]);
+
+        $this->make_profile_resource($creator, [
+            'type' => 'data',
+            'title' => 'Question bank export',
+            'dataresourcetype' => 'questionbank',
+        ]);
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+        $response = $this->process_request('GET', 'u/danatypes', route_loader_interface::ROUTE_GROUP_PAGE);
+        $body = (string) $response->getBody();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString(get_string('typedata', 'local_oerexchange'), $body);
+        // The specific failure being guarded, stated as its own assertion so
+        // a failure names the actual defect rather than "string not found".
+        $this->assertStringNotContainsString(
+            '>' . get_string('typecourse', 'local_oerexchange') . '<',
+            $body,
+            'A data resource was labelled with the Course type badge.'
+        );
+    }
+
+    /**
+     * An activity resource's badge names the activity, not "Course" either.
+     *
+     * @return void
+     */
+    public function test_activity_resource_badge_names_the_activity(): void {
+        $this->resetAfterTest();
+
+        $creator = $this->getDataGenerator()->create_user(['firstname' => 'Ada', 'lastname' => 'Act']);
+        profile_manager::get_or_create_for_user((int) $creator->id);
+        profile_manager::save((int) $creator->id, ['slug' => 'adaact', 'bio' => '',
+            'expertise' => [], 'visible' => true]);
+
+        $this->make_profile_resource($creator, [
+            'type' => 'activity',
+            'title' => 'A quiz',
+            'activitytype' => 'quiz',
+        ]);
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+        $response = $this->process_request('GET', 'u/adaact', route_loader_interface::ROUTE_GROUP_PAGE);
+        $body = (string) $response->getBody();
+
+        $this->assertStringContainsString(get_string('typeactivity', 'local_oerexchange'), $body);
+        $this->assertStringContainsString('quiz', $body);
+    }
+
+    /**
+     * A URL in a public custom profile field is auto-linked.
+     *
+     * The field values used to be passed through a bare clean_text(), which
+     * escapes but runs NO text filter, so a URL a user typed into a profile
+     * field stayed dead text while the same URL in their bio was linked.
+     * format_text() supplies the 'originalformat' option filter_urltolink
+     * requires before it will act.
+     *
+     * @return void
+     */
+    public function test_custom_profile_field_url_is_filtered(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        // The filter has to be on for this to be a meaningful assertion —
+        // otherwise the test would pass against a site where nothing is
+        // filtered and prove nothing.
+        filter_set_global_state('urltolink', TEXTFILTER_ON);
+
+        $field = $this->getDataGenerator()->create_custom_profile_field([
+            'datatype' => 'text',
+            'shortname' => 'homepage',
+            'name' => 'Homepage',
+            'visible' => PROFILE_VISIBLE_ALL,
+        ]);
+
+        $user = $this->getDataGenerator()->create_user([
+            'firstname' => 'Ursula', 'lastname' => 'Link',
+            'profile_field_homepage' => 'https://example.org/teaching',
+        ]);
+        profile_manager::get_or_create_for_user((int) $user->id);
+        profile_manager::save((int) $user->id, ['slug' => 'ursulalink', 'bio' => '',
+            'expertise' => [], 'visible' => true]);
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+        $response = $this->process_request('GET', 'u/ursulalink', route_loader_interface::ROUTE_GROUP_PAGE);
+        $body = (string) $response->getBody();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString('https://example.org/teaching', $body);
+        $this->assertStringContainsString(
+            '<a href="https://example.org/teaching"',
+            $body,
+            'A URL in a public custom profile field was not turned into a link.'
+        );
+    }
+
+    /**
+     * A javascript: URL in a profile field is still neutralised.
+     *
+     * Guards the swap from clean_text() to format_text(): format_text() only
+     * cleans while the text is untrusted, so this asserts the existing XSS
+     * protection survived the change rather than assuming it did.
+     *
+     * @return void
+     */
+    public function test_custom_profile_field_javascript_url_is_cleaned(): void {
+        $this->resetAfterTest();
+
+        $this->getDataGenerator()->create_custom_profile_field([
+            'datatype' => 'text',
+            'shortname' => 'evil',
+            'name' => 'Evil',
+            'visible' => PROFILE_VISIBLE_ALL,
+        ]);
+
+        $user = $this->getDataGenerator()->create_user([
+            'firstname' => 'Eve', 'lastname' => 'Ill',
+            'profile_field_evil' => '<a href="javascript:alert(1)">click</a>',
+        ]);
+        profile_manager::get_or_create_for_user((int) $user->id);
+        profile_manager::save((int) $user->id, ['slug' => 'eveill', 'bio' => '',
+            'expertise' => [], 'visible' => true]);
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+        $response = $this->process_request('GET', 'u/eveill', route_loader_interface::ROUTE_GROUP_PAGE);
+        $body = (string) $response->getBody();
+
+        $this->assertStringNotContainsString('javascript:', $body);
+    }
+
+    /**
+     * Starred resources appear under "Liked resources" on the profile.
+     *
+     * @return void
+     */
+    public function test_liked_resources_section_lists_starred_resources(): void {
+        $this->resetAfterTest();
+
+        $creator = $this->getDataGenerator()->create_user(['firstname' => 'Star', 'lastname' => 'Rer']);
+        profile_manager::get_or_create_for_user((int) $creator->id);
+        profile_manager::save((int) $creator->id, ['slug' => 'starrer', 'bio' => '',
+            'expertise' => [], 'visible' => true]);
+
+        // The section only shows on a profile that has shares of its own.
+        $this->make_profile_resource($creator, ['title' => 'Their own share']);
+
+        $someoneelse = $this->getDataGenerator()->create_user();
+        $liked = $this->make_profile_resource($someoneelse, ['title' => 'Somebody elses course']);
+        \local_oerexchange\local\star_manager::set_starred((int) $liked, (int) $creator->id, true);
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+        $response = $this->process_request('GET', 'u/starrer', route_loader_interface::ROUTE_GROUP_PAGE);
+        $body = (string) $response->getBody();
+
+        $this->assertStringContainsString(get_string('profilelikedheading', 'local_oerexchange'), $body);
+        $this->assertStringContainsString('Somebody elses course', $body);
+    }
+
+    /**
+     * A starred resource that is no longer published is not advertised.
+     *
+     * The profile is world-readable, so somebody else's bookmark must not
+     * become a way to see that a hidden resource exists.
+     *
+     * @return void
+     */
+    public function test_liked_resources_omits_unpublished_resources(): void {
+        $this->resetAfterTest();
+
+        $creator = $this->getDataGenerator()->create_user(['firstname' => 'Hid', 'lastname' => 'Den']);
+        profile_manager::get_or_create_for_user((int) $creator->id);
+        profile_manager::save((int) $creator->id, ['slug' => 'hidden-liker', 'bio' => '',
+            'expertise' => [], 'visible' => true]);
+
+        $this->make_profile_resource($creator, ['title' => 'Their own share']);
+
+        $someoneelse = $this->getDataGenerator()->create_user();
+        $liked = $this->make_profile_resource($someoneelse, [
+            'title' => 'Taken down elsewhere',
+            'status' => 'modhidden',
+        ]);
+        \local_oerexchange\local\star_manager::set_starred((int) $liked, (int) $creator->id, true);
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+        $response = $this->process_request('GET', 'u/hidden-liker', route_loader_interface::ROUTE_GROUP_PAGE);
+        $body = (string) $response->getBody();
+
+        $this->assertStringNotContainsString('Taken down elsewhere', $body);
+    }
+
+    /**
+     * Insert one catalogue row attributed to a user.
+     *
+     * Direct insert rather than resource_manager::publish(), which needs a
+     * real .mbz in a draft area that none of these rendering tests are about.
+     *
+     * @param \stdClass $creator the user the resource is attributed to
+     * @param array $overrides column values to override on the row
+     * @return int the new resource's id
+     */
+    protected function make_profile_resource(\stdClass $creator, array $overrides = []): int {
+        global $DB;
+
+        $now = time();
+
+        return (int) $DB->insert_record('local_oerexchange_resources', (object) array_merge([
+            'type' => 'course',
+            'title' => 'A shared course',
+            'summary' => '',
+            'summaryformat' => FORMAT_HTML,
+            'language' => '',
+            'tags' => '',
+            'licenseshortname' => 'cc-4.0',
+            'activitytype' => null,
+            'dataresourcetype' => null,
+            'courseformat' => null,
+            'creatorid' => $creator->id,
+            'siteid' => null,
+            'status' => 'published',
+            'downloadcount' => 0,
+            'importcount' => 0,
+            'forkedfromid' => null,
+            'trydisabled' => 0,
+            'trydisabledreason' => null,
+            'timeshared' => $now,
+            'timemodified' => $now,
+            'timefresh' => $now,
+            'stalenotifiedtime' => 0,
+            'modhiddentime' => 0,
+            'modhiddenby' => 0,
+            'modhiddenversionid' => null,
+        ], $overrides));
+    }
 }

@@ -190,6 +190,43 @@ final class catalogue_view {
     }
 
     /**
+     * The admin-authored content area shown above the catalogue, if any.
+     *
+     * Deliberately rendered here inside render() rather than in the page
+     * scripts, because the catalogue has three entry points — the plugin's own
+     * index.php, the anonymous site-root takeover in hook_callbacks, and the
+     * redirect for users whose default home page is the catalogue — and all
+     * three converge on this one method. Putting it anywhere else would give
+     * one of them content the others lack.
+     *
+     * Sitting before render()'s empty-catalogue early return is intentional: a
+     * welcome message is most useful on a catalogue with nothing in it yet.
+     *
+     * @return string HTML, empty when the area is switched off or unset
+     */
+    private static function intro_html(): string {
+        if (!get_config('local_oerexchange', 'catalogueintroenabled')) {
+            return '';
+        }
+
+        $intro = (string) get_config('local_oerexchange', 'catalogueintro');
+        // The admin_setting_confightmleditor class normalises visually-empty markup to
+        // '' on save, but a value stored before the setting existed, or by
+        // another route, gets the same treatment here.
+        if (html_is_blank($intro)) {
+            return '';
+        }
+
+        // Rendered with format_text() and cleaning left on, matching core's own handling of
+        // $CFG->searchbanner. The author is an admin, but the output is
+        // world-readable and an admin's paste is still worth cleaning.
+        return \html_writer::div(
+            format_text($intro, FORMAT_HTML, ['context' => \context_system::instance()]),
+            'oerexchange-intro mb-3'
+        );
+    }
+
+    /**
      * The catalogue body — search form plus result grid plus paging bar.
      *
      * @param \moodle_url $baseurl the URL the catalogue is being served
@@ -201,6 +238,8 @@ final class catalogue_view {
 
         $resources = $this->get_resources();
         $html = '';
+
+        $html .= self::intro_html();
 
         $html .= \html_writer::start_tag('form', [
             'method' => 'get',
@@ -294,17 +333,7 @@ final class catalogue_view {
         $html .= \html_writer::start_tag('div', ['class' => 'oerexchange-list row row-cols-1 row-cols-md-3 g-3']);
         foreach ($resources as $r) {
             $url = new \moodle_url('/local/oerexchange/resource.php', ['id' => $r->id]);
-            if ($r->type === 'course') {
-                $typelabel = get_string('typecourse', 'local_oerexchange');
-            } else if ($r->type === 'data') {
-                $typelabel = get_string('typedata', 'local_oerexchange');
-                if (!empty($r->dataresourcetype)) {
-                    $typelabel .= ' (' . get_string('datatype_' . $r->dataresourcetype, 'local_oerexchange') . ')';
-                }
-            } else {
-                $typelabel = get_string('typeactivity', 'local_oerexchange')
-                    . ($r->activitytype ? ' (' . s($r->activitytype) . ')' : '');
-            }
+            $typelabel = resource_type::label($r);
             $html .= \html_writer::start_tag('div', ['class' => 'col']);
             $html .= \html_writer::start_tag('div', ['class' => 'card h-100']);
             // The whole card leads with the cover image, so the catalogue reads as
@@ -324,7 +353,11 @@ final class catalogue_view {
             // escape exactly once — same order block_oerexchangebrowse.php uses
             // for its card summaries, which fixed a double-escape from
             // strip_tags() + s() on pre-encoded entities.
-            $summaryfiltered = format_text($r->summary ?? '', FORMAT_HTML, ['context' => \context_system::instance()]);
+            $summaryfiltered = format_text(
+                $r->summary ?? '',
+                (int) ($r->summaryformat ?? FORMAT_HTML),
+                ['context' => \context_system::instance()]
+            );
             $html .= \html_writer::tag(
                 'p',
                 s(shorten_text(content_to_text($summaryfiltered, FORMAT_HTML), 140)),

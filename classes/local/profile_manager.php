@@ -255,6 +255,15 @@ class profile_manager {
             // resource.php, which routes through this same routine.
             coauthor_manager::delete_for_resource((int) $resource->id);
 
+            // Other people's stars on this entry. They live in core's
+            // {favourite} table, so nothing else in this routine would reach
+            // them and they would dangle against a tombstone.
+            star_manager::delete_for_resource((int) $resource->id);
+
+            // The moderator's working note, which is a moderator's own prose
+            // about a resource that is about to stop existing.
+            $DB->delete_records('local_oerexchange_modnotes', ['resourceid' => $resource->id]);
+
             $DB->update_record('local_oerexchange_resources', (object) [
                 'id' => $resource->id,
                 'title' => '',
@@ -263,6 +272,11 @@ class profile_manager {
                 'status' => 'deleted',
                 'creatorid' => 0,
                 'timemodified' => time(),
+                // The takedown record goes too: it names a moderator, and a
+                // tombstone must not carry that once the entry itself is gone.
+                'modhiddentime' => 0,
+                'modhiddenby' => 0,
+                'modhiddenversionid' => null,
             ]);
 
             $transaction->allow_commit();

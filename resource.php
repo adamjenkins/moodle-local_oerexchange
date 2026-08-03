@@ -135,107 +135,20 @@ if ($action === 'report' && isloggedin() && !isguestuser()) {
     }
     \core\notification::success(get_string('reviewsubmitted', 'local_oerexchange'));
     redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
-} else if ($action === 'editthumbnail' && isloggedin() && !isguestuser()) {
+} else if ($action === 'star' && isloggedin() && !isguestuser()) {
+    // The no-JavaScript path for the star button. The AMD module intercepts
+    // the click and calls the web service instead, so this only runs when
+    // scripting is off — but it must exist, because a star is a plain link
+    // and a plain link has to go somewhere.
     require_login();
     require_sesskey();
-    // Shared with the display gate below (local_oerexchange\local\resource_manager::
-    // user_can_edit_resource() docblock) — final whole-branch review finding 5:
-    // this used to be a second, slightly-differently-guarded copy of the same
-    // ownership/moderator check.
-    if (!\local_oerexchange\local\resource_manager::user_can_edit_resource($resource, (int) $USER->id)) {
-        throw new moodle_exception('error_notyourresource', 'local_oerexchange');
+    // Starring is not editing: any logged-in user who may SEE a resource may
+    // star it, which is the gate applied here (and again in the web service).
+    if (!\local_oerexchange\local\resource_manager::user_can_view_resource($resource, (int) $USER->id)) {
+        throw new moodle_exception('error_notfound', 'local_oerexchange');
     }
-    $draftitemid = file_get_submitted_draft_itemid('thumbnail');
-    $fs = get_file_storage();
-    $usercontext = context_user::instance($USER->id);
-    // The upload form below (deliberately, see its comment) uses a plain
-    // <input type="file">, not Moodle's JS filepicker widget — the
-    // filepicker is what normally AJAX-uploads into the draft area named by
-    // file_get_submitted_draft_itemid() before this handler even runs.
-    // Without it, the draft area is empty and file_save_draft_area_files()
-    // below would silently no-op. Move the plain $_FILES upload into that
-    // same draft item ourselves first, replicating what the filepicker's
-    // AJAX endpoint (repository/draftfiles_ajax.php) does.
-    if (
-        !empty($_FILES['thumbnailfile']['tmp_name'])
-        && $_FILES['thumbnailfile']['error'] === UPLOAD_ERR_OK
-        && is_uploaded_file($_FILES['thumbnailfile']['tmp_name'])
-    ) {
-        // Discard whatever this draft item already held (e.g. a stale draft
-        // left over from an earlier abandoned edit) before adding the file
-        // just submitted, so the draft area holds exactly one file.
-        $fs->delete_area_files($usercontext->id, 'user', 'draft', $draftitemid);
-        $filename = clean_param($_FILES['thumbnailfile']['name'], PARAM_FILE);
-        if ($filename === '') {
-            $filename = 'thumbnail';
-        }
-        $fs->create_file_from_pathname([
-            'contextid' => $usercontext->id,
-            'component' => 'user',
-            'filearea' => 'draft',
-            'itemid' => $draftitemid,
-            'filepath' => '/',
-            'filename' => $filename,
-        ], $_FILES['thumbnailfile']['tmp_name']);
-    }
-    $draftfiles = $fs->get_area_files($usercontext->id, 'user', 'draft', $draftitemid, 'id', false);
-    if (empty($draftfiles)) {
-        throw new moodle_exception('error_thumbnailnofile', 'local_oerexchange');
-    }
-    $draftfile = reset($draftfiles);
-    // A plain <input type="file"> (see the upload form below) offers no
-    // client-side type filtering that can be trusted, and this filearea is
-    // served inline via local_oerexchange_pluginfile() (lib.php, Task 9) —
-    // an arbitrary uploaded file (e.g. .html/.svg) rendered inline from the
-    // Moodle origin would be a stored-XSS vector (in practice, defence in
-    // depth: core's send_file() already forces Content-Disposition:
-    // attachment for image/svg+xml regardless of this check, since
-    // local_oerexchange_pluginfile() never passes dontforcesvgdownload —
-    // see lib.php). Reject anything that isn't a raster image before it
-    // ever reaches the permanent 'coverimage' filearea, rather than
-    // trusting the draft-area file's extension alone.
-    //
-    // Deliberately an explicit allowlist, not a "starts with image/" prefix
-    // check: core maps a '.svg' filename to mimetype 'image/svg+xml', which
-    // begins with "image/" but is not a raster format, so a prefix check
-    // would not exclude it. Same allowlist as
-    // mbz_parser::is_allowed_cover_image_type() uses for the sibling
-    // cover-image-from-backup path.
-    $allowedthumbnailmimetypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-    if (!in_array((string) $draftfile->get_mimetype(), $allowedthumbnailmimetypes, true)) {
-        throw new moodle_exception('error_thumbnailnotanimage', 'local_oerexchange');
-    }
-    // Additional check alongside (not instead of) the mimetype allowlist
-    // above (MDL Shield round 2 audit finding 2, 2026-07-19): that check
-    // only trusts the mimetype core derived from the uploaded FILENAME's
-    // extension, so content renamed to e.g. 'cover.png' still passes it
-    // regardless of what it actually contains. getimagesizefromstring()
-    // sniffs the real bytes: it returns false for non-image content, and
-    // reports the ACTUAL detected type (its [2] element, an IMAGETYPE_*
-    // constant) regardless of the claimed extension/mimetype. Same
-    // accepted raster set as the allowlist above, kept consistent with
-    // mbz_parser::is_verified_raster_image()'s equivalent check.
-    $allowedrasterimagetypes = [IMAGETYPE_PNG, IMAGETYPE_JPEG, IMAGETYPE_GIF, IMAGETYPE_WEBP];
-    $thumbnailimageinfo = @getimagesizefromstring($draftfile->get_content());
-    if ($thumbnailimageinfo === false || !in_array($thumbnailimageinfo[2], $allowedrasterimagetypes, true)) {
-        throw new moodle_exception('error_thumbnailnotanimage', 'local_oerexchange');
-    }
-    // No admin setting for this (out of this task's scope); mirrors
-    // resource_manager::publish()'s maxbackupbytes pattern with a flat
-    // default sized for a thumbnail rather than a course backup.
-    $maxthumbnailbytes = 5 * 1024 * 1024;
-    if ($draftfile->get_filesize() > $maxthumbnailbytes) {
-        throw new moodle_exception('error_thumbnailtoolarge', 'local_oerexchange');
-    }
-    file_save_draft_area_files(
-        $draftitemid,
-        context_system::instance()->id,
-        'local_oerexchange',
-        'coverimage',
-        $resource->id,
-        ['subdirs' => 0, 'maxfiles' => 1, 'maxbytes' => $maxthumbnailbytes]
-    );
-    \core\notification::success(get_string('thumbnailuploaded', 'local_oerexchange'));
+    $wanted = !\local_oerexchange\local\star_manager::is_starred((int) $resource->id, (int) $USER->id);
+    \local_oerexchange\local\star_manager::set_starred((int) $resource->id, (int) $USER->id, $wanted);
     redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
 } else if (
     in_array(
@@ -501,9 +414,16 @@ if ($resource->forkedfromid) {
     }
 }
 
+// The description carries its own format now that authors can write it in a
+// rich-text editor. Existing rows were backfilled to FORMAT_HTML, which is
+// what every sink assumed before the column existed.
 echo html_writer::tag(
     'div',
-    format_text($resource->summary ?? '', FORMAT_HTML, ['context' => context_system::instance()]),
+    format_text(
+        $resource->summary ?? '',
+        (int) ($resource->summaryformat ?? FORMAT_HTML),
+        ['context' => context_system::instance()]
+    ),
     ['class' => 'mb-3']
 );
 
@@ -571,12 +491,12 @@ if ($coverfiles) {
 // visitor's $USER->id (0) would spuriously equal a tombstoned resource's
 // creatorid (also 0 - see the "Created by" comment above), showing this
 // upload form to a guest.
-$cancontrolthumbnail = isloggedin() && !isguestuser()
+$canedit = isloggedin() && !isguestuser()
     && \local_oerexchange\local\resource_manager::user_can_edit_resource($resource, (int) $USER->id);
 
 // Owner controls: visibility and deletion. Same gate, same caveat — the real
 // boundary is the action handler near the top of this file.
-if ($cancontrolthumbnail) {
+if ($canedit) {
     echo html_writer::start_tag('div', ['class' => 'card mb-3']);
     echo html_writer::start_tag('div', ['class' => 'card-body']);
     echo $OUTPUT->heading(get_string('ownercontrolsheading', 'local_oerexchange'), 5);
@@ -697,6 +617,17 @@ if ($cancontrolthumbnail) {
             ['class' => 'btn btn-outline-secondary btn-sm me-2']
         );
     }
+
+    // Edit the catalogue entry without touching the file — the counterpart of
+    // "Replace the file" below. The thumbnail lives on that page too: it used
+    // to be an inline multipart form here, which meant the one control that
+    // changed how a resource looks sat apart from the ones that change what it
+    // says.
+    echo html_writer::link(
+        new moodle_url('/local/oerexchange/edit_resource.php', ['id' => $id]),
+        get_string('editresource', 'local_oerexchange'),
+        ['class' => 'btn btn-outline-secondary btn-sm me-2']
+    );
 
     // Replace the file without touching the catalogue entry. Reuses whichever
     // upload page already knows how to validate this resource's file type,
@@ -843,37 +774,6 @@ if ($cancontrolthumbnail) {
     echo html_writer::end_tag('div');
 }
 
-if ($cancontrolthumbnail) {
-    $draftitemid = file_get_submitted_draft_itemid('thumbnail');
-    file_prepare_draft_area(
-        $draftitemid,
-        context_system::instance()->id,
-        'local_oerexchange',
-        'coverimage',
-        $resource->id,
-        ['subdirs' => 0, 'maxfiles' => 1]
-    );
-    echo html_writer::start_tag('form', [
-        'method' => 'post',
-        'action' => new moodle_url('/local/oerexchange/resource.php', ['id' => $id]),
-        'enctype' => 'multipart/form-data',
-        'class' => 'mb-3',
-    ]);
-    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'editthumbnail']);
-    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
-    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'thumbnail', 'value' => $draftitemid]);
-    echo html_writer::tag('label', get_string('thumbnailupload', 'local_oerexchange'));
-    echo html_writer::empty_tag('input', [
-        'type' => 'file', 'name' => 'thumbnailfile', 'class' => 'form-control mb-2', 'accept' => 'image/*',
-    ]);
-    echo html_writer::empty_tag('input', [
-        'type' => 'submit',
-        'value' => get_string('editthumbnail', 'local_oerexchange'),
-        'class' => 'btn btn-outline-secondary btn-sm',
-    ]);
-    echo html_writer::end_tag('form');
-}
-
 // Work out each required plugin's real trial status up front (used by both
 // the Try it warning below and the Required plugins list further down), in
 // three states rather than a boolean "in trial" — found live, 2026-07-19:
@@ -1003,6 +903,39 @@ echo \local_oerexchange\local\share_targets::render(
     $sharetitle,
     get_string('shareresource', 'local_oerexchange')
 );
+
+// Star. Rendered as a real link to this page's own 'star' action so it works
+// with scripting off; local_oerexchange/star intercepts the click and does it
+// over AJAX instead. Shown to anyone signed in — starring is a reader's act,
+// not an author's, so it is deliberately not behind the edit gate. Anonymous
+// visitors see the count without a control they cannot use.
+$starcount = \local_oerexchange\local\star_manager::star_count((int) $resource->id);
+if (isloggedin() && !isguestuser()) {
+    $isstarred = \local_oerexchange\local\star_manager::is_starred((int) $resource->id, (int) $USER->id);
+    echo html_writer::link(
+        new moodle_url(
+            '/local/oerexchange/resource.php',
+            ['id' => $id, 'action' => 'star', 'sesskey' => sesskey()]
+        ),
+        get_string($isstarred ? 'unstar' : 'star', 'local_oerexchange')
+            . ' (' . get_string('starcount', 'local_oerexchange', $starcount) . ')',
+        [
+            'class' => 'btn btn-sm ms-2 ' . ($isstarred ? 'btn-secondary' : 'btn-outline-secondary'),
+            'data-region' => 'oerexchange-star',
+            'data-starred' => $isstarred ? '1' : '0',
+            'role' => 'button',
+            'aria-pressed' => $isstarred ? 'true' : 'false',
+        ]
+    );
+    $PAGE->requires->js_call_amd('local_oerexchange/star', 'init', [(int) $resource->id]);
+} else if ($starcount > 0) {
+    echo html_writer::tag(
+        'span',
+        get_string('starcount', 'local_oerexchange', $starcount),
+        ['class' => 'ms-2 text-muted small']
+    );
+}
+
 echo html_writer::end_tag('div');
 
 // Required plugins.

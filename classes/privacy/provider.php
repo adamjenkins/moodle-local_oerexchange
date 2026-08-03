@@ -22,6 +22,7 @@ use core_privacy\local\request\approved_userlist;
 use core_privacy\local\request\contextlist;
 use core_privacy\local\request\userlist;
 use core_privacy\local\request\writer;
+use local_oerexchange\local\star_manager;
 
 /**
  * Privacy provider for local_oerexchange. All data lives under the system
@@ -75,7 +76,28 @@ class provider implements
             // Author-written free text shown publicly in place of the Try it
             // button, so it is the author's own words and belongs here.
             'trydisabledreason' => 'privacy:metadata:local_oerexchange_resources:trydisabledreason',
+            // Which moderator took a resource down. A local user id, so it is
+            // this moderator's personal data and is scrubbed to 0 on erasure
+            // the same way coauthors.addedby is.
+            'modhiddenby' => 'privacy:metadata:local_oerexchange_resources:modhiddenby',
         ], 'privacy:metadata:local_oerexchange_resources');
+
+        // A moderator's own working note about a held resource — their prose
+        // and their user id.
+        $collection->add_database_table('local_oerexchange_modnotes', [
+            'note' => 'privacy:metadata:local_oerexchange_modnotes:note',
+            'usermodified' => 'privacy:metadata:local_oerexchange_modnotes:usermodified',
+            'timemodified' => 'privacy:metadata:local_oerexchange_modnotes:timemodified',
+        ], 'privacy:metadata:local_oerexchange_modnotes');
+
+        // Starred resources are rows in core's favourites subsystem rather
+        // than a table of this plugin's own, so the subsystem's provider does
+        // the export and the deletions; this only declares the link.
+        $collection->add_subsystem_link(
+            'core_favourites',
+            [],
+            'privacy:metadata:core_favourites'
+        );
 
         // Who else holds editing rights over a resource, and who granted them.
         // Both columns are local user ids, so both are serviced below —
@@ -165,11 +187,22 @@ class provider implements
             || $DB->record_exists('local_oerexchange_badges', ['userid' => $userid])
             || $DB->record_exists('local_oerexchange_coauthors', ['userid' => $userid])
             || $DB->record_exists('local_oerexchange_coauthors', ['addedby' => $userid])
+            || $DB->record_exists('local_oerexchange_resources', ['modhiddenby' => $userid])
+            || $DB->record_exists('local_oerexchange_modnotes', ['usermodified' => $userid])
             || self::site_registration_ids($userid) !== [];
 
         if ($hasdata) {
             $contextlist->add_system_context();
         }
+
+        // Starred resources live in core's favourites subsystem, which knows
+        // its own contexts.
+        \core_favourites\privacy\provider::add_contexts_for_userid(
+            $contextlist,
+            $userid,
+            star_manager::COMPONENT,
+            star_manager::ITEMTYPE
+        );
 
         return $contextlist;
     }
@@ -197,6 +230,18 @@ class provider implements
                 $userlist->add_user($uid);
             }
         }
+
+        // The moderator columns, whose user-id column is not called 'userid'
+        // and so is not covered by the loop above.
+        foreach ($DB->get_fieldset_select('local_oerexchange_modnotes', 'DISTINCT usermodified', 'usermodified <> 0') as $uid) {
+            $userlist->add_user($uid);
+        }
+        foreach ($DB->get_fieldset_select('local_oerexchange_resources', 'DISTINCT modhiddenby', 'modhiddenby <> 0') as $uid) {
+            $userlist->add_user($uid);
+        }
+
+        // Anyone who has starred a resource.
+        \core_favourites\privacy\provider::add_userids_for_context($userlist, star_manager::ITEMTYPE);
         // Creatorid = 0 marks a tombstoned/anonymized resource
         // (profile_manager::delete_creator_resource()) — it is not a real
         // user id and must not appear in the userlist (final whole-branch
@@ -299,6 +344,7 @@ class provider implements
         $badges = $DB->get_records('local_oerexchange_badges', ['userid' => $userid]);
         $coauthored = $DB->get_records('local_oerexchange_coauthors', ['userid' => $userid]);
         $coauthorsadded = $DB->get_records('local_oerexchange_coauthors', ['addedby' => $userid]);
+        $modnotes = $DB->get_records('local_oerexchange_modnotes', ['usermodified' => $userid]);
         $siteids = self::site_registration_ids($userid);
         $sites = $siteids ? $DB->get_records_list('local_oerexchange_sites', 'id', $siteids) : [];
 
@@ -365,12 +411,45 @@ class provider implements
                 'status' => $r->status,
                 'timecreated' => \core_privacy\local\request\transform::datetime($r->timecreated),
             ], $sites)),
+            'moderatornotes' => array_values(array_map(fn($r) => [
+                'resourceid' => $r->resourceid,
+                'note' => $r->note,
+                'timemodified' => \core_privacy\local\request\transform::datetime($r->timemodified),
+            ], $modnotes)),
         ];
 
         writer::with_context(\context_system::instance())->export_data(
             [get_string('pluginname', 'local_oerexchange')],
             $data
         );
+
+        // Starred resources. The subsystem's helper RETURNS the row's export
+        // shape rather than writing it — writing is the consumer's job, which
+        // is how core_course uses it too — so each one is written under its
+        // own subcontext here.
+        // all_starred_ids(), not starred_resources(): the latter shows only
+        // published resources because it feeds a public page, and an export
+        // that dropped a star on a since-hidden resource would be an
+        // incomplete answer to a subject access request.
+        foreach (star_manager::all_starred_ids($userid) as $starredid) {
+            $favourite = \core_favourites\privacy\provider::get_favourites_info_for_user(
+                $userid,
+                \context_system::instance(),
+                star_manager::COMPONENT,
+                star_manager::ITEMTYPE,
+                $starredid
+            );
+            if ($favourite) {
+                writer::with_context(\context_system::instance())->export_data(
+                    [
+                        get_string('pluginname', 'local_oerexchange'),
+                        get_string('privacy:starredpath', 'local_oerexchange'),
+                        (string) $starredid,
+                    ],
+                    (object) $favourite
+                );
+            }
+        }
     }
 
     #[\Override]
@@ -409,6 +488,18 @@ class provider implements
         $DB->delete_records('local_oerexchange_imports');
         $DB->delete_records('local_oerexchange_trials');
         $DB->delete_records('local_oerexchange_linkcodes');
+        $DB->delete_records('local_oerexchange_modnotes');
+        // Which moderator held a resource is personal data about that
+        // moderator; the takedown itself (the status) is a record of the
+        // site's own decision and stays.
+        $DB->set_field_select('local_oerexchange_resources', 'modhiddenby', 0, 'modhiddenby <> 0');
+
+        // Everyone's stars, via the subsystem that owns them.
+        \core_favourites\privacy\provider::delete_favourites_for_all_users(
+            $context,
+            star_manager::COMPONENT,
+            star_manager::ITEMTYPE
+        );
 
         // Every registration contact, including the ones belonging to people
         // with no account here — this path is "erase everyone", and a contact
@@ -427,6 +518,15 @@ class provider implements
 
         $userid = $contextlist->get_user()->id;
         self::delete_for_userid($userid);
+
+        // Handled here rather than inside delete_for_userid() because the
+        // subsystem's helper needs the contextlist itself, which that shared
+        // routine does not receive.
+        \core_favourites\privacy\provider::delete_favourites_for_user(
+            $contextlist,
+            star_manager::COMPONENT,
+            star_manager::ITEMTYPE
+        );
     }
 
     #[\Override]
@@ -434,6 +534,13 @@ class provider implements
         foreach ($userlist->get_userids() as $userid) {
             self::delete_for_userid($userid);
         }
+
+        // Reads the component from the userlist itself, hence no component
+        // argument here.
+        \core_favourites\privacy\provider::delete_favourites_for_userlist(
+            $userlist,
+            star_manager::ITEMTYPE
+        );
     }
 
     /**
@@ -475,6 +582,13 @@ class provider implements
         $DB->delete_records('local_oerexchange_imports', ['userid' => $userid]);
         $DB->delete_records('local_oerexchange_trials', ['userid' => $userid]);
         $DB->delete_records('local_oerexchange_linkcodes', ['userid' => $userid]);
+
+        // Moderator traces. The note is this moderator's own prose, so it
+        // goes; the takedown record keeps the resource held (that is the
+        // site's decision, not the moderator's personal data) but stops naming
+        // them, the same scrub coauthors.addedby gets.
+        $DB->delete_records('local_oerexchange_modnotes', ['usermodified' => $userid]);
+        $DB->set_field('local_oerexchange_resources', 'modhiddenby', 0, ['modhiddenby' => $userid]);
 
         // Registrations naming this user as the contact keep their row (see
         // delete_data_for_all_users_in_context() for why severing a live

@@ -365,5 +365,61 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026080300, 'local', 'oerexchange');
     }
 
+    if ($oldversion < 2026080400) {
+        $table = new xmldb_table('local_oerexchange_resources');
+
+        // The description became a rich-text field editable after publication,
+        // so it needs to record its own format. FORMAT_HTML (1) is the right
+        // backfill rather than FORMAT_MOODLE: every existing output site
+        // already rendered this column as FORMAT_HTML before the column
+        // existed (resource.php, catalogue_view, block_oerexchangebrowse, and
+        // the client's resource_preview), so HTML is what the stored bytes
+        // already are. Backfilling FORMAT_MOODLE would convert their newlines
+        // a second time.
+        $field = new xmldb_field('summaryformat', XMLDB_TYPE_INTEGER, '2', null, XMLDB_NOTNULL, null, '1', 'summary');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Moderator takedowns recorded nothing but the status, so the new
+        // moderator report could not say when a resource was hidden, by whom,
+        // or whether it has changed since.
+        $field = new xmldb_field('modhiddentime', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'stalenotifiedtime');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        $field = new xmldb_field('modhiddenby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'modhiddentime');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        // Nullable on purpose: a takedown of a resource with no ready version
+        // has no anchor to record, and 0 would read as a real version id.
+        $field = new xmldb_field('modhiddenversionid', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'modhiddenby');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Resources already held by a moderator when this upgrade runs keep a
+        // modhiddentime of 0. That is correct and must not be faked with
+        // time(): the takedown time is genuinely unknown for them, and the
+        // report renders 0 as "not recorded" rather than claiming they were
+        // hidden the moment the site upgraded.
+
+        $table = new xmldb_table('local_oerexchange_modnotes');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('resourceid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('note', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('usermodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_key('resourceid', XMLDB_KEY_FOREIGN_UNIQUE, ['resourceid'], 'local_oerexchange_resources', ['id']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_plugin_savepoint(true, 2026080400, 'local', 'oerexchange');
+    }
+
     return true;
 }

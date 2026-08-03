@@ -291,122 +291,159 @@ class profile_controller {
         if (empty($resources)) {
             $out .= \html_writer::tag('p', get_string('profilenoresources', 'local_oerexchange'));
         } else {
-            // Cover-image thumbnail per card, using the exact same File API
-            // read + make_pluginfile_url() pattern resource.php's own
-            // detail-page display already uses for the identical
-            // component=local_oerexchange/filearea=coverimage/itemid=resourceid
-            // file (see resource.php's "Cover-image thumbnail" block) —
-            // established, already-reviewed, not reinvented here (final
-            // whole-branch review finding 4).
-            //
-            // resource.php has NO placeholder-icon fallback of its own: when
-            // a resource has no cover file, it simply renders no <img> tag
-            // at all (verified by reading resource.php in full, 2026-07-19 —
-            // there is no icon/placeholder asset or CSS anywhere in this
-            // plugin). Per this task's explicit "check this" instruction,
-            // that means there is no existing placeholder infrastructure to
-            // reuse, and adding new placeholder-icon infrastructure is out
-            // of scope — so a card with no cover image likewise renders no
-            // <img> tag, matching resource.php's real behaviour exactly
-            // rather than inventing something new.
-            $fs = get_file_storage();
-            $out .= \html_writer::start_tag('div', ['class' => 'row row-cols-1 row-cols-md-3 g-3']);
-            foreach ($resources as $r) {
-                $rurl = new \moodle_url('/local/oerexchange/resource.php', ['id' => $r->id]);
-                $out .= \html_writer::start_tag('div', ['class' => 'col']);
-                $out .= \html_writer::start_tag('div', ['class' => 'card h-100']);
+            $out .= self::render_resource_grid($resources);
+        }
 
-                $coverfiles = $fs->get_area_files(
-                    \context_system::instance()->id,
-                    'local_oerexchange',
-                    'coverimage',
-                    $r->id,
-                    'id',
-                    false
-                );
-                if ($coverfiles) {
-                    $coverfile = reset($coverfiles);
-                    $coverurl = \moodle_url::make_pluginfile_url(
-                        $coverfile->get_contextid(),
-                        'local_oerexchange',
-                        'coverimage',
-                        $r->id,
-                        '/',
-                        $coverfile->get_filename()
-                    );
-                    $out .= \html_writer::empty_tag('img', [
-                        'src' => $coverurl->out(false),
-                        // Filter, then decode back to plain text, and NO s().
-                        // The old s($r->title) was a double-escape: this value
-                        // ends up as an attribute, and html_writer::attribute()
-                        // already runs s() over every value it writes
-                        // (lib/classes/output/html_writer.php:113), so a
-                        // multilang title came out as visible, doubly-escaped
-                        // "&amp;lt;span lang=..." markup.
-                        //
-                        // format_string(..., 'escape' => false) is the obvious
-                        // attribute-context form and is what core uses for
-                        // group names (weblib.php), but it is not sufficient
-                        // here: it suppresses format_string's own ampersand
-                        // escaping and nothing else, so clean_text()/
-                        // HTMLPurifier still encodes a bare '&', and a title
-                        // stored with pre-encoded entities is untouched by it
-                        // either way. Both cases then get escaped a second
-                        // time by html_writer and render as a literal
-                        // "&amp;". html_entity_decode() after filtering is
-                        // correct for both, and matches the idiom
-                        // block_oerexchangequicklinks already uses for its
-                        // aria-labels.
-                        'alt' => get_string('thumbnailalt', 'local_oerexchange', html_entity_decode(
-                            format_string($r->title, true, ['context' => \context_system::instance()]),
-                            ENT_QUOTES,
-                            'UTF-8'
-                        )),
-                        'class' => 'card-img-top',
-                    ]);
-                }
-
-                $out .= \html_writer::start_tag('div', ['class' => 'card-body']);
-                $typestring = $r->type === 'activity'
-                    ? get_string('typeactivity', 'local_oerexchange')
-                    : get_string('typecourse', 'local_oerexchange');
-                $out .= \html_writer::tag('span', $typestring, ['class' => 'badge bg-secondary mb-1']);
-                if ($r->status === 'hidden') {
-                    // Only ever reachable by the profile's owner (see the
-                    // status filter above), so this doubles as the marker
-                    // telling them why a resource is missing from the
-                    // public catalogue.
-                    $out .= \html_writer::tag(
-                        'span',
-                        get_string('resourcestatus_hidden', 'local_oerexchange'),
-                        ['class' => 'badge bg-warning text-dark mb-1 ms-1']
-                    );
-                }
-                // Uses format_string(), not s(): a multilang span in a title must
-                // collapse to one language rather than show as literal
-                // markup, matching the title sink index.php:194 and
-                // resource.php already use. It is not additionally wrapped in
-                // s() — format_string() escapes bare ampersands and runs
-                // clean_text() itself (lib/classes/formatting.php:105-128),
-                // so an s() around it would double-escape.
-                $title = format_string($r->title, true, ['context' => \context_system::instance()]);
-                $out .= \html_writer::tag('h5', \html_writer::link($rurl, $title), ['class' => 'card-title']);
-                $out .= \html_writer::tag(
-                    'div',
-                    get_string('downloadcountlabel', 'local_oerexchange', $r->downloadcount),
-                    ['class' => 'small text-muted']
-                );
-                $out .= \html_writer::end_tag('div');
-                $out .= \html_writer::end_tag('div');
-                $out .= \html_writer::end_tag('div');
+        // The "Liked resources" section — what this educator has starred, shown only to
+        // people looking at a profile that has something on it. A profile with
+        // no shares of its own is not an educator profile yet, and listing
+        // someone's bookmarks under an otherwise empty page would make the
+        // page about their reading rather than their teaching.
+        //
+        // star_manager returns published resources only, which matters here:
+        // this page is world-readable, so a starred resource that has since
+        // been hidden or taken down must not be advertised by way of somebody
+        // else's bookmark.
+        if (!empty($resources)) {
+            $starred = \local_oerexchange\local\star_manager::starred_resources((int) $profile->userid);
+            if (!empty($starred)) {
+                $out .= $OUTPUT->heading(get_string('profilelikedheading', 'local_oerexchange'), 4);
+                $out .= self::render_resource_grid($starred);
             }
-            $out .= \html_writer::end_tag('div');
         }
 
         $out .= $OUTPUT->footer();
 
         $response->getBody()->write($out);
         return $response;
+    }
+
+    /**
+     * A responsive grid of resource cards.
+     *
+     * Extracted so the "Shared resources" and "Liked resources" sections are
+     * the same cards rather than two drifting copies — this page already had
+     * one badge bug that a second copy of the markup would have doubled.
+     *
+     * @param \stdClass[] $resources resources rows
+     * @return string HTML
+     */
+    protected static function render_resource_grid(array $resources): string {
+        $out = '';
+
+        // Cover-image thumbnail per card, using the exact same File API
+        // read + make_pluginfile_url() pattern resource.php's own
+        // detail-page display already uses for the identical
+        // component=local_oerexchange/filearea=coverimage/itemid=resourceid
+        // file (see resource.php's "Cover-image thumbnail" block) —
+        // established, already-reviewed, not reinvented here (final
+        // whole-branch review finding 4).
+        //
+        // resource.php has NO placeholder-icon fallback of its own: when
+        // a resource has no cover file, it simply renders no <img> tag
+        // at all (verified by reading resource.php in full, 2026-07-19 —
+        // there is no icon/placeholder asset or CSS anywhere in this
+        // plugin). Per this task's explicit "check this" instruction,
+        // that means there is no existing placeholder infrastructure to
+        // reuse, and adding new placeholder-icon infrastructure is out
+        // of scope — so a card with no cover image likewise renders no
+        // <img> tag, matching resource.php's real behaviour exactly
+        // rather than inventing something new.
+        $fs = get_file_storage();
+        $out .= \html_writer::start_tag('div', ['class' => 'row row-cols-1 row-cols-md-3 g-3']);
+        foreach ($resources as $r) {
+            $rurl = new \moodle_url('/local/oerexchange/resource.php', ['id' => $r->id]);
+            $out .= \html_writer::start_tag('div', ['class' => 'col']);
+            $out .= \html_writer::start_tag('div', ['class' => 'card h-100']);
+
+            $coverfiles = $fs->get_area_files(
+                \context_system::instance()->id,
+                'local_oerexchange',
+                'coverimage',
+                $r->id,
+                'id',
+                false
+            );
+            if ($coverfiles) {
+                $coverfile = reset($coverfiles);
+                $coverurl = \moodle_url::make_pluginfile_url(
+                    $coverfile->get_contextid(),
+                    'local_oerexchange',
+                    'coverimage',
+                    $r->id,
+                    '/',
+                    $coverfile->get_filename()
+                );
+                $out .= \html_writer::empty_tag('img', [
+                    'src' => $coverurl->out(false),
+                    // Filter, then decode back to plain text, and NO s().
+                    // The old s($r->title) was a double-escape: this value
+                    // ends up as an attribute, and html_writer::attribute()
+                    // already runs s() over every value it writes
+                    // (lib/classes/output/html_writer.php:113), so a
+                    // multilang title came out as visible, doubly-escaped
+                    // "&amp;lt;span lang=..." markup.
+                    //
+                    // format_string(..., 'escape' => false) is the obvious
+                    // attribute-context form and is what core uses for
+                    // group names (weblib.php), but it is not sufficient
+                    // here: it suppresses format_string's own ampersand
+                    // escaping and nothing else, so clean_text()/
+                    // HTMLPurifier still encodes a bare '&', and a title
+                    // stored with pre-encoded entities is untouched by it
+                    // either way. Both cases then get escaped a second
+                    // time by html_writer and render as a literal
+                    // "&amp;". html_entity_decode() after filtering is
+                    // correct for both, and matches the idiom
+                    // block_oerexchangequicklinks already uses for its
+                    // aria-labels.
+                    'alt' => get_string('thumbnailalt', 'local_oerexchange', html_entity_decode(
+                        format_string($r->title, true, ['context' => \context_system::instance()]),
+                        ENT_QUOTES,
+                        'UTF-8'
+                    )),
+                    'class' => 'card-img-top',
+                ]);
+            }
+
+            $out .= \html_writer::start_tag('div', ['class' => 'card-body']);
+            $out .= \html_writer::tag(
+                'span',
+                \local_oerexchange\local\resource_type::label($r),
+                ['class' => 'badge bg-secondary mb-1']
+            );
+            if ($r->status === 'hidden') {
+                // Only ever reachable by the profile's owner (see the
+                // status filter above), so this doubles as the marker
+                // telling them why a resource is missing from the
+                // public catalogue.
+                $out .= \html_writer::tag(
+                    'span',
+                    get_string('resourcestatus_hidden', 'local_oerexchange'),
+                    ['class' => 'badge bg-warning text-dark mb-1 ms-1']
+                );
+            }
+            // Uses format_string(), not s(): a multilang span in a title must
+            // collapse to one language rather than show as literal
+            // markup, matching the title sink index.php:194 and
+            // resource.php already use. It is not additionally wrapped in
+            // s() — format_string() escapes bare ampersands and runs
+            // clean_text() itself (lib/classes/formatting.php:105-128),
+            // so an s() around it would double-escape.
+            $title = format_string($r->title, true, ['context' => \context_system::instance()]);
+            $out .= \html_writer::tag('h5', \html_writer::link($rurl, $title), ['class' => 'card-title']);
+            $out .= \html_writer::tag(
+                'div',
+                get_string('downloadcountlabel', 'local_oerexchange', $r->downloadcount),
+                ['class' => 'small text-muted']
+            );
+            $out .= \html_writer::end_tag('div');
+            $out .= \html_writer::end_tag('div');
+            $out .= \html_writer::end_tag('div');
+        }
+        $out .= \html_writer::end_tag('div');
+
+        return $out;
     }
 
     /**
@@ -499,14 +536,32 @@ class profile_controller {
                 // Core lives with that because /user/profile.php honours
                 // $CFG->forceloginforprofiles; this page is deliberately
                 // public, so the same stored value would be published to the
-                // anonymous internet. clean_text() closes it for every field
-                // type, including third-party ones this plugin has never
+                // anonymous internet. The cleaning below closes it for every
+                // field type, including third-party ones this plugin has never
                 // seen, without dropping any: verified against the live
                 // bootstrap that it strips a javascript: href and an injected
                 // onmouseover while leaving a legitimate <a href="https://…">,
                 // a checkbox's "Yes" and a formatted date untouched. It is
                 // idempotent on the already-safe types.
-                'value' => clean_text($field->display_data(), FORMAT_HTML),
+                //
+                // format_text() rather than the bare clean_text() this used to
+                // call, because a bare clean_text() runs NO text filter, so a
+                // URL a user typed into a profile field stayed dead text while
+                // the same URL in their bio was auto-linked. The security
+                // property is unchanged: with no 'trusted' option format_text()
+                // resolves $clean to true (lib/classes/formatting.php:187-193)
+                // and its FORMAT_HTML branch calls the same clean_text()
+                // (:234-238). What it adds is 'originalformat' => FORMAT_HTML
+                // in the filter options (:219), which is exactly the signal
+                // filter_urltolink requires before it will act — it returns the
+                // text untouched when that key is absent, which is why
+                // format_string() (the path core's own display_data() uses)
+                // never auto-links either.
+                'value' => format_text(
+                    $field->display_data(),
+                    FORMAT_HTML,
+                    ['context' => \context_system::instance()]
+                ),
             ];
         }
 

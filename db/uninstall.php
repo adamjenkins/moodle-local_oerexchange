@@ -48,6 +48,13 @@ function xmldb_local_oerexchange_uninstall() {
     $fs->delete_area_files($contextid, 'local_oerexchange', 'allowlist');
     $fs->delete_area_files($contextid, 'local_oerexchange', 'coverimage');
 
+    // Stars are rows this plugin wrote into core's {favourite} table, so
+    // drop_plugin_tables() cannot see them: it drops local_oerexchange_*
+    // tables and nothing else, and these rows would survive the uninstall
+    // pointing at resource ids that no longer exist. Same reasoning as the
+    // external_tokens cleanup below.
+    $DB->delete_records('favourite', ['component' => 'local_oerexchange']);
+
     if ($DB->get_manager()->table_exists('local_oerexchange_sites')) {
         $sites = $DB->get_records_select(
             'local_oerexchange_sites',

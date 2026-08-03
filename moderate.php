@@ -58,7 +58,7 @@ if ($hideid && confirm_sesskey()) {
     // into the takedown/restore cycle, where Restore would "publish" a husk.
     $target = $DB->get_record('local_oerexchange_resources', ['id' => $hideid], 'id,status', MUST_EXIST);
     if (in_array($target->status, ['published', 'hidden', 'pending'], true)) {
-        $DB->set_field('local_oerexchange_resources', 'status', 'modhidden', ['id' => $hideid]);
+        \local_oerexchange\local\moderation_report::record_takedown((int) $target->id, 'modhidden');
     }
     redirect(new moodle_url('/local/oerexchange/moderate.php'));
 }
@@ -66,7 +66,7 @@ if ($removeid && confirm_sesskey()) {
     // Same status guard as the hide branch above.
     $target = $DB->get_record('local_oerexchange_resources', ['id' => $removeid], 'id,status', MUST_EXIST);
     if (in_array($target->status, ['published', 'hidden', 'pending'], true)) {
-        $DB->set_field('local_oerexchange_resources', 'status', 'removed', ['id' => $removeid]);
+        \local_oerexchange\local\moderation_report::record_takedown((int) $target->id, 'removed');
     }
     redirect(new moodle_url('/local/oerexchange/moderate.php'));
 }
@@ -87,6 +87,12 @@ if ($restoreid && confirm_sesskey()) {
             'id' => $target->id,
             'status' => 'published',
             'timemodified' => time(),
+            // Clear the takedown record: the resource is no longer held, so it
+            // must drop off the hidden-resources report rather than linger
+            // there with a stale "hidden since" date.
+            'modhiddentime' => 0,
+            'modhiddenby' => 0,
+            'modhiddenversionid' => null,
         ]);
         // A restore is a human judgment that the resource belongs back on
         // the catalogue, so it also winds the abandoned-courseware clock

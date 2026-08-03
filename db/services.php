@@ -84,6 +84,17 @@ $functions = [
         'loginrequired' => true,
     ],
 
+    // Same reasoning as get_publish_status above: the visitor's own browser,
+    // session-authenticated, never a client site over a token.
+    'local_oerexchange_set_resource_star' => [
+        'classname'   => 'local_oerexchange\external\set_resource_star',
+        'methodname'  => 'execute',
+        'description' => 'Star or unstar a resource as the calling user.',
+        'type'        => 'write',
+        'ajax'        => true,
+        'loginrequired' => true,
+    ],
+
     'local_oerexchange_get_config' => [
         'classname'   => 'local_oerexchange\external\get_config',
         'methodname'  => 'execute',

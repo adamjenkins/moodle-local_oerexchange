@@ -582,4 +582,43 @@ class resource_manager {
 
         return true;
     }
+
+    /**
+     * Change the descriptive metadata of an already-published resource.
+     *
+     * Until this existed a resource's title and description were frozen at
+     * upload: publish() applies its $metadata only when creating a resource,
+     * and the update branch deliberately ignores it so that replacing the file
+     * cannot quietly relabel an entry people have already reviewed. Editing is
+     * the author's own deliberate act, which is a different thing, so it gets
+     * its own writer.
+     *
+     * What is NOT changeable here, and why: `type`, `activitytype`,
+     * `dataresourcetype` and `courseformat` are read out of the uploaded
+     * package by parse_backup_task, so they describe the file rather than the
+     * author's intent, and `licenseshortname` is left out because it governs
+     * the terms under which people have already imported the material.
+     *
+     * Caller must have established the right to edit — user_can_edit_resource()
+     * is the one gate.
+     *
+     * @param int $resourceid
+     * @param array{title: string, summary: string, summaryformat: int, tags: string} $metadata
+     * @return void
+     */
+    public static function update_metadata(int $resourceid, array $metadata): void {
+        global $DB;
+
+        $DB->update_record('local_oerexchange_resources', (object) [
+            'id' => $resourceid,
+            'title' => $metadata['title'],
+            'summary' => $metadata['summary'],
+            'summaryformat' => $metadata['summaryformat'],
+            'tags' => $metadata['tags'],
+            // Metadata edits move timemodified, which is what the catalogue's
+            // "recently updated" ordering and the moderator report's
+            // change-detection both read.
+            'timemodified' => time(),
+        ]);
+    }
 }

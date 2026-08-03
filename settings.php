@@ -176,6 +176,39 @@ if ($hassiteconfig) {
         0
     ));
 
+    // A welcome/announcement area at the top of the catalogue. This is the
+    // plugin's first admin-authored HTML, and it follows core's own
+    // searchbanner pair (admin/settings/plugins.php: a checkbox beside the
+    // editor) rather than rendering whenever the content is non-empty. The
+    // checkbox is what lets an admin take the area down for a while without
+    // losing what they wrote.
+    $settings->add(new admin_setting_heading(
+        'local_oerexchange/catalogueintroheading',
+        get_string('settings_catalogueintroheading', 'local_oerexchange'),
+        get_string('settings_catalogueintroheading_desc', 'local_oerexchange')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_oerexchange/catalogueintroenabled',
+        get_string('settings_catalogueintroenabled', 'local_oerexchange'),
+        get_string('settings_catalogueintroenabled_desc', 'local_oerexchange'),
+        0
+    ));
+
+    // PARAM_RAW is required, not incidental: it is what lets the admin's
+    // markup survive being stored. It is made safe at the sink instead, where
+    // catalogue_view runs it through format_text() — the same treatment core
+    // gives $CFG->searchbanner.
+    $settings->add(new admin_setting_confightmleditor(
+        'local_oerexchange/catalogueintro',
+        get_string('settings_catalogueintro', 'local_oerexchange'),
+        get_string('settings_catalogueintro_desc', 'local_oerexchange'),
+        '',
+        PARAM_RAW,
+        60,
+        15
+    ));
+
     // Which destinations the "Share this resource" / "Share my profile"
     // disclosures offer. Every network target is a plain link to that
     // network's own share endpoint - no third-party script or SDK is ever
@@ -339,6 +372,13 @@ $ADMIN->add('local_oerexchange_category', new admin_externalpage(
     'local_oerexchange_moderate',
     get_string('moderatetitle', 'local_oerexchange'),
     new moodle_url('/local/oerexchange/moderate.php'),
+    'local/oerexchange:moderate'
+));
+
+$ADMIN->add('local_oerexchange_category', new admin_externalpage(
+    'local_oerexchange_moderatehidden',
+    get_string('hiddenreporttitle', 'local_oerexchange'),
+    new moodle_url('/local/oerexchange/moderate_hidden.php'),
     'local/oerexchange:moderate'
 ));
 

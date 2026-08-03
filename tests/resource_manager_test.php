@@ -698,4 +698,138 @@ final class resource_manager_test extends \advanced_testcase {
         $this->assertFalse(resource_manager::should_record_trial(1, null), 'a second anonymous hit is folded in');
         $this->assertTrue(resource_manager::should_record_trial(1, (int) $user->id), 'a logged-in viewer is unaffected');
     }
+
+    /**
+     * update_metadata() rewrites the descriptive fields and moves timemodified.
+     *
+     * @return void
+     */
+    public function test_update_metadata_rewrites_the_descriptive_fields(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        $id = $this->seed_editable_resource();
+        $before = $DB->get_record('local_oerexchange_resources', ['id' => $id], '*', MUST_EXIST);
+
+        resource_manager::update_metadata($id, [
+            'title' => 'A better title',
+            'summary' => '<p>Now with <strong>formatting</strong>.</p>',
+            'summaryformat' => FORMAT_HTML,
+            'tags' => 'biology,cells',
+        ]);
+
+        $after = $DB->get_record('local_oerexchange_resources', ['id' => $id], '*', MUST_EXIST);
+        $this->assertSame('A better title', $after->title);
+        $this->assertSame('<p>Now with <strong>formatting</strong>.</p>', $after->summary);
+        $this->assertSame((int) FORMAT_HTML, (int) $after->summaryformat);
+        $this->assertSame('biology,cells', $after->tags);
+        $this->assertGreaterThanOrEqual((int) $before->timemodified, (int) $after->timemodified);
+    }
+
+    /**
+     * update_metadata() must not touch the fields derived from the package.
+     *
+     * type/activitytype/courseformat describe the uploaded file rather than
+     * the author's intent, and licenseshortname governs the terms other people
+     * have already imported under — so the edit form does not offer them and
+     * this writer must not change them either.
+     *
+     * @return void
+     */
+    public function test_update_metadata_leaves_derived_and_licence_fields_alone(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        $id = $this->seed_editable_resource();
+
+        resource_manager::update_metadata($id, [
+            'title' => 'Renamed',
+            'summary' => '',
+            'summaryformat' => FORMAT_HTML,
+            'tags' => '',
+        ]);
+
+        $after = $DB->get_record('local_oerexchange_resources', ['id' => $id], '*', MUST_EXIST);
+        $this->assertSame('activity', $after->type);
+        $this->assertSame('quiz', $after->activitytype);
+        $this->assertSame('cc-4.0', $after->licenseshortname);
+        $this->assertSame('published', $after->status);
+    }
+
+    /**
+     * Every stored summary is HTML, whatever the editor submitted.
+     *
+     * Pins the normalisation edit_resource.php performs. The summary is read
+     * by block_oerexchangebrowse straight from this table and by client sites
+     * over a web service that carries no format field, and all of them treat
+     * it as HTML — so a Markdown summary would render correctly on the
+     * resource page and wrongly in three other places.
+     *
+     * @return void
+     */
+    public function test_stored_summaries_are_html(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        $id = $this->seed_editable_resource();
+
+        // What edit_resource.php does with a non-HTML submission.
+        $submitted = "A line\n\nAnother line";
+        $converted = format_text($submitted, FORMAT_MOODLE, [
+            'context' => \context_system::instance(),
+            'filter' => false,
+        ]);
+        resource_manager::update_metadata($id, [
+            'title' => 'Converted',
+            'summary' => $converted,
+            'summaryformat' => FORMAT_HTML,
+            'tags' => '',
+        ]);
+
+        $after = $DB->get_record('local_oerexchange_resources', ['id' => $id], '*', MUST_EXIST);
+        $this->assertSame((int) FORMAT_HTML, (int) $after->summaryformat);
+        // The paragraph break survived as markup rather than as a bare newline
+        // that an HTML reader would swallow.
+        $this->assertStringContainsString('<', $after->summary);
+        $this->assertStringNotContainsString("line\n\nAnother", $after->summary);
+    }
+
+    /**
+     * Insert one catalogue row that the metadata editor can act on.
+     *
+     * @return int the new resource's id
+     */
+    protected function seed_editable_resource(): int {
+        global $DB;
+
+        $now = time();
+
+        return (int) $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'activity',
+            'title' => 'Original title',
+            'summary' => 'Original summary',
+            'summaryformat' => FORMAT_HTML,
+            'language' => 'en',
+            'tags' => 'original',
+            'licenseshortname' => 'cc-4.0',
+            'activitytype' => 'quiz',
+            'dataresourcetype' => null,
+            'courseformat' => null,
+            'creatorid' => 0,
+            'siteid' => null,
+            'status' => 'published',
+            'downloadcount' => 0,
+            'importcount' => 0,
+            'forkedfromid' => null,
+            'trydisabled' => 0,
+            'trydisabledreason' => null,
+            'timeshared' => $now - 100,
+            'timemodified' => $now - 100,
+            'timefresh' => $now - 100,
+            'stalenotifiedtime' => 0,
+            'modhiddentime' => 0,
+            'modhiddenby' => 0,
+            'modhiddenversionid' => null,
+        ]);
+    }
 }

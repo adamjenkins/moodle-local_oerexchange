@@ -45,6 +45,113 @@ class cover_image {
     /** @var int Side in px of the square thumbnail in a block's list row. */
     const LIST_SIZE = 56;
 
+    /** @var int Largest cover image accepted, sized for a thumbnail rather than a course backup. */
+    const MAX_BYTES = 5 * 1024 * 1024;
+
+    /**
+     * Mimetypes a cover image may claim.
+     *
+     * An explicit allowlist, not a "starts with image/" prefix test: core maps
+     * a '.svg' filename to 'image/svg+xml', which begins with "image/" but is
+     * not a raster format, and this filearea is served inline. Kept in step
+     * with mbz_parser::is_allowed_cover_image_type(), which guards the sibling
+     * cover-image-from-backup path.
+     *
+     * @var string[]
+     */
+    const ALLOWED_MIMETYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+
+    /**
+     * Image types the actual bytes are allowed to be.
+     *
+     * @var int[]
+     */
+    const ALLOWED_IMAGE_TYPES = [IMAGETYPE_PNG, IMAGETYPE_JPEG, IMAGETYPE_GIF, IMAGETYPE_WEBP];
+
+    /**
+     * Validate a draft-area upload and make it a resource's cover image.
+     *
+     * The validation lives here rather than at the call site because this
+     * class already owns the storage contract, and because there are now two
+     * writers — the edit form and parse_backup_task's extraction from a
+     * backup. Two copies of "is this really a raster image" is how one of them
+     * ends up weaker than the other.
+     *
+     * Both checks are kept, deliberately, and neither replaces the other: the
+     * mimetype allowlist only trusts what core derived from the uploaded
+     * FILENAME, so content renamed to 'cover.png' passes it whatever it holds;
+     * getimagesizefromstring() sniffs the real bytes and reports the type it
+     * actually found. A file must satisfy both.
+     *
+     * The draft area is always synced to the permanent one, including when it
+     * is empty. That is not an oversight: the edit form prefills the picker
+     * with the current cover, so an empty draft area on submit means the author
+     * removed the image, and skipping the sync would silently ignore them.
+     *
+     * @param int $resourceid the resource whose cover this becomes
+     * @param int $draftitemid the submitted draft file area
+     * @return bool true if the resource now has a cover image, false if it was
+     *      removed or never had one
+     * @throws \moodle_exception if the file is not an acceptable image
+     */
+    public static function save_from_draft(int $resourceid, int $draftitemid): bool {
+        global $USER;
+
+        $fs = get_file_storage();
+        $usercontext = \context_user::instance((int) $USER->id);
+        $draftfiles = $fs->get_area_files($usercontext->id, 'user', 'draft', $draftitemid, 'id', false);
+
+        // Validate before saving, so a rejected file never reaches the
+        // permanent area even briefly.
+        if (!empty($draftfiles)) {
+            $draftfile = reset($draftfiles);
+
+            // Size FIRST, before anything reads the bytes. get_content()
+            // below pulls the whole file into memory, so checking size after
+            // it would let an author make the server buffer an arbitrarily
+            // large upload purely to reject it.
+            if ($draftfile->get_filesize() > self::MAX_BYTES) {
+                throw new \moodle_exception(
+                    'error_thumbnailtoolarge',
+                    'local_oerexchange',
+                    '',
+                    display_size(self::MAX_BYTES)
+                );
+            }
+            if (!in_array((string) $draftfile->get_mimetype(), self::ALLOWED_MIMETYPES, true)) {
+                throw new \moodle_exception('error_thumbnailnotanimage', 'local_oerexchange');
+            }
+            $imageinfo = @getimagesizefromstring($draftfile->get_content());
+            if ($imageinfo === false || !in_array($imageinfo[2], self::ALLOWED_IMAGE_TYPES, true)) {
+                throw new \moodle_exception('error_thumbnailnotanimage', 'local_oerexchange');
+            }
+        }
+
+        file_save_draft_area_files(
+            $draftitemid,
+            \context_system::instance()->id,
+            'local_oerexchange',
+            'coverimage',
+            $resourceid,
+            ['subdirs' => 0, 'maxfiles' => 1, 'maxbytes' => self::MAX_BYTES]
+        );
+
+        // Read the outcome back rather than reporting what was intended:
+        // file_save_draft_area_files() can decline to store anything (a draft
+        // area over the site limit returns early), and saying "true" then
+        // would claim a cover image that does not exist.
+        $saved = get_file_storage()->get_area_files(
+            \context_system::instance()->id,
+            'local_oerexchange',
+            'coverimage',
+            $resourceid,
+            'id',
+            false
+        );
+
+        return !empty($saved);
+    }
+
     /**
      * Cover-image URLs for many resources at once, in ONE query.
      *
