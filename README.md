@@ -23,6 +23,13 @@ plugin installed on their own Moodle sites.
   **or delete** — while a resource is held, its author and co-authors keep
   every other control but cannot remove it, so a complaint and the record of
   the takedown survive the person they are about. The queue can restore it.
+- **A standing list of what is held**: a moderator-only report
+  (`moderate_hidden.php`, linked from the moderation-queue block with a count)
+  lists every resource a moderator has taken down, recording when and by whom,
+  flagging whether the author has changed it since, and carrying a note per
+  resource that every moderator can read and edit. Resources removed
+  automatically as abandoned courseware are not listed — no moderator hid
+  them.
 - **No user data, and the author is told**: every uploaded backup is checked
   server-side for user data before it can be published — the backup's own
   recorded setting *and* an independent inspection of its `users.xml`, so a
@@ -35,6 +42,19 @@ plugin installed on their own Moodle sites.
   their own resources, and may decline sandbox availability with a reason.
   The Exchange serves exactly one version per resource — an update supersedes
   the previous one, keeping the catalogue entry, its link and its reviews.
+- **Editing what a resource says**: an **Edit details** button on the resource
+  page opens a form for its title, description, subject tags and thumbnail —
+  the counterpart of "Replace the file", which changes the package without
+  touching the entry. The description is a rich-text field. What the form
+  deliberately leaves out is the licence, because changing it would alter the
+  terms people have already imported under, and the type/activity/format
+  fields, which are read from the uploaded package rather than typed by
+  anyone. The thumbnail lives here too rather than on the resource page.
+- **Starring**: any signed-in visitor can star a resource. Starred resources
+  appear under **Liked resources** on that person's educator profile, provided
+  they have shared something themselves; only published resources are listed,
+  since profiles are public. Stars are stored in Moodle's own favourites
+  subsystem, so they are covered by core's privacy tooling.
 - **Co-authors**: an author can name further authors on anything they have
   shared, by username or email address, from the resource page. A co-author
   gets **the same rights as the creator** — replacing the file, the
@@ -94,6 +114,19 @@ Because `register.php` cannot authenticate its caller, it is bounded two
 ways: registering a URL that already has a pending row returns that row
 instead of adding another (so a client retrying is harmless), and new
 registrations site-wide are capped per hour, answering `429` beyond that.
+
+## A content area on the catalogue
+
+**Show a content area on the catalogue** (off by default) puts admin-authored
+HTML at the top of the Browse OER catalogue page — a welcome message, guidance
+for contributors, or an announcement. It is a checkbox plus an HTML editor,
+matching how core handles its own search banner: switching the checkbox off
+takes the area down without discarding what you wrote.
+
+The content is rendered by the catalogue itself, so it appears on every route
+to that listing — the plugin's own page, and both ways the catalogue can serve
+as the site home page (see below). It also shows on an empty catalogue, which
+is when a welcome message is most useful.
 
 ## Anonymous access
 

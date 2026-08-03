@@ -738,4 +738,175 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
 
         return $resource;
     }
+
+    /**
+     * The moderator-notes table and the favourites link are both declared.
+     *
+     * A declared-but-unserviced table is this plugin's most repeated
+     * compliance defect (this whole test file exists because of one), so a new
+     * table is declared here and serviced in the three tests below.
+     *
+     * @return void
+     */
+    public function test_get_metadata_declares_modnotes_and_favourites(): void {
+        $collection = provider::get_metadata(
+            new \core_privacy\local\metadata\collection('local_oerexchange')
+        );
+
+        $names = array_map(
+            fn($item) => method_exists($item, 'get_name') ? $item->get_name() : null,
+            $collection->get_collection()
+        );
+        $this->assertContains('local_oerexchange_modnotes', $names);
+        $this->assertContains('core_favourites', $names);
+    }
+
+    /**
+     * A moderator with only a note is discoverable, exported and deleted.
+     *
+     * @return void
+     */
+    public function test_moderator_note_is_discovered_exported_and_deleted(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        $moderator = $this->getDataGenerator()->create_user();
+        $resource = $this->seed_modhidden_resource();
+
+        $this->setUser($moderator);
+        \local_oerexchange\local\moderation_report::save_note(
+            (int) $resource->id,
+            'Waiting on the copyright holder. NOTE-PRIVACY-CHECK'
+        );
+
+        // Discovery.
+        $contextlist = provider::get_contexts_for_userid((int) $moderator->id);
+        $this->assertNotEmpty($contextlist->get_contextids());
+
+        $userlist = new userlist(\context_system::instance(), 'local_oerexchange');
+        provider::get_users_in_context($userlist);
+        $this->assertContains((int) $moderator->id, $userlist->get_userids());
+
+        // Export.
+        $approved = new approved_contextlist(
+            \core_user::get_user($moderator->id),
+            'local_oerexchange',
+            [\context_system::instance()->id]
+        );
+        provider::export_user_data($approved);
+        $data = writer::with_context(\context_system::instance())
+            ->get_data([get_string('pluginname', 'local_oerexchange')]);
+        $this->assertStringContainsString(
+            'NOTE-PRIVACY-CHECK',
+            json_encode($data),
+            'the moderator note was not present in the export'
+        );
+
+        // Deletion.
+        provider::delete_data_for_user($approved);
+        $this->assertSame(
+            0,
+            $DB->count_records('local_oerexchange_modnotes', ['usermodified' => $moderator->id])
+        );
+    }
+
+    /**
+     * Erasing a moderator clears their name off a takedown but keeps the hold.
+     *
+     * Who hid a resource is that moderator's personal data; that it is hidden
+     * is the site's own decision and must survive, or an erasure request would
+     * quietly republish material a moderator took down.
+     *
+     * @return void
+     */
+    public function test_erasing_a_moderator_keeps_the_takedown_but_drops_their_id(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        $moderator = $this->getDataGenerator()->create_user();
+        $resource = $this->seed_modhidden_resource();
+
+        $this->setUser($moderator);
+        \local_oerexchange\local\moderation_report::record_takedown((int) $resource->id, 'modhidden');
+
+        $approved = new approved_contextlist(
+            \core_user::get_user($moderator->id),
+            'local_oerexchange',
+            [\context_system::instance()->id]
+        );
+        provider::delete_data_for_user($approved);
+
+        $after = $DB->get_record('local_oerexchange_resources', ['id' => $resource->id], '*', MUST_EXIST);
+        $this->assertSame('modhidden', $after->status, 'the takedown must survive the erasure');
+        $this->assertSame(0, (int) $after->modhiddenby, 'the moderator must no longer be named');
+    }
+
+    /**
+     * A user's stars are discovered, exported and deleted with their data.
+     *
+     * @return void
+     */
+    public function test_stars_are_discovered_exported_and_deleted(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        $user = $this->getDataGenerator()->create_user();
+        $resource = $this->seed_modhidden_resource();
+        $DB->set_field('local_oerexchange_resources', 'status', 'published', ['id' => $resource->id]);
+
+        \local_oerexchange\local\star_manager::set_starred((int) $resource->id, (int) $user->id, true);
+        $this->assertSame(1, $DB->count_records('favourite', [
+            'component' => 'local_oerexchange',
+            'userid' => $user->id,
+        ]));
+
+        $contextlist = provider::get_contexts_for_userid((int) $user->id);
+        $this->assertNotEmpty(
+            $contextlist->get_contextids(),
+            'a user whose only data is a star was not discovered'
+        );
+
+        $approved = new approved_contextlist(
+            \core_user::get_user($user->id),
+            'local_oerexchange',
+            [\context_system::instance()->id]
+        );
+        provider::export_user_data($approved);
+        $exported = writer::with_context(\context_system::instance())->get_data([
+            get_string('pluginname', 'local_oerexchange'),
+            get_string('privacy:starredpath', 'local_oerexchange'),
+            (string) $resource->id,
+        ]);
+        $this->assertNotEmpty($exported, 'the star was not exported');
+
+        provider::delete_data_for_user($approved);
+        $this->assertSame(0, $DB->count_records('favourite', [
+            'component' => 'local_oerexchange',
+            'userid' => $user->id,
+        ]));
+    }
+
+    /**
+     * Insert one resource in the moderator-held state.
+     *
+     * @return \stdClass the resources row
+     */
+    protected function seed_modhidden_resource(): \stdClass {
+        global $DB;
+
+        $now = time();
+        $id = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'Held course', 'summary' => '',
+            'summaryformat' => FORMAT_HTML, 'language' => '', 'tags' => '',
+            'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            'dataresourcetype' => null, 'courseformat' => null, 'creatorid' => 0,
+            'siteid' => null, 'status' => 'modhidden', 'downloadcount' => 0,
+            'importcount' => 0, 'forkedfromid' => null, 'trydisabled' => 0,
+            'trydisabledreason' => null, 'timeshared' => $now, 'timemodified' => $now,
+            'timefresh' => $now, 'stalenotifiedtime' => 0,
+            'modhiddentime' => 0, 'modhiddenby' => 0, 'modhiddenversionid' => null,
+        ]);
+
+        return $DB->get_record('local_oerexchange_resources', ['id' => $id], '*', MUST_EXIST);
+    }
 }

@@ -118,6 +118,12 @@ foreach ($resources as $r) {
     // Who took it down and when. Both are unknown for a resource hidden
     // before this record existed, and the report says so rather than
     // rendering "1 January 1970".
+    //
+    // fullname() is wrapped in s() at both interpolation sites below: it
+    // returns the stored name unescaped, get_string() does not escape its
+    // placeholders, and html_writer::tag() does not escape its contents — so
+    // three functions in a row would each have assumed somebody else did it.
+    // Names arrive from LDAP, OAuth and CSV upload as well as the edit form.
     if (!empty($r->modhiddentime)) {
         $hiddenby = $r->modhiddenby
             ? $DB->get_record('user', ['id' => $r->modhiddenby], 'id, firstname, lastname')
@@ -127,7 +133,7 @@ foreach ($resources as $r) {
             'local_oerexchange',
             (object) [
                 'when' => userdate($r->modhiddentime),
-                'who' => $hiddenby ? fullname($hiddenby) : get_string('hiddenbyunknown', 'local_oerexchange'),
+                'who' => $hiddenby ? s(fullname($hiddenby)) : get_string('hiddenbyunknown', 'local_oerexchange'),
             ]
         ), ['class' => 'small text-muted mb-2']);
     } else {
@@ -166,7 +172,7 @@ foreach ($resources as $r) {
             'local_oerexchange',
             (object) [
                 'when' => userdate($r->modnotetime),
-                'who' => $noteby ? fullname($noteby) : get_string('hiddenbyunknown', 'local_oerexchange'),
+                'who' => $noteby ? s(fullname($noteby)) : get_string('hiddenbyunknown', 'local_oerexchange'),
             ]
         ), ['class' => 'small text-muted']);
     }
