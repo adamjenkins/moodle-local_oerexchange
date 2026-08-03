@@ -631,8 +631,15 @@ class resource_manager {
      * Caller must have established the right to edit — user_can_edit_resource()
      * is the one gate.
      *
+     * A shape-annotated array type is deliberately NOT used on $metadata.
+     * moodlecheck reads the token after the parameter tag as the type and the
+     * next one as the name, so any generic containing a space — `array{a: int}`
+     * or `array<string, mixed>` — leaves it seeing no parameter name and fails
+     * the phpdoc gate. Every other array parameter in this plugin is plain for
+     * the same reason; the shape belongs in prose, as below.
+     *
      * @param int $resourceid
-     * @param array{title: string, summary: string, summaryformat: int, tags: string} $metadata
+     * @param array $metadata keys: title, summary, summaryformat, tags
      * @return void
      */
     public static function update_metadata(int $resourceid, array $metadata): void {

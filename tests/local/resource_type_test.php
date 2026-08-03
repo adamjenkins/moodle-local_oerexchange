@@ -51,7 +51,7 @@ final class resource_type_test extends \advanced_testcase {
     /**
      * A resources row, defaulted so a caller sets only the columns it is about.
      *
-     * @param array<string, mixed> $overrides Column values replacing the defaults.
+     * @param array $overrides Column values replacing the defaults.
      * @return \stdClass The inserted row, read back from the database.
      */
     protected function make_resource(array $overrides = []): \stdClass {
