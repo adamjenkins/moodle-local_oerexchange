@@ -74,33 +74,15 @@ if ($restoreid && confirm_sesskey()) {
     // Until this existed, a moderator hide/remove was a one-way door: nothing
     // in this page could reverse it, and the only thing that ever did was the
     // author-unhide defect the 'modhidden' split above closes.
-    $target = $DB->get_record('local_oerexchange_resources', ['id' => $restoreid], 'id,status', MUST_EXIST);
-    if (
-        in_array($target->status, ['modhidden', 'removed'], true)
-            && !\local_oerexchange\local\resource_manager::get_current_version((int) $target->id)
-    ) {
-        // Publishing a resource with nothing servable would list a husk in
-        // the catalogue; say so instead of silently "restoring" it.
-        \core\notification::warning(get_string('error_restorenoversion', 'local_oerexchange'));
-    } else if (in_array($target->status, ['modhidden', 'removed'], true)) {
-        $DB->update_record('local_oerexchange_resources', (object) [
-            'id' => $target->id,
-            'status' => 'published',
-            'timemodified' => time(),
-            // Clear the takedown record: the resource is no longer held, so it
-            // must drop off the hidden-resources report rather than linger
-            // there with a stale "hidden since" date.
-            'modhiddentime' => 0,
-            'modhiddenby' => 0,
-            'modhiddenversionid' => null,
-        ]);
-        // A restore is a human judgment that the resource belongs back on
-        // the catalogue, so it also winds the abandoned-courseware clock
-        // forward — otherwise a resource the janitor removed would come back
-        // still carrying its expired grace clock and be removed again on the
-        // next cron run.
-        \local_oerexchange\local\stale_manager::mark_fresh($target);
-        \core\notification::success(get_string('resourcerestored', 'local_oerexchange'));
+    $target = $DB->get_record('local_oerexchange_resources', ['id' => $restoreid], '*', MUST_EXIST);
+    if (in_array($target->status, \local_oerexchange\local\resource_manager::MODERATOR_HELD_STATUSES, true)) {
+        if (\local_oerexchange\local\moderation_report::restore($target)) {
+            \core\notification::success(get_string('resourcerestored', 'local_oerexchange'));
+        } else {
+            // Publishing a resource with nothing servable would list a husk in
+            // the catalogue; say so instead of silently "restoring" it.
+            \core\notification::warning(get_string('error_restorenoversion', 'local_oerexchange'));
+        }
     }
     redirect(new moodle_url('/local/oerexchange/moderate.php'));
 }

@@ -56,6 +56,47 @@ class moderation_report {
     }
 
     /**
+     * Lift a takedown and put the resource back in the catalogue.
+     *
+     * Shared by moderate.php and the resource page so the two cannot drift.
+     * A resource with nothing servable is refused rather than "restored" into
+     * the catalogue as a husk.
+     *
+     * @param \stdClass $resource a resources row
+     * @return bool true if it was restored, false if it has no ready version
+     */
+    public static function restore(\stdClass $resource): bool {
+        global $DB;
+
+        if (!in_array($resource->status, resource_manager::MODERATOR_HELD_STATUSES, true)) {
+            return false;
+        }
+        if (!resource_manager::get_current_version((int) $resource->id)) {
+            return false;
+        }
+
+        $DB->update_record('local_oerexchange_resources', (object) [
+            'id' => $resource->id,
+            'status' => 'published',
+            'timemodified' => time(),
+            // The takedown record goes with the takedown, so the resource
+            // drops off the report rather than lingering with a stale
+            // "hidden since" date.
+            'modhiddentime' => 0,
+            'modhiddenby' => 0,
+            'modhiddenversionid' => null,
+        ]);
+
+        // A restore is a judgment that the resource belongs back in the
+        // catalogue, so it also winds the abandoned-courseware clock forward —
+        // otherwise a resource the janitor removed returns still carrying its
+        // expired grace clock and is removed again on the next cron run.
+        stale_manager::mark_fresh($resource);
+
+        return true;
+    }
+
+    /**
      * How many resources a moderator is currently holding.
      *
      * Counts 'modhidden' only. 'removed' is deliberately excluded: the

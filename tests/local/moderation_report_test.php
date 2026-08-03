@@ -456,4 +456,152 @@ final class moderation_report_test extends \advanced_testcase {
 
         $this->assertNull($rows[2]->changedsincehidden, 'no takedown time means unknown, not changed');
     }
+
+    /**
+     * An author's own Hide is not a takedown and stays off the report.
+     *
+     * This is the distinction a moderator walked into on the live site: they
+     * pressed Hide on the resource page — which moderators could see, because
+     * the edit gate grants them every author control — and the resource never
+     * appeared on the report, because no takedown had happened.
+     *
+     * @return void
+     */
+    public function test_an_author_hide_is_not_a_takedown(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        $author = $this->getDataGenerator()->create_user();
+        $resource = $this->make_resource(['creatorid' => $author->id, 'status' => 'published']);
+
+        $this->setUser($author);
+        $this->assertTrue(resource_manager::set_hidden($resource, true));
+
+        $after = $DB->get_record('local_oerexchange_resources', ['id' => $resource->id], '*', MUST_EXIST);
+        $this->assertSame('hidden', $after->status);
+        $this->assertSame(0, (int) $after->modhiddentime, 'an author hide must not write a takedown record');
+        $this->assertSame(0, moderation_report::hidden_count());
+    }
+
+    /**
+     * A moderator who is not an author cannot use the author's hide switch.
+     *
+     * The defect this pins is worse than a missing button: because the edit
+     * gate admits moderators, a moderator hiding somebody else's resource
+     * wrote the AUTHOR's 'hidden' status — which that author could then simply
+     * switch back, and which no report listed. The takedown/author-hide split
+     * exists precisely so an author cannot undo a moderator.
+     *
+     * @return void
+     */
+    public function test_a_moderator_who_is_not_an_author_is_not_an_author(): void {
+        $this->resetAfterTest();
+
+        $author = $this->getDataGenerator()->create_user();
+        $moderator = $this->getDataGenerator()->create_user();
+        $roleid = $this->getDataGenerator()->create_role();
+        assign_capability(
+            'local/oerexchange:moderate',
+            CAP_ALLOW,
+            $roleid,
+            \context_system::instance()->id
+        );
+        role_assign($roleid, $moderator->id, \context_system::instance()->id);
+
+        $resource = $this->make_resource(['creatorid' => $author->id, 'status' => 'published']);
+
+        // The edit gate admits them — that is what made the button appear.
+        $this->assertTrue(
+            resource_manager::user_can_edit_resource($resource, (int) $moderator->id),
+            'a moderator still holds the edit gate, which is what this bug rode in on'
+        );
+        // Authorship does not, which is what the hide/show switch now requires.
+        $this->assertFalse(
+            resource_manager::user_is_author($resource, (int) $moderator->id),
+            'a moderator who is not creator or co-author must not count as an author'
+        );
+        $this->assertTrue(resource_manager::user_is_author($resource, (int) $author->id));
+    }
+
+    /**
+     * A takedown of an author-hidden resource reaches the report, and sticks.
+     *
+     * @return void
+     */
+    public function test_a_takedown_reaches_the_report_and_the_author_cannot_lift_it(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        $author = $this->getDataGenerator()->create_user();
+        $moderator = $this->getDataGenerator()->create_user();
+        $resource = $this->make_resource(['creatorid' => $author->id, 'status' => 'hidden']);
+
+        $this->setUser($moderator);
+        moderation_report::record_takedown((int) $resource->id, 'modhidden');
+
+        $after = $DB->get_record('local_oerexchange_resources', ['id' => $resource->id], '*', MUST_EXIST);
+        $this->assertSame('modhidden', $after->status);
+        $this->assertSame((int) $moderator->id, (int) $after->modhiddenby);
+        $this->assertSame(1, moderation_report::hidden_count());
+
+        // The set_hidden() helper only ever flips published <-> hidden, so it refuses a
+        // moderator-held row: the author cannot undo the takedown.
+        $this->setUser($author);
+        $this->assertFalse(resource_manager::set_hidden($after, false));
+        $this->assertSame(
+            'modhidden',
+            $DB->get_field('local_oerexchange_resources', 'status', ['id' => $resource->id])
+        );
+    }
+
+    /**
+     * restore() lifts a takedown and clears the record off the report.
+     *
+     * @return void
+     */
+    public function test_restore_lifts_a_takedown_and_clears_the_record(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        $moderator = $this->getDataGenerator()->create_user();
+        $resource = $this->make_resource(['status' => 'published']);
+        $this->make_version((int) $resource->id);
+
+        $this->setUser($moderator);
+        moderation_report::record_takedown((int) $resource->id, 'modhidden');
+        $held = $DB->get_record('local_oerexchange_resources', ['id' => $resource->id], '*', MUST_EXIST);
+
+        $this->assertTrue(moderation_report::restore($held));
+
+        $after = $DB->get_record('local_oerexchange_resources', ['id' => $resource->id], '*', MUST_EXIST);
+        $this->assertSame('published', $after->status);
+        $this->assertSame(0, (int) $after->modhiddentime);
+        $this->assertSame(0, (int) $after->modhiddenby);
+        $this->assertNull($after->modhiddenversionid);
+        $this->assertSame(0, moderation_report::hidden_count());
+    }
+
+    /**
+     * restore() refuses a resource with nothing servable.
+     *
+     * @return void
+     */
+    public function test_restore_refuses_a_resource_with_no_ready_version(): void {
+        $this->resetAfterTest();
+        global $DB;
+
+        $moderator = $this->getDataGenerator()->create_user();
+        $resource = $this->make_resource(['status' => 'published']);
+
+        $this->setUser($moderator);
+        moderation_report::record_takedown((int) $resource->id, 'modhidden');
+        $held = $DB->get_record('local_oerexchange_resources', ['id' => $resource->id], '*', MUST_EXIST);
+
+        $this->assertFalse(moderation_report::restore($held));
+        $this->assertSame(
+            'modhidden',
+            $DB->get_field('local_oerexchange_resources', 'status', ['id' => $resource->id]),
+            'a resource with nothing to serve must stay held rather than be published as a husk'
+        );
+    }
 }

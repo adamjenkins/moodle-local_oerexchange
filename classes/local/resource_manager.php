@@ -324,6 +324,35 @@ class resource_manager {
     }
 
     /**
+     * Whether a user is an AUTHOR of a resource — creator or co-author.
+     *
+     * Deliberately without user_can_edit_resource()'s moderator fallback, and
+     * needed precisely where that fallback is wrong: the author's own
+     * hide/show switch.
+     *
+     * A moderator holds every author control, so before this existed a
+     * moderator pressing Hide on somebody else's resource wrote the AUTHOR's
+     * 'hidden' status — which that author could then simply switch back, and
+     * which no moderation report listed. The takedown/author-hide split exists
+     * exactly to stop an author undoing a moderator (see moderate.php), and
+     * that button was quietly bypassing it.
+     *
+     * @param \stdClass $resource a resources row
+     * @param int $userid
+     * @return bool
+     */
+    public static function user_is_author(\stdClass $resource, int $userid): bool {
+        if (!$userid) {
+            return false;
+        }
+        if ((int) $resource->creatorid === $userid) {
+            return true;
+        }
+
+        return coauthor_manager::is_coauthor((int) ($resource->id ?? 0), $userid);
+    }
+
+    /**
      * Whether $userid may edit a resource — the resource's creator, one of its
      * co-authors, or anyone holding local/oerexchange:moderate.
      *

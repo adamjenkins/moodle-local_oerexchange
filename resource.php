@@ -135,6 +135,36 @@ if ($action === 'report' && isloggedin() && !isguestuser()) {
     }
     \core\notification::success(get_string('reviewsubmitted', 'local_oerexchange'));
     redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
+} else if (in_array($action, ['modhide', 'modrestore'], true) && isloggedin() && !isguestuser()) {
+    // A moderator taking a resource down, or putting it back.
+    //
+    // Deliberately NOT the author's Hide button, and deliberately not gated on
+    // user_can_edit_resource(): that helper grants a moderator every AUTHOR
+    // control, so a moderator pressing Hide writes the author's own 'hidden'
+    // status, which the author can lift again and which no moderation report
+    // lists. A takedown is a different act and needs the capability itself.
+    //
+    // Until this existed, the only takedown link in the plugin sat on an
+    // open-report row in moderate.php, so a resource nobody had reported could
+    // not be taken down at all.
+    require_login();
+    require_sesskey();
+    require_capability('local/oerexchange:moderate', context_system::instance());
+
+    if ($action === 'modhide') {
+        if (in_array($resource->status, ['published', 'hidden', 'pending'], true)) {
+            \local_oerexchange\local\moderation_report::record_takedown((int) $resource->id, 'modhidden');
+            \core\notification::success(get_string('modtakendown', 'local_oerexchange'));
+        } else {
+            \core\notification::warning(get_string('error_modhidewrongstatus', 'local_oerexchange'));
+        }
+    } else if (\local_oerexchange\local\moderation_report::restore($resource)) {
+        \core\notification::success(get_string('resourcerestored', 'local_oerexchange'));
+    } else {
+        \core\notification::warning(get_string('error_restorenoversion', 'local_oerexchange'));
+    }
+
+    redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
 } else if ($action === 'star' && isloggedin() && !isguestuser()) {
     // The no-JavaScript path for the star button. The AMD module intercepts
     // the click and calls the web service instead, so this only runs when
@@ -163,6 +193,19 @@ if ($action === 'report' && isloggedin() && !isguestuser()) {
     // Same ownership/moderator gate the thumbnail editor and the owner
     // controls below use — never a second, subtly different copy of it.
     if (!\local_oerexchange\local\resource_manager::user_can_edit_resource($resource, (int) $USER->id)) {
+        throw new moodle_exception('error_notyourresource', 'local_oerexchange');
+    }
+
+    // ...with one exception, enforced here rather than only in the markup.
+    // The author's visibility switch needs AUTHORSHIP, not the edit gate,
+    // because the edit gate also admits moderators — and a moderator flipping
+    // somebody else's resource to the author's 'hidden' status produced a
+    // takedown the author could simply switch back, and that no moderation
+    // report listed. Moderators have their own Take down control above.
+    if (
+        in_array($action, ['hide', 'unhide'], true)
+        && !\local_oerexchange\local\resource_manager::user_is_author($resource, (int) $USER->id)
+    ) {
         throw new moodle_exception('error_notyourresource', 'local_oerexchange');
     }
 
@@ -494,6 +537,65 @@ if ($coverfiles) {
 $canedit = isloggedin() && !isguestuser()
     && \local_oerexchange\local\resource_manager::user_can_edit_resource($resource, (int) $USER->id);
 
+// Authorship WITHOUT the moderator fallback — see user_is_author(). Only an
+// author gets the author's own hide/show switch.
+$isauthor = isloggedin() && !isguestuser()
+    && \local_oerexchange\local\resource_manager::user_is_author($resource, (int) $USER->id);
+
+// Moderator controls, in a card of their own ABOVE the author controls.
+//
+// Separate on purpose. A moderator holds every author control as well, so the
+// author's Hide button is right there — and pressing it writes the author's
+// own 'hidden' status, which the author can lift again and which the
+// hidden-resources report does not list, because no moderator takedown
+// happened. Two acts that look identical and mean different things need two
+// visibly different controls, each saying which one it is.
+$canmoderate = isloggedin() && !isguestuser()
+    && has_capability('local/oerexchange:moderate', context_system::instance());
+
+if ($canmoderate) {
+    $isheld = in_array(
+        $resource->status,
+        \local_oerexchange\local\resource_manager::MODERATOR_HELD_STATUSES,
+        true
+    );
+
+    echo html_writer::start_tag('div', ['class' => 'card mb-3 border-warning']);
+    echo html_writer::start_tag('div', ['class' => 'card-body']);
+    echo $OUTPUT->heading(get_string('modcontrolsheading', 'local_oerexchange'), 5);
+
+    if ($isheld) {
+        echo html_writer::tag('p', get_string('modcontrolsheld', 'local_oerexchange'), ['class' => 'mb-2']);
+        echo html_writer::link(
+            new moodle_url(
+                '/local/oerexchange/resource.php',
+                ['id' => $id, 'action' => 'modrestore', 'sesskey' => sesskey()]
+            ),
+            get_string('modrestore', 'local_oerexchange'),
+            ['class' => 'btn btn-outline-success btn-sm me-2']
+        );
+    } else {
+        echo html_writer::tag('p', get_string('modcontrolsintro', 'local_oerexchange'), ['class' => 'mb-2']);
+        echo html_writer::link(
+            new moodle_url(
+                '/local/oerexchange/resource.php',
+                ['id' => $id, 'action' => 'modhide', 'sesskey' => sesskey()]
+            ),
+            get_string('modtakedown', 'local_oerexchange'),
+            ['class' => 'btn btn-outline-danger btn-sm me-2']
+        );
+    }
+
+    echo html_writer::link(
+        new moodle_url('/local/oerexchange/moderate_hidden.php'),
+        get_string('hiddenreporttitle', 'local_oerexchange'),
+        ['class' => 'btn btn-outline-secondary btn-sm']
+    );
+
+    echo html_writer::end_tag('div');
+    echo html_writer::end_tag('div');
+}
+
 // Owner controls: visibility and deletion. Same gate, same caveat — the real
 // boundary is the action handler near the top of this file.
 if ($canedit) {
@@ -605,7 +707,11 @@ if ($canedit) {
         echo html_writer::end_tag('div');
     }
 
-    if (in_array($resource->status, ['published', 'hidden'], true)) {
+    // Authors only — a moderator who is not an author gets Take down in the
+    // moderator card above instead. Showing both here would offer two buttons
+    // that look the same and mean different things, and the one a moderator
+    // would reach for first was the weaker of the two.
+    if ($isauthor && in_array($resource->status, ['published', 'hidden'], true)) {
         $ishidden = ($resource->status === 'hidden');
         echo html_writer::link(
             new moodle_url('/local/oerexchange/resource.php', [
