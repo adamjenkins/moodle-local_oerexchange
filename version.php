@@ -33,9 +33,15 @@ $plugin->component = 'local_oerexchange';
 // AMD module whose cached revision is keyed on this number, and for the
 // catalogueintro settings, since admin_apply_default_settings() only writes a
 // new setting's default during an upgrade.
-// $plugin->release is deliberately NOT moved: a release is the user's call
-// (CLAUDE.md), and a schema change must not drag the semantic version with it.
-$plugin->version   = 2026080400;
+//
+// The serial reads 20260804 rather than today's 20260803 only because it must
+// be strictly greater than the previous one, and the sequence was already
+// running a day ahead of the calendar before this release (1.0.6 shipped as
+// 2026080302 on 2026-08-02). Strictly-increasing is the property Moodle's
+// upgrade check actually uses; the date part is a convention, and correcting
+// it downwards would break upgrades on any site already carrying the higher
+// number.
+$plugin->version   = 2026080401;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass
@@ -45,5 +51,5 @@ $plugin->version   = 2026080400;
 // earlier off-by-one estimate of nine.
 $plugin->requires  = 2025041400;
 $plugin->supported = [500, 502];
-$plugin->release   = '1.0.6';
+$plugin->release   = '1.0.7';
 $plugin->maturity  = MATURITY_STABLE;

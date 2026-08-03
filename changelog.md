@@ -3,6 +3,91 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.0.7] - 2026-08-03
+
+### Added
+
+- Authors and co-authors can edit a shared resource's details — new
+  `edit_resource.php` plus `\local_oerexchange\form\edit_resource_form`,
+  reached from an "Edit details" button beside "Replace the file". Covers
+  title, description, subject tags and the thumbnail. Licence is deliberately
+  excluded (it governs the terms people have already imported under), as are
+  type/activitytype/courseformat (read from the package by `parse_backup_task`,
+  not typed by anyone).
+- The description is a rich-text field, backed by a new
+  `resources.summaryformat` column backfilled to `FORMAT_HTML`. It is
+  normalised back to HTML on save: the summary is also read by
+  `block_oerexchangebrowse` straight from the table and by client sites over a
+  service that carries no format field, so a non-HTML format would render
+  correctly on the resource page and wrongly in three other places.
+- Starring, on top of core's favourites subsystem (component
+  `local_oerexchange`, itemtype `resource`, system context) rather than a new
+  table — it brings its own unique index, so a double-click cannot double
+  insert, and its own privacy provider. New AJAX-only external function
+  `local_oerexchange_set_resource_star` and AMD module
+  `local_oerexchange/star`, with a plain-link fallback that works without
+  JavaScript. Starred resources appear under "Liked resources" on the
+  starrer's educator profile, published resources only, since that page is
+  world-readable.
+- Moderator-only report of held resources (`moderate_hidden.php`), registered
+  as an `admin_externalpage` gated on `local/oerexchange:moderate` and linked
+  from `block_oerexchangemodqueue` with a count. New
+  `resources.modhiddentime`, `modhiddenby` and `modhiddenversionid` columns
+  record each takedown, and a new `local_oerexchange_modnotes` table holds one
+  shared note per resource. Change detection anchors on the served version id
+  rather than `timemodified`, which neither moves for a cover-image or
+  co-author edit nor stays put for a hide.
+- Moderator "Take down" and "Restore" controls on the resource page. The only
+  takedown link previously sat on an open-report row, so a resource nobody had
+  reported could not be taken down at all.
+- Admin-editable content area at the top of the catalogue — a
+  `catalogueintroenabled` checkbox plus a `catalogueintro` HTML editor,
+  matching core's own `searchbanner` pair. Rendered inside
+  `catalogue_view::render()`, so it reaches the plugin's own page and both
+  site-home paths.
+
+### Fixed
+
+- **A moderator hiding somebody else's resource wrote the AUTHOR's `hidden`
+  status**, which that author could switch straight back and which no
+  moderation report listed. `user_can_edit_resource()` grants moderators every
+  author control, including the author's own visibility switch, so the
+  `modhidden`/`hidden` split that exists to stop an author undoing a moderator
+  was being bypassed by that button. The hide/show action now requires the new
+  `resource_manager::user_is_author()` (creator or co-author, without the
+  moderator fallback), enforced in the action handler rather than only in the
+  markup.
+- The resource-type badge on an educator profile was a two-way ternary over a
+  three-value column, so every `data` resource — and anything added later —
+  was labelled "Course". One definition now, `resource_type::label()`, shared
+  with the catalogue.
+- Public custom profile fields ran through a bare `clean_text()`, which escapes
+  but applies no text filter, so a URL in a profile field stayed dead text
+  while the same URL in a bio was auto-linked. Now `format_text()`, which
+  supplies the `originalformat` option `filter_urltolink` requires. Cleaning is
+  unchanged, so the `javascript:`-href protection is intact and separately
+  tested.
+- Moderator names on the held-resources report are escaped at the sink:
+  `fullname()` returns the stored name raw, `get_string()` does not escape
+  placeholders and `html_writer::tag()` does not escape contents.
+- `cover_image::save_from_draft()` checks the file size before reading the
+  bytes, and reports whether a cover image actually exists afterwards rather
+  than what was intended.
+- `local_oerexchange_set_resource_star` refuses an unknown resource id and an
+  unviewable one identically, so the refusal cannot be used to probe which ids
+  exist.
+- Two `@param` docblocks used shape/generic types containing a space
+  (`array{…}`, `array<string, mixed>`), which makes moodlecheck read the type
+  where the parameter name belongs and fail the phpdoc gate.
+
+### Changed
+
+- Restoring a held resource is one routine shared by `moderate.php` and the
+  resource page, instead of two copies.
+- Removed the now-unused `editthumbnail`, `thumbnailuploaded` and
+  `error_thumbnailnofile` strings; `error_thumbnailtoolarge` takes the limit as
+  a placeholder instead of hardcoding "5MB".
+
 ## [1.0.6] - 2026-08-02
 
 ### Added
