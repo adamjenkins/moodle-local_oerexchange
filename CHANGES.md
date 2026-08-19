@@ -1,3 +1,23 @@
+# Release notes — 1.0.8
+
+A maintenance release: the sandbox bundle defaults follow upstream Moodle
+Playground's retirement of its v5.2.0 tag workaround, and the distribution
+ZIP now includes the automated tests.
+
+## Sandbox bundle defaults
+
+Upstream Moodle Playground now has a real `MOODLE_502_STABLE` branch, so the
+default bundle list no longer pins it to the `v5.2.0` tag — a bare branch
+name builds the branch tip. The help text for the **Sandbox bundles** setting
+(English and Japanese) has been corrected to say so; it used to claim a bare
+branch name "uses its default tag". A saved setting is not touched by this
+change: sites that pin a tag keep their pin.
+
+## Packaging
+
+The `tests/` directory ships in the distribution ZIP, so a downloaded release
+can run the plugin's PHPUnit suite as-is.
+
 # Release notes — 1.0.7
 
 Authors can edit what a shared resource says, visitors can star resources, and

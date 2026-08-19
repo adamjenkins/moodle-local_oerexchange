@@ -3,6 +3,21 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.0.8] - 2026-08-19
+
+### Changed
+
+- `sandbox_config::DEFAULT_BUNDLES` no longer pins `MOODLE_502_STABLE` to
+  `v5.2.0`: upstream Moodle Playground retired the tag workaround now that the
+  real `MOODLE_502_STABLE` branch exists, and a bare branch name builds the
+  branch tip. A site's saved `sandboxbundles` setting is untouched — only the
+  default changed.
+- The `sandboxbundles` help string (EN and JA) now says a bare branch name
+  builds the branch tip; the old "uses its default tag" wording described the
+  retired workaround.
+- The distribution ZIP ships `tests/` (dropped the `export-ignore`), so a
+  downloaded release can run the plugin's PHPUnit suite as-is.
+
 ## [1.0.7] - 2026-08-03
 
 ### Added
