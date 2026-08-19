@@ -10,6 +10,17 @@ plugin installed on their own Moodle sites.
 
 - **Catalogue**: publish, browse, search, structure-preview courses/activities
   shared from client sites, before anyone imports them.
+- **Required-plugins disclosure**: every uploaded backup is scanned for
+  non-standard dependencies — activity modules and course format from the
+  manifest, plus question types, question behaviours, activity subplugins,
+  advanced-grading methods and blocks read out of the archive itself — and
+  the resource page, sandbox trial and client preview all disclose them
+  (with per-plugin trial availability). A `Re-scan stored backups for
+  required plugins` scheduled task (disabled by default; run it on demand)
+  re-applies improved detection to the whole existing catalogue.
+- **Events**: `resource_shared` and `resource_updated` are regular Events
+  API events, so core Event monitoring rules (or any observer) can notify
+  on new shares and updates.
 - **Identity**: site registration (with admin approval) for client sites, plus
   a personal account-linking handshake so shares/reviews are attributed to a
   real Exchange account.
