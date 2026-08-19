@@ -432,6 +432,7 @@ $string['summarylabel'] = '概要';
 $string['tagslabel'] = 'タグ（カンマ区切り）';
 $string['task_checkstale'] = '放置リソースを確認する';
 $string['task_computebadges'] = '教育者バッジを計算する';
+$string['task_rescanrequiredplugins'] = '保存済みバックアップの必要プラグインを再スキャンする';
 $string['thumbnailalt'] = '{$a} のサムネイル';
 $string['thumbnailupload'] = '新しいサムネイル画像をアップロード';
 $string['titlelabel'] = 'タイトル';

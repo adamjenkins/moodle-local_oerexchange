@@ -25,10 +25,10 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_oerexchange';
-// Bumped for the 1.0.8 release. No schema, services or cached-asset change
-// this round — the bump only makes an installed site record the new release
-// string on upgrade.
-$plugin->version   = 2026081900;
+// Bumped for the rescan_required_plugins_task registration — db/tasks.php
+// is only re-read on upgrade, so without a bump the new scheduled task
+// never appears on an already-installed site.
+$plugin->version   = 2026081901;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass

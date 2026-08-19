@@ -476,6 +476,7 @@ $string['summarylabel'] = 'Summary';
 $string['tagslabel'] = 'Tags (comma-separated)';
 $string['task_checkstale'] = 'Check for abandoned resources';
 $string['task_computebadges'] = 'Compute educator badges';
+$string['task_rescanrequiredplugins'] = 'Re-scan stored backups for required plugins';
 $string['thumbnailalt'] = 'Thumbnail for {$a}';
 $string['thumbnailupload'] = 'Upload a new thumbnail image';
 $string['titlelabel'] = 'Title';

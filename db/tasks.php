@@ -43,4 +43,17 @@ $tasks = [
         'month' => '*',
         'dayofweek' => '*',
     ],
+    [
+        // On-demand backfill, not routine maintenance: disabled by default,
+        // run via "Run now" (or admin/cli/scheduled_task.php --execute)
+        // whenever mbz_parser's plugin detection learns new plugin types.
+        'classname' => 'local_oerexchange\task\rescan_required_plugins_task',
+        'blocking' => 0,
+        'minute' => 'R',
+        'hour' => '5',
+        'day' => '*',
+        'month' => '*',
+        'dayofweek' => '*',
+        'disabled' => 1,
+    ],
 ];
