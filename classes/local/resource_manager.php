@@ -230,6 +230,32 @@ class resource_manager {
             $transaction->rollback($e);
         }
 
+        // Announce the share/update AFTER the commit, so an observer (or a
+        // tool_monitor subscription) never fires for state that was rolled
+        // back (the rollback path above re-throws, so this line is never
+        // reached on failure). userid is passed explicitly as $creatorid —
+        // today every caller passes the acting $USER->id there, so this
+        // matches the default, but the parameter is this function's actual
+        // statement of who acted (on the update branch that can be a
+        // co-author or moderator, not the resource's creator), and the
+        // attribution must follow it if a future caller ever acts on
+        // another user's behalf.
+        if ($isnewresource) {
+            $event = \local_oerexchange\event\resource_shared::create([
+                'context' => $context,
+                'objectid' => $resourceid,
+                'userid' => $creatorid,
+            ]);
+        } else {
+            $event = \local_oerexchange\event\resource_updated::create([
+                'context' => $context,
+                'objectid' => $resourceid,
+                'userid' => $creatorid,
+                'other' => ['updated' => 'file'],
+            ]);
+        }
+        $event->trigger();
+
         if ($isnewresource) {
             // A creator's profile is lazily created on their first publish
             // (design: "auto-created once they publish") — this is the ONLY
@@ -656,5 +682,12 @@ class resource_manager {
             // change-detection both read.
             'timemodified' => time(),
         ]);
+
+        $event = \local_oerexchange\event\resource_updated::create([
+            'context' => \context_system::instance(),
+            'objectid' => $resourceid,
+            'other' => ['updated' => 'details'],
+        ]);
+        $event->trigger();
     }
 }
