@@ -1,3 +1,45 @@
+# Release notes — 1.0.9
+
+The Exchange now sees far more of what a shared course actually needs, can
+re-check its whole catalogue on demand, and announces shares and updates as
+events you can subscribe to.
+
+## Deeper required-plugins detection
+
+Until now the "Required plugins" list on a resource page was derived only
+from the backup's manifest: activity modules and the course format. A course
+could depend on a third-party **question type**, **question behaviour**,
+**activity subplugin** (a quiz access rule, an assignment submission method,
+a workshop grading strategy…), **advanced-grading method** (a custom rubric
+variant) or **block**, and the page would still say "No non-core plugins
+required" — and the sandbox trial would quietly restore without it.
+
+Uploads are now scanned for all of those, in every backup era Moodle can
+restore. Plugins that once shipped with Moodle and were later removed from
+core (the `random` question type above all, ubiquitous in older quiz
+backups) are recognised as core-handled and deliberately **not** reported —
+they would otherwise show as a "missing" plugin nothing could ever install.
+The resource page, the trial-availability badges and the client site's
+preview all reflect the fuller list automatically.
+
+## Re-scan the existing catalogue
+
+Detection improvements would otherwise only benefit new uploads. A new
+scheduled task, **Re-scan stored backups for required plugins**, re-derives
+the list for every current version from its stored backup file. It changes
+nothing else — statuses, files and thumbnails are untouched. It ships
+disabled: run it on demand from *Server ▸ Scheduled tasks ▸ Run now* (or
+`admin/cli/scheduled_task.php --execute`) after upgrading, and after any
+future detection improvement.
+
+## Events for monitoring
+
+Two events now fire: **Resource shared** (a new catalogue entry, from either
+upload page or a client-site share) and **Resource updated** (a replacement
+file or an edited details form). Both are ordinary Moodle events: create a
+rule in *Reports ▸ Event monitoring rules* to be notified when either
+happens, or attach any event observer. Moderation actions fire neither.
+
 # Release notes — 1.0.8
 
 A maintenance release: the sandbox bundle defaults follow upstream Moodle

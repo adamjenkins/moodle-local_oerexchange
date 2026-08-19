@@ -25,10 +25,10 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_oerexchange';
-// Bumped for the rescan_required_plugins_task registration — db/tasks.php
-// is only re-read on upgrade, so without a bump the new scheduled task
-// never appears on an already-installed site.
-$plugin->version   = 2026081901;
+// Bumped for the 1.0.9 release (2026081901, never released standalone,
+// registered the rescan_required_plugins_task; this serial just records the
+// release string on upgrade — no further schema/services change).
+$plugin->version   = 2026081902;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass
@@ -38,5 +38,5 @@ $plugin->version   = 2026081901;
 // earlier off-by-one estimate of nine.
 $plugin->requires  = 2025041400;
 $plugin->supported = [500, 502];
-$plugin->release   = '1.0.8';
+$plugin->release   = '1.0.9';
 $plugin->maturity  = MATURITY_STABLE;

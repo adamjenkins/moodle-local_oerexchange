@@ -3,6 +3,36 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.0.9] - 2026-08-19
+
+### Added
+
+- Archive-deep required-plugins detection in `mbz_parser`: question types
+  (`questions.xml`, both the 4.0+ bank-entry structure and the pre-4.0
+  legacy shape), mod subplugins (`subplugin_<type>_<name>_<connectionpoint>`
+  elements in each standard mod's activity XML), question behaviours
+  (quiz `preferredbehaviour`), advanced-grading methods (`grading.xml`
+  `definition > method`, collected for third-party activities too) and
+  blocks (block directories, which never appear in `moodle_backup.xml`).
+  Detected names are validated against core's plugin-name rules, filtered
+  against the standard-plugins list AND `is_deleted_standard_plugin()`
+  (so e.g. the deleted `random` qtype in pre-4.0 backups is not reported
+  as an unmeetable dependency), and bounded (`MAX_REQUIRED_PLUGINS`,
+  `SCAN_MEMBER_LIMIT`, distinct-and-capped collectors) against crafted
+  archives.
+- `rescan_required_plugins_task`, a scheduled task registered **disabled**:
+  re-derives `requiredplugins` for every current version from its stored
+  file and updates only that column — no statuses, files, cover images or
+  supersession. Every consumer (resource page badges/trial statuses,
+  sandbox launch blueprint, `get_resource` web service) reads the column
+  live, so a rescan refreshes trial availability everywhere.
+- Events `\local_oerexchange\event\resource_shared` (new resource, fired
+  post-commit from `resource_manager::publish()`) and
+  `\local_oerexchange\event\resource_updated` (`other['updated']` =
+  `file` for a replacement upload, `details` for the edit form) — regular
+  Events API events, usable with Event monitoring (`tool_monitor`) rules
+  and observers. Moderation writers fire neither.
+
 ## [1.0.8] - 2026-08-19
 
 ### Changed
