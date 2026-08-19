@@ -27,6 +27,7 @@
 
 use local_oerexchange\local\sandbox\bundle_stamp;
 use local_oerexchange\local\sandbox\config;
+use local_oerexchange\local\sandbox\settings_catalogue;
 
 require(__DIR__ . '/../../config.php');
 require_once($CFG->libdir . '/formslib.php');
@@ -70,6 +71,51 @@ admin_externalpage_setup('local_oerexchange_sandboxconfig');
 class local_oerexchange_sandbox_config_form extends moodleform {
     /** @var string the current common.sh default, offered as the field's own default */
     const DEFAULT_BUNDLES = 'MOODLE_502_STABLE MOODLE_500_STABLE';
+
+    /**
+     * Prefix for the generated catalogue fields.
+     *
+     * Keeps a setting called, say, "theme" from colliding with a form element
+     * of the same name, and makes the catalogue's values easy to pick back out
+     * of the submitted data.
+     *
+     * @var string
+     */
+    const FIELD_PREFIX = 'sandboxset_';
+
+    /**
+     * The select options for a filter or boolean field: the unset state first.
+     *
+     * @param array $field one entry from settings_catalogue::fields()
+     * @return array value => label
+     */
+    private static function choice_options(array $field): array {
+        $options = [settings_catalogue::UNSET => get_string('settings_sandboxleavedefault', 'local_oerexchange')];
+        foreach ($field['choices'] as $choice) {
+            $options[$choice] = get_string('settings_sandboxchoice_' . $choice, 'local_oerexchange');
+        }
+
+        return $options;
+    }
+
+    /**
+     * The catalogue values in a submitted form, keyed by setting name.
+     *
+     * @param array|object $data submitted form data
+     * @return array key => value, including the unset ones so validation can see them
+     */
+    public static function submitted_choices($data): array {
+        $data = (array) $data;
+        $choices = [];
+        foreach (array_keys(settings_catalogue::fields()) as $key) {
+            $name = self::FIELD_PREFIX . $key;
+            if (array_key_exists($name, $data)) {
+                $choices[$key] = trim((string) $data[$name]);
+            }
+        }
+
+        return $choices;
+    }
 
     /**
      * Space-separated language pack codes into a validated list, or null on
@@ -129,19 +175,42 @@ class local_oerexchange_sandbox_config_form extends moodleform {
         $mform->setDefault('sandboxbundles', self::DEFAULT_BUNDLES);
         $mform->addHelpButton('sandboxbundles', 'settings_sandboxbundles', 'local_oerexchange');
 
-        $mform->addElement(
-            'advcheckbox',
-            'sandboxmultilang',
-            get_string('settings_sandboxmultilang', 'local_oerexchange')
-        );
-        $mform->addHelpButton('sandboxmultilang', 'settings_sandboxmultilang', 'local_oerexchange');
+        // Every catalogue field, grouped, each with a "leave Moodle's own
+        // default alone" state that is the default and is never emitted. The
+        // form is generated from the catalogue so that adding a setting is one
+        // line there rather than an edit here as well.
+        $fields = settings_catalogue::fields();
+        foreach (settings_catalogue::groups() as $group => $headingid) {
+            $ingroup = array_filter($fields, fn($field) => $field['group'] === $group);
+            if (!$ingroup) {
+                continue;
+            }
+            $mform->addElement('header', 'sandboxgroup_' . $group, get_string($headingid, 'local_oerexchange'));
+            $mform->setExpanded('sandboxgroup_' . $group, false);
 
-        $mform->addElement(
-            'advcheckbox',
-            'sandboxmultilangheadings',
-            get_string('settings_sandboxmultilangheadings', 'local_oerexchange')
-        );
-        $mform->addHelpButton('sandboxmultilangheadings', 'settings_sandboxmultilangheadings', 'local_oerexchange');
+            foreach ($ingroup as $key => $field) {
+                $name = self::FIELD_PREFIX . $key;
+                if ($field['type'] === settings_catalogue::TYPE_TEXT) {
+                    $mform->addElement('text', $name, settings_catalogue::label($field), ['size' => 30]);
+                    $mform->setType($name, PARAM_TEXT);
+                } else if ($field['type'] === settings_catalogue::TYPE_INT) {
+                    $mform->addElement('text', $name, settings_catalogue::label($field), ['size' => 8]);
+                    $mform->setType($name, PARAM_RAW_TRIMMED);
+                } else {
+                    $mform->addElement(
+                        'select',
+                        $name,
+                        settings_catalogue::label($field),
+                        self::choice_options($field)
+                    );
+                    $mform->setType($name, PARAM_RAW_TRIMMED);
+                }
+                $mform->setDefault($name, settings_catalogue::UNSET);
+            }
+        }
+
+        $mform->addElement('header', 'sandboxgroup_advanced', get_string('settings_sandboxgroupadvanced', 'local_oerexchange'));
+        $mform->setExpanded('sandboxgroup_advanced', false);
 
         $mform->addElement(
             'textarea',
@@ -170,10 +239,31 @@ class local_oerexchange_sandbox_config_form extends moodleform {
             $errors['sandboxlangpacks'] = get_string('error_invalidlangpack', 'local_oerexchange');
         }
 
+        $advanced = [];
         try {
-            config::parse_advanced((string) $data['sandboxadvanced']);
+            $advanced = config::parse_advanced((string) $data['sandboxadvanced']);
         } catch (\moodle_exception $e) {
             $errors['sandboxadvanced'] = $e->getMessage();
+        }
+
+        $choices = self::submitted_choices($data);
+        foreach ($choices as $key => $value) {
+            if (!settings_catalogue::validate($key, $value)) {
+                $errors[self::FIELD_PREFIX . $key] = get_string('error_sandboxsetvalue', 'local_oerexchange');
+            }
+        }
+
+        // A name set both here and in the Advanced box is refused rather than
+        // resolved: silently picking a winner would store something the admin
+        // did not ask for, which is the same reasoning parse_advanced() uses
+        // when it rejects an unusable pair instead of stripping it.
+        $collisions = settings_catalogue::collisions($advanced, $choices);
+        if ($collisions) {
+            $errors['sandboxadvanced'] = get_string(
+                'error_sandboxcollision',
+                'local_oerexchange',
+                implode(', ', $collisions)
+            );
         }
 
         return $errors;
@@ -193,8 +283,7 @@ if ($form->is_cancelled()) {
     set_config('sandboxlangpacks', implode(',', $langpacks), 'local_oerexchange');
     set_config('sandboxtriallang', $data->sandboxtriallang, 'local_oerexchange');
     set_config('sandboxbundles', trim((string) $data->sandboxbundles), 'local_oerexchange');
-    set_config('sandboxmultilang', !empty($data->sandboxmultilang) ? 1 : 0, 'local_oerexchange');
-    set_config('sandboxmultilangheadings', !empty($data->sandboxmultilangheadings) ? 1 : 0, 'local_oerexchange');
+    settings_catalogue::store_choices(local_oerexchange_sandbox_config_form::submitted_choices($data));
     set_config('sandboxadvanced', (string) $data->sandboxadvanced, 'local_oerexchange');
     set_config('sandboxbundled', !empty($data->sandboxbundled) ? 1 : 0, 'local_oerexchange');
 
@@ -203,16 +292,20 @@ if ($form->is_cancelled()) {
 }
 
 if (!$form->is_submitted()) {
-    $form->set_data([
+    $formdata = [
         'sandboxlangpacks' => implode(' ', $currentlangpacks),
         'sandboxtriallang' => (string) get_config('local_oerexchange', 'sandboxtriallang') ?: 'en',
         'sandboxbundles' => (string) get_config('local_oerexchange', 'sandboxbundles')
             ?: local_oerexchange_sandbox_config_form::DEFAULT_BUNDLES,
-        'sandboxmultilang' => (int) get_config('local_oerexchange', 'sandboxmultilang'),
-        'sandboxmultilangheadings' => (int) get_config('local_oerexchange', 'sandboxmultilangheadings'),
         'sandboxadvanced' => (string) get_config('local_oerexchange', 'sandboxadvanced'),
         'sandboxbundled' => (int) get_config('local_oerexchange', 'sandboxbundled'),
-    ]);
+    ];
+    // Only stored (non-default) choices are set; every other field keeps the
+    // form's own default, which is the "leave Moodle's default alone" state.
+    foreach (settings_catalogue::stored_choices() as $key => $value) {
+        $formdata[local_oerexchange_sandbox_config_form::FIELD_PREFIX . $key] = $value;
+    }
+    $form->set_data($formdata);
 }
 
 echo $OUTPUT->header();

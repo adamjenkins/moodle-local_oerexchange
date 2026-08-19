@@ -125,12 +125,14 @@ class config {
 
         $advanced = self::parse_advanced((string) get_config('local_oerexchange', 'sandboxadvanced'));
 
-        $filters = [];
-        if (get_config('local_oerexchange', 'sandboxmultilang')) {
-            $filters['multilang'] = 'on';
-            $advanced['filterall'] = get_config('local_oerexchange', 'sandboxmultilangheadings') ? '1' : '0';
-            $advanced['stringfilters'] = get_config('local_oerexchange', 'sandboxmultilangheadings') ? 'multilang' : '';
-        }
+        // The catalogue's choices and the Advanced box cannot name the same
+        // setting: the form refuses to save that pair (settings_catalogue::
+        // collisions()). Merging catalogue-last anyway means that if one ever
+        // did slip through — a choice stored before that check existed, say —
+        // what the page SHOWS is what gets baked, rather than a typed line
+        // silently beating a visible control.
+        [$filters, $catalogue] = settings_catalogue::split(settings_catalogue::stored_choices());
+        $advanced = array_merge($advanced, $catalogue);
 
         $bakeplugins = [];
         $entries = $DB->get_records('local_oerexchange_pluginallowlist', ['bake' => 1, 'status' => 'active']);

@@ -421,5 +421,37 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026080400, 'local', 'oerexchange');
     }
 
+    if ($oldversion < 2026081903) {
+        // The two multilang checkboxes on the sandbox configuration page became
+        // ordinary entries in the settings catalogue. Carry the stored answers
+        // across so the generated configuration keeps emitting exactly what it
+        // emitted before the upgrade — a site that had them on must not quietly
+        // start building bundles without the multilang filter.
+        //
+        // Written as literal keys rather than through settings_catalogue, so a
+        // later change to the catalogue cannot retrospectively alter what this
+        // step does.
+        $multilang = get_config('local_oerexchange', 'sandboxmultilang');
+        $headings = get_config('local_oerexchange', 'sandboxmultilangheadings');
+
+        $choices = [];
+        if ($multilang !== false && (int) $multilang === 1) {
+            $choices['multilang'] = 'on';
+            $choices['applytoheadings'] = ((int) $headings === 1) ? '1' : '0';
+        } else if ($multilang !== false) {
+            // Explicitly off is a real choice and is not the same as never
+            // having been asked: it emits SITE_FILTER_multilang=off.
+            $choices['multilang'] = 'off';
+        }
+
+        if ($choices) {
+            set_config('sandboxchoices', json_encode($choices), 'local_oerexchange');
+        }
+        unset_config('sandboxmultilang', 'local_oerexchange');
+        unset_config('sandboxmultilangheadings', 'local_oerexchange');
+
+        upgrade_plugin_savepoint(true, 2026081903, 'local', 'oerexchange');
+    }
+
     return true;
 }

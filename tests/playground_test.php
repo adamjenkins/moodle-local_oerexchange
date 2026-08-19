@@ -656,8 +656,7 @@ final class playground_test extends \advanced_testcase {
     public function test_switch_off_emits_the_settings_step_when_something_is_configured(): void {
         $this->resetAfterTest();
         set_config('sandboxbundled', 0, 'local_oerexchange');
-        set_config('sandboxmultilang', 1, 'local_oerexchange');
-        set_config('sandboxmultilangheadings', 1, 'local_oerexchange');
+        set_config('sandboxchoices', json_encode(['multilang' => 'on', 'applytoheadings' => '1']), 'local_oerexchange');
 
         $blueprint = playground::build_blueprint(
             'My Course',
@@ -687,7 +686,7 @@ final class playground_test extends \advanced_testcase {
     public function test_switch_on_omits_the_settings_step_even_when_something_is_configured(): void {
         $this->resetAfterTest();
         set_config('sandboxbundled', 1, 'local_oerexchange');
-        set_config('sandboxmultilang', 1, 'local_oerexchange');
+        set_config('sandboxchoices', json_encode(['multilang' => 'on']), 'local_oerexchange');
 
         $blueprint = playground::build_blueprint(
             'My Course',

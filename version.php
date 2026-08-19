@@ -28,7 +28,10 @@ $plugin->component = 'local_oerexchange';
 // Bumped for the 1.0.9 release (2026081901, never released standalone,
 // registered the rescan_required_plugins_task; this serial just records the
 // release string on upgrade — no further schema/services change).
-$plugin->version   = 2026081902;
+// 2026081903 adds the sandbox settings catalogue, whose upgrade step migrates
+// the two retired multilang settings. The release string is deliberately NOT
+// bumped with it: that is the owner's call (HARNESS.md §8).
+$plugin->version   = 2026081903;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass
