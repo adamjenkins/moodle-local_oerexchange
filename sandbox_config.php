@@ -69,7 +69,7 @@ admin_externalpage_setup('local_oerexchange_sandboxconfig');
  */
 class local_oerexchange_sandbox_config_form extends moodleform {
     /** @var string the current common.sh default, offered as the field's own default */
-    const DEFAULT_BUNDLES = 'MOODLE_502_STABLE:v5.2.0 MOODLE_500_STABLE';
+    const DEFAULT_BUNDLES = 'MOODLE_502_STABLE MOODLE_500_STABLE';
 
     /**
      * Space-separated language pack codes into a validated list, or null on
