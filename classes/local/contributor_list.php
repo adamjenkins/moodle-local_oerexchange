@@ -269,9 +269,15 @@ class contributor_list {
             );
         }
 
-        $counts = get_string('contributors_resourcecount', 'local_oerexchange', $card->resourcecount)
-            . ' · '
-            . get_string('contributors_coursecount', 'local_oerexchange', $card->coursecount);
+        // Separate singular strings: "1 resources" is wrong in English, and
+        // Moodle's get_string() has no plural-form selection to lean on.
+        $resourcelabel = $card->resourcecount === 1
+            ? get_string('contributors_resourcecount_one', 'local_oerexchange')
+            : get_string('contributors_resourcecount', 'local_oerexchange', $card->resourcecount);
+        $courselabel = $card->coursecount === 1
+            ? get_string('contributors_coursecount_one', 'local_oerexchange')
+            : get_string('contributors_coursecount', 'local_oerexchange', $card->coursecount);
+        $counts = $resourcelabel . ' · ' . $courselabel;
         $out .= \html_writer::div($counts, 'small');
 
         if ($card->latestshared) {
