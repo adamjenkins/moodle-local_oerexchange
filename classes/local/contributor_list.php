@@ -416,13 +416,14 @@ class contributor_list {
     }
 
     /**
-     * The sort control: a real GET form that works with JavaScript off. The
-     * AMD module hides the submit button and takes over the change event —
-     * the same progressive-enhancement contract as amd/src/star.js.
+     * The sort and view controls: a real GET form that works with JavaScript
+     * off. The AMD module hides the submit button and takes over the change
+     * events — the same progressive-enhancement contract as amd/src/star.js.
      *
      * @param \moodle_url $baseurl the page this form submits back to
      * @param string $sort the currently selected sort
      * @param string $regionid id of the element whose contents get replaced
+     * @param string $layout the currently selected view, one of the LAYOUT_* constants
      * @return string HTML
      */
     public static function render_sort_form(
