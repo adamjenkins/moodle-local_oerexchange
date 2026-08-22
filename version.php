@@ -39,7 +39,7 @@ $plugin->component = 'local_oerexchange';
 // function. A services.php change only reaches the external_functions
 // table when the version serial moves, so adding the entry under the
 // previous serial left the endpoint unregistered.
-$plugin->version   = 2026082201;
+$plugin->version   = 2026082202;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass
@@ -49,5 +49,5 @@ $plugin->version   = 2026082201;
 // earlier off-by-one estimate of nine.
 $plugin->requires  = 2025041400;
 $plugin->supported = [500, 502];
-$plugin->release   = '1.0.9';
+$plugin->release   = '1.0.10';
 $plugin->maturity  = MATURITY_STABLE;

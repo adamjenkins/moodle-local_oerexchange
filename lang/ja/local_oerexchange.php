@@ -193,7 +193,9 @@ $string['nohiddenresources'] = '現在、モデレータが保留しているリ
 $string['nomoderatedresources'] = 'モデレータによって非表示または削除されたリソースはありません。';
 $string['noopenreports'] = '未処理の報告はありません。';
 $string['nositesyet'] = 'このカテゴリにはサイトがありません。';
-$string['notifycoauthorbody'] = '{$a->addedby}さんがあなたを共有リソース「{$a->title}」の共同作成者に追加しました。元の作成者と同じようにこのリソースを編集できます。';
+$string['notifycoauthorbody'] = '{$a->addedby}さんがあなたを共有リソース「{$a->title}」の共同作成者に追加しました。元の作成者と同じようにこのリソースを編集できます。
+
+共同作成者は作成者と同様にクレジットされるため、このエクスチェンジ上にあなたの公開プロフィールページが作成され、貢献者一覧に表示されます。公開を希望しない場合は、プロフィールを開き「プロフィールを公開する」をオフにしてください: {$a->profileurl}';
 $string['notifycoauthorsubject'] = '「{$a}」の共同作成者になりました';
 $string['notifyimportbody'] = 'どなたかが、あなたの共有リソース「{$a}」を自分のMoodleサイトにインポートしました。';
 $string['notifyimportsubject'] = 'あなたのリソース「{$a}」がインポートされました';

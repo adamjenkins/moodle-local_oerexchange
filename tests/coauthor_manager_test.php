@@ -338,6 +338,32 @@ final class coauthor_manager_test extends \advanced_testcase {
      * literally `You are now a co-author of "{$a->title}"` — message_send()
      * succeeded, which is exactly why the exit code proved nothing.
      */
+    public function test_notify_added_warns_that_a_public_profile_now_exists(): void {
+        $this->resetAfterTest();
+        $this->preventResetByRollback();
+        $creator = $this->getDataGenerator()->create_user(['firstname' => 'Tomoko', 'lastname' => 'Teacher']);
+        $second = $this->getDataGenerator()->create_user(['username' => 'hanako']);
+        $resource = $this->make_resource((int) $creator->id);
+
+        // Go through add(), which is what creates the profile row, rather than
+        // calling notify_added() against a user who has no profile yet.
+        $sink = $this->redirectMessages();
+        coauthor_manager::add($resource, 'hanako', (int) $creator->id);
+        coauthor_manager::notify_added($resource, $second, $creator);
+        $messages = $sink->get_messages();
+        $sink->close();
+
+        $body = end($messages)->fullmessage;
+
+        $this->assertStringContainsString(
+            'public profile',
+            $body,
+            'somebody else\'s action just published this person; the notification must say so'
+        );
+        $this->assertStringContainsString('Show my profile publicly', $body, 'and how to opt out');
+        $this->assertStringNotContainsString('{$a', $body, 'unsubstituted placeholder');
+    }
+
     public function test_notify_added_names_the_resource_and_the_person(): void {
         $this->resetAfterTest();
         $this->preventResetByRollback();

@@ -3,6 +3,43 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.0.10] - 2026-08-22
+
+### Added
+
+- Public contributors listing at `/local_oerexchange/contributors`: everyone
+  with something currently published, as cards showing profile picture, name,
+  badges, up to three expertise tags, resource and course counts, and time
+  since their last share. The whole card links to the contributor's profile
+  through a single stretched anchor.
+- Sort control (most resources shared, most courses shared, recently shared)
+  and view control (cards or compact list), both re-rendering in place over a
+  new `local_oerexchange_get_contributors` AJAX function and both degrading to
+  a plain form submission with JavaScript off.
+- `contributor_list` owns the query and both renderings, so the page and the
+  companion Dashboard block cannot drift apart.
+- `badge_manager::get_badges_for_users()`, a batch lookup so a listing does not
+  query once per row.
+- `resource_manager::STATUS_PUBLISHED` for the catalogue-visibility test.
+
+### Changed
+
+- A co-author now counts as a contributor everywhere, not only where they could
+  already edit: `profile_manager::get_metrics()` counts co-authored resources,
+  and the nightly badge task evaluates co-authors as well as creators.
+- Being added as a co-author creates that person's profile row, as publishing
+  does; existing co-authors are backfilled by the upgrade step.
+- The co-author notification now says that a public profile has been created
+  and how to turn it off, because the profile is created by another person's
+  action.
+
+### Fixed
+
+- The star button worked once per page load and then stayed disabled.
+  `core/ajax` returns a jQuery Deferred and jQuery 3.7.1 promises have no
+  `finally`, so `.finally()` threw a `TypeError` while the chain was being
+  built — after the button had been disabled. Introduced in 1.0.9.
+
 ## [1.0.9] - 2026-08-19
 
 ### Added

@@ -232,7 +232,9 @@ $string['nohiddenresources'] = 'No resources are currently held by a moderator.'
 $string['nomoderatedresources'] = 'No resources have been hidden or removed by a moderator.';
 $string['noopenreports'] = 'No open reports.';
 $string['nositesyet'] = 'No sites in this category.';
-$string['notifycoauthorbody'] = '{$a->addedby} has added you as a co-author of the shared resource "{$a->title}". You can now edit it in the same way its original author can.';
+$string['notifycoauthorbody'] = '{$a->addedby} has added you as a co-author of the shared resource "{$a->title}". You can now edit it in the same way its original author can.
+
+Because co-authors are credited alongside creators, you now have a public profile page on this Exchange and appear in its list of contributors. If you would rather not be listed publicly, open your profile and turn off "Show my profile publicly": {$a->profileurl}';
 $string['notifycoauthorsubject'] = 'You are now a co-author of "{$a}"';
 $string['notifyimportbody'] = 'Someone just imported your shared resource "{$a}" on their Moodle site.';
 $string['notifyimportsubject'] = 'Your resource "{$a}" was imported';

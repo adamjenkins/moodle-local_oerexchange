@@ -267,9 +267,21 @@ class coauthor_manager {
         $message->userfrom = \core_user::get_noreply_user();
         $message->userto = $user;
         $message->subject = get_string('notifycoauthorsubject', 'local_oerexchange', $title);
+        // Being added as a co-author creates this person's profile row
+        // (visible = 1), so somebody else's action has just given them a
+        // public profile page and a place on the public contributors listing.
+        // Say so, and say how to opt out — the alternative was creating them
+        // hidden, which would have denied co-authors the recognition the
+        // design deliberately gives them.
+        $profile = profile_manager::get_by_userid((int) $user->id);
+        $profileurl = $profile
+            ? \moodle_url::routed_path('/local_oerexchange/u/' . $profile->slug . '/edit')->out(false)
+            : '';
+
         $message->fullmessage = get_string('notifycoauthorbody', 'local_oerexchange', (object) [
             'title' => $title,
             'addedby' => fullname($addedby),
+            'profileurl' => $profileurl,
         ]);
         $message->fullmessageformat = FORMAT_PLAIN;
         $message->fullmessagehtml = '';
