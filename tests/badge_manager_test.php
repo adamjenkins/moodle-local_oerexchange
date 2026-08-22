@@ -71,6 +71,40 @@ final class badge_manager_test extends \advanced_testcase {
         ]);
     }
 
+    public function test_get_badges_for_users_batches(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $withbadge = $this->getDataGenerator()->create_user();
+        $withoutbadge = $this->getDataGenerator()->create_user();
+        $DB->insert_record('local_oerexchange_badges', (object) [
+            'userid' => (int) $withbadge->id,
+            'badgekey' => badge_manager::BADGE_TRUSTED_CONTRIBUTOR,
+            'timeawarded' => time(),
+        ]);
+
+        $badges = badge_manager::get_badges_for_users([
+            (int) $withbadge->id,
+            (int) $withoutbadge->id,
+        ]);
+
+        $this->assertSame(
+            [badge_manager::BADGE_TRUSTED_CONTRIBUTOR],
+            $badges[(int) $withbadge->id]
+        );
+        $this->assertSame(
+            [],
+            $badges[(int) $withoutbadge->id],
+            'a user with no badges is present with an empty array, so callers need no isset()'
+        );
+    }
+
+    public function test_get_badges_for_users_with_empty_input(): void {
+        $this->resetAfterTest();
+
+        $this->assertSame([], badge_manager::get_badges_for_users([]));
+    }
+
     public function test_below_threshold_awards_nothing(): void {
         $this->resetAfterTest();
         set_config('badge_trustedcontributor_minresources', 10, 'local_oerexchange');

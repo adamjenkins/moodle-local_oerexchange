@@ -29,6 +29,43 @@ use local_oerexchange\task\compute_badges_task;
  */
 #[CoversClass(compute_badges_task::class)]
 final class compute_badges_task_test extends \advanced_testcase {
+    public function test_execute_evaluates_a_coauthor_who_created_nothing(): void {
+        global $DB;
+        $this->resetAfterTest();
+        set_config('badge_trustedcontributor_minresources', 1, 'local_oerexchange');
+        set_config('badge_trustedcontributor_mindownloads', 10, 'local_oerexchange');
+        set_config('badge_trustedcontributor_minrating', 0, 'local_oerexchange');
+
+        $creator = $this->getDataGenerator()->create_user();
+        $coauthor = $this->getDataGenerator()->create_user();
+        $siteid = $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'S', 'url' => 'https://x', 'contact' => 'x@x.com', 'serviceuserid' => null,
+            'status' => 'active', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+        $resourceid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'A', 'summary' => '', 'language' => '', 'tags' => '',
+            'licenseshortname' => 'cc-4.0', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => $creator->id, 'siteid' => $siteid, 'status' => 'published',
+            'downloadcount' => 500, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => time(), 'timemodified' => time(),
+        ]);
+        $DB->insert_record('local_oerexchange_coauthors', (object) [
+            'resourceid' => $resourceid, 'userid' => $coauthor->id,
+            'addedby' => $creator->id, 'timecreated' => time(),
+        ]);
+
+        $task = new compute_badges_task();
+        $this->expectOutputRegex('/awarded trusted_contributor/');
+        $task->execute();
+
+        $this->assertSame(
+            [badge_manager::BADGE_TRUSTED_CONTRIBUTOR],
+            badge_manager::get_badges_for_user($coauthor->id),
+            'a co-author who created nothing must still be evaluated, or inclusive '
+                . 'metrics never reach them'
+        );
+    }
+
     public function test_execute_awards_badges_for_every_qualifying_creator(): void {
         global $DB;
         $this->resetAfterTest();

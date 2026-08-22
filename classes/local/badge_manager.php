@@ -81,6 +81,40 @@ class badge_manager {
     }
 
     /**
+     * Batch version of get_badges_for_user() for listings that show many users
+     * at once. Read-only; awards nothing.
+     *
+     * @param int[] $userids
+     * @return array<int, string[]> badge keys keyed by userid; a user with no
+     *     badges is present with an empty array, so callers need no isset()
+     */
+    public static function get_badges_for_users(array $userids): array {
+        global $DB;
+
+        if (empty($userids)) {
+            return [];
+        }
+
+        $userids = array_map('intval', array_unique($userids));
+        $result = array_fill_keys($userids, []);
+
+        [$insql, $inparams] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+        $records = $DB->get_records_select(
+            'local_oerexchange_badges',
+            "userid {$insql}",
+            $inparams,
+            '',
+            'id, userid, badgekey'
+        );
+
+        foreach ($records as $record) {
+            $result[(int) $record->userid][] = $record->badgekey;
+        }
+
+        return $result;
+    }
+
+    /**
      * Check whether a user currently meets the Trusted Contributor thresholds.
      *
      * @param int $userid

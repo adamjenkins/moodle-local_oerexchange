@@ -36,13 +36,26 @@ class compute_badges_task extends \core\task\scheduled_task {
     public function execute() {
         global $DB;
 
-        $creatorids = $DB->get_fieldset_select(
-            'local_oerexchange_resources',
-            'DISTINCT creatorid',
-            "status = 'published' AND creatorid <> 0"
+        // Creators AND co-authors: a co-author holds the same rights over a
+        // resource and earns the same recognition, so enumerating only
+        // creatorid would leave a co-author who created nothing permanently
+        // un-evaluated, however inclusive profile_manager::get_metrics() is.
+        $userids = $DB->get_fieldset_sql(
+            "SELECT DISTINCT r.creatorid AS userid
+               FROM {local_oerexchange_resources} r
+              WHERE r.status = :status1 AND r.creatorid <> 0
+              UNION
+             SELECT DISTINCT ca.userid
+               FROM {local_oerexchange_coauthors} ca
+               JOIN {local_oerexchange_resources} r ON r.id = ca.resourceid
+              WHERE r.status = :status2",
+            [
+                'status1' => \local_oerexchange\local\resource_manager::STATUS_PUBLISHED,
+                'status2' => \local_oerexchange\local\resource_manager::STATUS_PUBLISHED,
+            ]
         );
 
-        foreach ($creatorids as $userid) {
+        foreach ($userids as $userid) {
             $awarded = badge_manager::evaluate_and_award((int) $userid);
             if ($awarded) {
                 mtrace("local_oerexchange: awarded " . implode(',', $awarded) . " to user {$userid}");
