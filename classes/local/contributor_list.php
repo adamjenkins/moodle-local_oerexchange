@@ -215,7 +215,7 @@ class contributor_list {
                 'userid' => $row->userid,
                 'user' => $users[$row->userid],
                 'fullname' => fullname($users[$row->userid]),
-                // routed_path(), never a plain moodle_url() — see the long
+                // Always routed_path(), never a plain moodle_url() — see the long
                 // comment in profile_controller::view() for why.
                 'profileurl' => \moodle_url::routed_path(
                     '/local_oerexchange/u/' . $profiles[$row->userid]->slug
@@ -389,16 +389,26 @@ class contributor_list {
             $options[$key] = get_string('contributors_sort_' . $key, 'local_oerexchange');
         }
 
+        // A real <label>, not just an aria-label: it names the control for
+        // sighted users too, and an aria-label alone is not locatable by the
+        // accessible-name lookups that assistive tech and test drivers use.
+        $selectid = $regionid . '-sort';
+        $label = \html_writer::tag(
+            'label',
+            get_string('contributors_sortby', 'local_oerexchange'),
+            ['for' => $selectid, 'class' => 'small text-muted me-1 align-self-center']
+        );
+
         $select = \html_writer::select(
             $options,
             self::PARAM_SORT,
             self::normalise_sort($sort),
             false,
             [
-                'class' => 'form-select form-select-sm d-inline-block w-auto',
+                'id' => $selectid,
+                'class' => 'form-select-sm d-inline-block w-auto',
                 'data-region' => 'oerexchange-contributor-sort',
                 'data-target' => $regionid,
-                'aria-label' => get_string('contributors_sortby', 'local_oerexchange'),
             ]
         );
 
@@ -425,7 +435,7 @@ class contributor_list {
 
         return \html_writer::tag(
             'form',
-            $hidden . $select . $submit,
+            $hidden . $label . $select . $submit,
             [
                 'method' => 'get',
                 'action' => $baseurl->out_omit_querystring(),

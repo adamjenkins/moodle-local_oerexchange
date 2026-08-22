@@ -35,7 +35,11 @@ $plugin->component = 'local_oerexchange';
 // profile rows for existing co-authors, who are contributors in their own
 // right from this version on. The release string is deliberately NOT
 // bumped with it: that is the owner's call (HARNESS.md section 8).
-$plugin->version   = 2026082200;
+// 2026082201 registers the local_oerexchange_get_contributors AJAX
+// function. A services.php change only reaches the external_functions
+// table when the version serial moves, so adding the entry under the
+// previous serial left the endpoint unregistered.
+$plugin->version   = 2026082201;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass

@@ -65,11 +65,11 @@ class contributors_controller {
         );
         $page = max(0, optional_param('page', 0, PARAM_INT));
 
-        // routed_path(), never a plain moodle_url() — see the long comment in
-        // profile_controller::view(). On this dev VM the link may render with
-        // an '/r.php/' prefix because routerconfigured reads false during a
-        // routed request; that is a documented environment bug, cosmetic, and
-        // must not be "simplified" away.
+        // Always routed_path(), never a plain moodle_url() — see the long
+        // comment in profile_controller::view(). On this dev VM the link may
+        // render with an '/r.php/' prefix because routerconfigured reads false
+        // during a routed request; that is a documented environment bug,
+        // cosmetic, and must not be "simplified" away.
         $pageurl = \moodle_url::routed_path('/local_oerexchange/contributors');
         $pageurl->params([contributor_list::PARAM_SORT => $sort]);
 
