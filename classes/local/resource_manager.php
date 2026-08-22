@@ -43,6 +43,16 @@ class resource_manager {
     const MODERATOR_HELD_STATUSES = ['modhidden', 'removed'];
 
     /**
+     * The one status that means "listed in the catalogue". Every catalogue
+     * surface filters on exactly this and nothing else (catalogue_view.php,
+     * external/search.php) — it was a bare string literal at every one of
+     * those call sites before contributor_list became the next to need it.
+     *
+     * @var string
+     */
+    const STATUS_PUBLISHED = 'published';
+
+    /**
      * Publish a draft-area backup as a resource (new, or a new version of an
      * existing one when $resourceid is given).
      *
