@@ -187,9 +187,27 @@ class profile_manager {
     public static function get_metrics(int $userid): array {
         global $DB;
 
-        $resources = $DB->get_records('local_oerexchange_resources', [
-            'creatorid' => $userid, 'status' => 'published',
-        ], '', 'id, downloadcount, timeshared');
+        // A resource counts for its creator AND for every co-author: a
+        // co-author holds exactly the same rights over it (db/install.xml,
+        // local_oerexchange_coauthors COMMENT; resource_manager::user_is_author()),
+        // so they earn the same recognition. UNION rather than UNION ALL — a
+        // user appearing on both sides must not have the resource counted twice.
+        $resources = $DB->get_records_sql(
+            "SELECT r.id, r.downloadcount, r.timeshared
+               FROM {local_oerexchange_resources} r
+              WHERE r.creatorid = :creatorid AND r.status = :status1
+              UNION
+             SELECT r.id, r.downloadcount, r.timeshared
+               FROM {local_oerexchange_resources} r
+               JOIN {local_oerexchange_coauthors} ca ON ca.resourceid = r.id
+              WHERE ca.userid = :coauthorid AND r.status = :status2",
+            [
+                'creatorid' => $userid,
+                'coauthorid' => $userid,
+                'status1' => resource_manager::STATUS_PUBLISHED,
+                'status2' => resource_manager::STATUS_PUBLISHED,
+            ]
+        );
 
         $resourcecount = count($resources);
         $downloadtotal = array_sum(array_map(fn($r) => (int) $r->downloadcount, $resources));

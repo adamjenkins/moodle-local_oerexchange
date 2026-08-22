@@ -208,6 +208,70 @@ final class profile_manager_test extends \advanced_testcase {
         $this->assertSame($now, $metrics['membersince']);
     }
 
+    public function test_get_metrics_includes_coauthored_resources(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user();
+        $coauthor = $this->getDataGenerator()->create_user();
+
+        $siteid = $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'S', 'url' => 'https://x', 'contact' => 'x@x.com', 'serviceuserid' => null,
+            'status' => 'active', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+        $now = time();
+        $resourceid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'A', 'summary' => '', 'language' => '', 'tags' => '',
+            'licenseshortname' => 'cc-4.0', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => $creator->id, 'siteid' => $siteid, 'status' => 'published',
+            'downloadcount' => 7, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => $now, 'timemodified' => $now,
+        ]);
+        $DB->insert_record('local_oerexchange_coauthors', (object) [
+            'resourceid' => $resourceid, 'userid' => $coauthor->id,
+            'addedby' => $creator->id, 'timecreated' => $now,
+        ]);
+
+        $metrics = profile_manager::get_metrics((int) $coauthor->id);
+
+        $this->assertSame(
+            1,
+            $metrics['resourcecount'],
+            'a co-author holds the same rights over a resource, so earns the same recognition'
+        );
+        $this->assertSame(7, $metrics['downloadtotal']);
+        $this->assertSame($now, $metrics['membersince']);
+    }
+
+    public function test_get_metrics_does_not_double_count_a_resource(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user();
+
+        $siteid = $DB->insert_record('local_oerexchange_sites', (object) [
+            'name' => 'S', 'url' => 'https://x', 'contact' => 'x@x.com', 'serviceuserid' => null,
+            'status' => 'active', 'timecreated' => time(), 'timemodified' => time(),
+        ]);
+        $now = time();
+        $resourceid = $DB->insert_record('local_oerexchange_resources', (object) [
+            'type' => 'course', 'title' => 'A', 'summary' => '', 'language' => '', 'tags' => '',
+            'licenseshortname' => 'cc-4.0', 'activitytype' => null, 'courseformat' => null,
+            'creatorid' => $creator->id, 'siteid' => $siteid, 'status' => 'published',
+            'downloadcount' => 3, 'importcount' => 0, 'forkedfromid' => null,
+            'timeshared' => $now, 'timemodified' => $now,
+        ]);
+        // The schema says a creator is never also a co-author row. If one ever
+        // appears anyway, the resource must still count exactly once.
+        $DB->insert_record('local_oerexchange_coauthors', (object) [
+            'resourceid' => $resourceid, 'userid' => $creator->id,
+            'addedby' => $creator->id, 'timecreated' => $now,
+        ]);
+
+        $metrics = profile_manager::get_metrics((int) $creator->id);
+
+        $this->assertSame(1, $metrics['resourcecount']);
+        $this->assertSame(3, $metrics['downloadtotal']);
+    }
+
     public function test_save_converts_a_lost_slug_race_to_error_slugtaken(): void {
         global $DB;
         $this->resetAfterTest();
