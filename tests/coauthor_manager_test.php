@@ -84,6 +84,28 @@ final class coauthor_manager_test extends \advanced_testcase {
         $this->assertTrue(coauthor_manager::is_coauthor((int) $resource->id, (int) $second->id));
     }
 
+    public function test_adding_a_coauthor_creates_their_profile(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $creator = $this->getDataGenerator()->create_user();
+        $coauthor = $this->getDataGenerator()->create_user(['username' => 'newcoauthor']);
+        $resource = $this->make_resource((int) $creator->id);
+
+        $this->assertFalse(
+            $DB->record_exists('local_oerexchange_profiles', ['userid' => $coauthor->id]),
+            'precondition: a user who has published nothing has no profile row yet'
+        );
+
+        coauthor_manager::add($resource, 'newcoauthor', (int) $creator->id);
+
+        $this->assertTrue(
+            $DB->record_exists('local_oerexchange_profiles', ['userid' => $coauthor->id]),
+            'a co-author who has published nothing of their own still needs a profile row, '
+                . 'or contributor_list silently drops them from a listing they belong in'
+        );
+    }
+
     public function test_add_by_email_seats_the_named_user(): void {
         $this->resetAfterTest();
         $creator = $this->getDataGenerator()->create_user();

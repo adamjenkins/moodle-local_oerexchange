@@ -199,6 +199,15 @@ class coauthor_manager {
             'timecreated' => time(),
         ]);
 
+        // Publishing creates the creator's profile lazily
+        // (resource_manager::publish -> profile_manager::get_or_create_for_user).
+        // Being made a co-author is the other way to become a contributor, so
+        // it must create the profile the same way: contributor_list joins on
+        // local_oerexchange_profiles, and a co-author who has published
+        // nothing of their own would otherwise be silently dropped from a
+        // listing they belong in.
+        profile_manager::get_or_create_for_user((int) $user->id);
+
         return $user;
     }
 

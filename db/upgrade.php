@@ -453,5 +453,29 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026081903, 'local', 'oerexchange');
     }
 
+    if ($oldversion < 2026082200) {
+        // Co-authors became contributors in their own right, and the
+        // contributor listing joins on local_oerexchange_profiles to resolve
+        // the profile each card links to. Profile rows are created lazily on a
+        // user's first publish, so an existing co-author who has published
+        // nothing of their own has no row and would be missing from a listing
+        // they now belong in.
+        //
+        // get_or_create_for_user() rather than a bulk INSERT: slug generation
+        // and the unique-index race handling both live there.
+        $userids = $DB->get_fieldset_sql(
+            "SELECT DISTINCT ca.userid
+               FROM {local_oerexchange_coauthors} ca
+          LEFT JOIN {local_oerexchange_profiles} p ON p.userid = ca.userid
+              WHERE p.id IS NULL"
+        );
+
+        foreach ($userids as $userid) {
+            \local_oerexchange\local\profile_manager::get_or_create_for_user((int) $userid);
+        }
+
+        upgrade_plugin_savepoint(true, 2026082200, 'local', 'oerexchange');
+    }
+
     return true;
 }
