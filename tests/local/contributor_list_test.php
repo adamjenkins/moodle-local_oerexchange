@@ -298,4 +298,83 @@ final class contributor_list_test extends \advanced_testcase {
         $this->assertSame(3, $page2[0]->resourcecount);
         $this->assertSame(5, contributor_list::count_contributors());
     }
+
+    public function test_get_cards_enriches_rows(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user(['firstname' => 'Aiko', 'lastname' => 'Tanaka']);
+        $this->seed_profile((int) $user->id);
+        $DB->set_field(
+            'local_oerexchange_profiles',
+            'expertise',
+            json_encode(['Chemistry', 'JHS', 'Practicals', 'Dropped']),
+            ['userid' => $user->id]
+        );
+        $DB->insert_record('local_oerexchange_badges', (object) [
+            'userid' => (int) $user->id,
+            'badgekey' => badge_manager::BADGE_TRUSTED_CONTRIBUTOR,
+            'timeawarded' => time(),
+        ]);
+        $this->seed_resource((int) $user->id, 'published', 'course');
+
+        $cards = contributor_list::get_cards(contributor_list::SORT_RESOURCES);
+
+        $this->assertCount(1, $cards);
+        $this->assertSame('Aiko Tanaka', $cards[0]->fullname);
+        $this->assertSame(1, $cards[0]->coursecount);
+        $this->assertSame([badge_manager::BADGE_TRUSTED_CONTRIBUTOR], $cards[0]->badges);
+        $this->assertCount(3, $cards[0]->expertise, 'expertise is capped at 3 tags');
+        $this->assertStringContainsString('user' . $user->id, $cards[0]->profileurl->out(false));
+    }
+
+    public function test_renderers_produce_one_link_per_card(): void {
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user(['firstname' => 'Aiko', 'lastname' => 'Tanaka']);
+        $this->seed_profile((int) $user->id);
+        $this->seed_resource((int) $user->id);
+
+        $cards = contributor_list::get_cards(contributor_list::SORT_RESOURCES);
+
+        foreach ([contributor_list::render_list($cards), contributor_list::render_grid($cards)] as $html) {
+            $this->assertStringContainsString('Aiko Tanaka', $html);
+            $this->assertStringContainsString('stretched-link', $html);
+            $this->assertSame(
+                1,
+                substr_count($html, '<a '),
+                'the whole card is one link: a second anchor would be announced twice'
+            );
+        }
+    }
+
+    public function test_empty_cards_render_an_empty_state(): void {
+        $this->resetAfterTest();
+
+        $this->assertStringContainsString(
+            get_string('contributors_none', 'local_oerexchange'),
+            contributor_list::render_list([])
+        );
+        $this->assertStringContainsString(
+            get_string('contributors_none', 'local_oerexchange'),
+            contributor_list::render_grid([])
+        );
+    }
+
+    public function test_sort_form_offers_every_sort_and_keeps_other_params(): void {
+        $this->resetAfterTest();
+
+        $baseurl = new \moodle_url('/local/oerexchange/x.php', ['page' => 2]);
+        $html = contributor_list::render_sort_form($baseurl, contributor_list::SORT_RECENT, 'region-1');
+
+        foreach (contributor_list::sort_keys() as $key) {
+            $this->assertStringContainsString(
+                get_string('contributors_sort_' . $key, 'local_oerexchange'),
+                $html
+            );
+        }
+        $this->assertStringContainsString('data-target="region-1"', $html);
+        $this->assertStringContainsString('name="page"', $html, 'other params must survive a sort');
+        $this->assertStringContainsString('oerexchange-contributor-sortgo', $html, 'the no-JS submit must exist');
+    }
 }
