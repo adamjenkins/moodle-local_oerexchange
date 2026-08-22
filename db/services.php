@@ -95,6 +95,20 @@ $functions = [
         'loginrequired' => true,
     ],
 
+
+    // Same reasoning as set_resource_star above: the visitor's own browser,
+    // never a client site over a token. loginrequired is false because both
+    // callers (the /contributors page and the block on the site front page)
+    // are public, and this returns only what they already show anonymously.
+    'local_oerexchange_get_contributors' => [
+        'classname'   => 'local_oerexchange\external\get_contributors',
+        'methodname'  => 'execute',
+        'description' => 'Re-render the contributor listing for a chosen sort.',
+        'type'        => 'read',
+        'ajax'        => true,
+        'loginrequired' => false,
+    ],
+
     'local_oerexchange_get_config' => [
         'classname'   => 'local_oerexchange\external\get_config',
         'methodname'  => 'execute',
