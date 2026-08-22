@@ -14,11 +14,11 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * The sort control on a contributor listing.
+ * The sort and view controls on a contributor listing.
  *
- * Progressive enhancement: the control is rendered server-side as a real GET
+ * Progressive enhancement: the controls are rendered server-side as a real GET
  * form that reloads the page and works with JavaScript off. This module hides
- * the submit button, takes the change event, and swaps the list in place.
+ * the submit button, takes their change events, and swaps the list in place.
  *
  * @module     local_oerexchange/contributorsort
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -33,7 +33,7 @@ import Notification from 'core/notification';
  *
  * @param {string} regionid id of the element whose contents are replaced
  * @param {number} limit how many cards the region shows
- * @param {string} layout 'list' for a block region, 'grid' for a page
+ * @param {string} layout the view to open with: 'cards' or 'list'
  */
 export const init = (regionid, limit, layout) => {
     const region = document.getElementById(regionid);
@@ -48,6 +48,10 @@ export const init = (regionid, limit, layout) => {
         return;
     }
 
+    const view = document.querySelector(
+        `[data-region="oerexchange-contributor-view"][data-target="${regionid}"]`
+    );
+
     const form = select.closest('form');
 
     // Only now is the plain form redundant: if anything above returned early,
@@ -60,13 +64,35 @@ export const init = (regionid, limit, layout) => {
         form.addEventListener('submit', (e) => e.preventDefault());
     }
 
-    select.addEventListener('change', () => {
+    /**
+     * Re-fetch the listing for whatever the two controls currently say.
+     *
+     * @return {void}
+     */
+    const refresh = () => {
         select.disabled = true;
+        if (view) {
+            view.disabled = true;
+        }
 
-        fetchMany([{
+        // Promise.resolve() around the core/ajax result is load-bearing, not
+        // decoration: core/ajax returns a jQuery Deferred promise, and jQuery
+        // 3.7.1 promises have then/catch/always but NO finally. Chaining
+        // .finally() straight onto it threw a TypeError the moment the chain
+        // was built — after the line above had disabled the control — so the
+        // list re-sorted exactly once and the dropdown then stayed disabled
+        // forever. Promise.resolve() adopts the thenable into a native
+        // promise, which has .finally, and keeps working if core/ajax ever
+        // returns native promises itself.
+        Promise.resolve(fetchMany([{
             methodname: 'local_oerexchange_get_contributors',
-            args: {sort: select.value, limit: limit, offset: 0, layout: layout},
-        }])[0]
+            args: {
+                sort: select.value,
+                limit: limit,
+                offset: 0,
+                layout: view ? view.value : layout,
+            },
+        }])[0])
             .then((result) => {
                 region.innerHTML = result.html;
                 return result;
@@ -74,6 +100,14 @@ export const init = (regionid, limit, layout) => {
             .catch(Notification.exception)
             .finally(() => {
                 select.disabled = false;
+                if (view) {
+                    view.disabled = false;
+                }
             });
-    });
+    };
+
+    select.addEventListener('change', refresh);
+    if (view) {
+        view.addEventListener('change', refresh);
+    }
 };

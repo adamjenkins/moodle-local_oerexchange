@@ -52,7 +52,7 @@ class get_contributors extends external_api {
             'sort' => new external_value(PARAM_ALPHA, 'Sort key; unknown values fall back to the default'),
             'limit' => new external_value(PARAM_INT, 'Maximum cards to return'),
             'offset' => new external_value(PARAM_INT, 'How many cards to skip'),
-            'layout' => new external_value(PARAM_ALPHA, 'list for a block region, grid for a full page'),
+            'layout' => new external_value(PARAM_ALPHA, 'cards or list; unknown values fall back to cards'),
         ]);
     }
 
@@ -94,9 +94,7 @@ class get_contributors extends external_api {
             $offset
         );
 
-        $html = $params['layout'] === 'grid'
-            ? contributor_list::render_grid($cards)
-            : contributor_list::render_list($cards);
+        $html = contributor_list::render($cards, $params['layout']);
 
         return ['html' => $html];
     }

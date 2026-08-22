@@ -63,6 +63,9 @@ class contributors_controller {
         $sort = contributor_list::normalise_sort(
             optional_param(contributor_list::PARAM_SORT, contributor_list::SORT_RESOURCES, PARAM_ALPHA)
         );
+        $layout = contributor_list::normalise_layout(
+            optional_param(contributor_list::PARAM_LAYOUT, contributor_list::LAYOUT_CARDS, PARAM_ALPHA)
+        );
         $page = max(0, optional_param('page', 0, PARAM_INT));
 
         // Always routed_path(), never a plain moodle_url() — see the long
@@ -71,7 +74,10 @@ class contributors_controller {
         // during a routed request; that is a documented environment bug,
         // cosmetic, and must not be "simplified" away.
         $pageurl = \moodle_url::routed_path('/local_oerexchange/contributors');
-        $pageurl->params([contributor_list::PARAM_SORT => $sort]);
+        $pageurl->params([
+            contributor_list::PARAM_SORT => $sort,
+            contributor_list::PARAM_LAYOUT => $layout,
+        ]);
 
         $PAGE->set_url($pageurl);
         $PAGE->set_context(\context_system::instance());
@@ -91,13 +97,13 @@ class contributors_controller {
         $PAGE->requires->js_call_amd('local_oerexchange/contributorsort', 'init', [
             $regionid,
             contributor_list::PERPAGE,
-            'grid',
+            $layout,
         ]);
 
         $out = $OUTPUT->header();
-        $out .= contributor_list::render_sort_form($pageurl, $sort, $regionid);
+        $out .= contributor_list::render_sort_form($pageurl, $sort, $regionid, $layout);
         $out .= \html_writer::div(
-            contributor_list::render_grid($cards),
+            contributor_list::render($cards, $layout),
             '',
             ['id' => $regionid, 'data-region' => 'oerexchange-contributors']
         );

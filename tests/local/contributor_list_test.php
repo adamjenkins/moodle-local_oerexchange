@@ -377,4 +377,54 @@ final class contributor_list_test extends \advanced_testcase {
         $this->assertStringContainsString('name="page"', $html, 'other params must survive a sort');
         $this->assertStringContainsString('oerexchange-contributor-sortgo', $html, 'the no-JS submit must exist');
     }
+
+    public function test_unknown_layout_falls_back_to_cards(): void {
+        $this->resetAfterTest();
+
+        $this->assertSame(
+            contributor_list::LAYOUT_CARDS,
+            contributor_list::normalise_layout('nonsense')
+        );
+        $this->assertSame(
+            contributor_list::LAYOUT_LIST,
+            contributor_list::normalise_layout('list')
+        );
+    }
+
+    public function test_render_dispatches_on_layout(): void {
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user(['firstname' => 'Aiko', 'lastname' => 'Tanaka']);
+        $this->seed_profile((int) $user->id);
+        $this->seed_resource((int) $user->id);
+        $cards = contributor_list::get_cards(contributor_list::SORT_RESOURCES);
+
+        $ascards = contributor_list::render($cards, contributor_list::LAYOUT_CARDS);
+        $aslist = contributor_list::render($cards, contributor_list::LAYOUT_LIST);
+
+        $this->assertStringContainsString('row-cols-md-3', $ascards);
+        $this->assertStringNotContainsString('row-cols-md-3', $aslist);
+        $this->assertStringContainsString('oerexchange-contributors-list', $aslist);
+        // Both views name the contributor and link the whole card exactly once.
+        foreach ([$ascards, $aslist] as $html) {
+            $this->assertStringContainsString('Aiko Tanaka', $html);
+            $this->assertSame(1, substr_count($html, '<a '));
+        }
+    }
+
+    public function test_sort_form_offers_both_views(): void {
+        $this->resetAfterTest();
+
+        $html = contributor_list::render_sort_form(
+            new \moodle_url('/local/oerexchange/x.php'),
+            contributor_list::SORT_RESOURCES,
+            'region-1',
+            contributor_list::LAYOUT_LIST
+        );
+
+        $this->assertStringContainsString(get_string('contributors_view_cards', 'local_oerexchange'), $html);
+        $this->assertStringContainsString(get_string('contributors_view_list', 'local_oerexchange'), $html);
+        $this->assertStringContainsString('data-region="oerexchange-contributor-view"', $html);
+        $this->assertStringContainsString('selected="selected" value="list"', $html);
+    }
 }

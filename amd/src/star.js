@@ -68,10 +68,17 @@ export const init = (resourceid) => {
         const wanted = button.dataset.starred !== '1';
         button.disabled = true;
 
-        fetchMany([{
+        // Promise.resolve() is load-bearing: core/ajax returns a jQuery
+        // Deferred promise, and jQuery 3.7.1 promises have then/catch/always
+        // but NO finally. Chaining .finally() straight onto it threw a
+        // TypeError the moment the chain was built — after the button had
+        // been disabled — so starring worked exactly once per page load and
+        // the button then stayed disabled. Promise.resolve() adopts the
+        // thenable into a native promise, which has .finally.
+        Promise.resolve(fetchMany([{
             methodname: 'local_oerexchange_set_resource_star',
             args: {resourceid: resourceid, starred: wanted},
-        }])[0]
+        }])[0])
             .then((result) => render(button, result.starred, result.count))
             .catch(Notification.exception)
             .finally(() => {

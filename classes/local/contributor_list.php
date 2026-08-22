@@ -44,6 +44,15 @@ class contributor_list {
     /** @var string GET parameter carrying the chosen sort, on both the block and the page */
     public const PARAM_SORT = 'contribsort';
 
+    /** @var string GET parameter carrying the chosen view, on both the block and the page */
+    public const PARAM_LAYOUT = 'contribview';
+
+    /** @var string picture-led cards in a responsive grid */
+    public const LAYOUT_CARDS = 'cards';
+
+    /** @var string compact one-per-row list, for narrow regions */
+    public const LAYOUT_LIST = 'list';
+
     /** @var int how many expertise tags a card shows before the rest are dropped */
     protected const MAX_TAGS = 3;
 
@@ -174,6 +183,39 @@ class contributor_list {
                   " . self::eligibility_joins();
 
         return (int) $DB->count_records_sql($sql, self::status_params());
+    }
+
+    /**
+     * Every accepted view, in menu order.
+     *
+     * @return string[]
+     */
+    public static function layout_keys(): array {
+        return [self::LAYOUT_CARDS, self::LAYOUT_LIST];
+    }
+
+    /**
+     * Map any caller-supplied view to a known one.
+     *
+     * @param string $layout
+     * @return string one of the LAYOUT_* constants
+     */
+    public static function normalise_layout(string $layout): string {
+        return in_array($layout, self::layout_keys(), true) ? $layout : self::LAYOUT_CARDS;
+    }
+
+    /**
+     * Render cards in the requested view. The single entry point callers
+     * should use, so neither surface has to know which renderer is which.
+     *
+     * @param \stdClass[] $cards
+     * @param string $layout one of the LAYOUT_* constants
+     * @return string HTML
+     */
+    public static function render(array $cards, string $layout): string {
+        return self::normalise_layout($layout) === self::LAYOUT_LIST
+            ? self::render_list($cards)
+            : self::render_grid($cards);
     }
 
     /**
@@ -383,7 +425,12 @@ class contributor_list {
      * @param string $regionid id of the element whose contents get replaced
      * @return string HTML
      */
-    public static function render_sort_form(\moodle_url $baseurl, string $sort, string $regionid): string {
+    public static function render_sort_form(
+        \moodle_url $baseurl,
+        string $sort,
+        string $regionid,
+        string $layout = self::LAYOUT_CARDS
+    ): string {
         $options = [];
         foreach (self::sort_keys() as $key) {
             $options[$key] = get_string('contributors_sort_' . $key, 'local_oerexchange');
@@ -412,6 +459,31 @@ class contributor_list {
             ]
         );
 
+        $viewid = $regionid . '-view';
+        $viewlabel = \html_writer::tag(
+            'label',
+            get_string('contributors_viewas', 'local_oerexchange'),
+            ['for' => $viewid, 'class' => 'small text-muted ms-2 me-1 align-self-center']
+        );
+
+        $viewoptions = [];
+        foreach (self::layout_keys() as $key) {
+            $viewoptions[$key] = get_string('contributors_view_' . $key, 'local_oerexchange');
+        }
+
+        $viewselect = \html_writer::select(
+            $viewoptions,
+            self::PARAM_LAYOUT,
+            self::normalise_layout($layout),
+            false,
+            [
+                'id' => $viewid,
+                'class' => 'form-select-sm d-inline-block w-auto',
+                'data-region' => 'oerexchange-contributor-view',
+                'data-target' => $regionid,
+            ]
+        );
+
         $submit = \html_writer::empty_tag('input', [
             'type' => 'submit',
             'class' => 'btn btn-sm btn-outline-secondary ms-1',
@@ -423,7 +495,7 @@ class contributor_list {
         // paging or anything the host page put in the URL.
         $hidden = '';
         foreach ($baseurl->params() as $name => $value) {
-            if ($name === self::PARAM_SORT) {
+            if ($name === self::PARAM_SORT || $name === self::PARAM_LAYOUT) {
                 continue;
             }
             $hidden .= \html_writer::empty_tag('input', [
@@ -435,7 +507,7 @@ class contributor_list {
 
         return \html_writer::tag(
             'form',
-            $hidden . $label . $select . $submit,
+            $hidden . $label . $select . $viewlabel . $viewselect . $submit,
             [
                 'method' => 'get',
                 'action' => $baseurl->out_omit_querystring(),
