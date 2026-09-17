@@ -3,6 +3,36 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.0.11] - 2026-09-17
+
+### Changed
+
+- The sandbox plugin allowlist table groups by plugin instead of showing one
+  line per plugin per Moodle version. The versions share one column, each
+  keeping its own bake checkbox, enable/disable control, override warning and
+  release number where they differ. The stored rows are unchanged, so the
+  sandbox configuration file and every other consumer read them as before.
+
+### Added
+
+- A **Remove** button per Moodle version, and a **+ 5.x** button for every
+  deployed version a plugin is not yet listed for. Adding a version reuses the
+  release already mirrored for that plugin, needs no network access, and marks
+  the row as an override when the plugin's own `version.php` does not claim to
+  support that version.
+- A control to offer everything listed for one Moodle version on another one,
+  for when a new version is added to the sandbox. Each plugin is re-resolved
+  from the Moodle plugins directory for the target version, and the result is
+  shown in the existing preview-and-confirm screen; a plugin the directory
+  cannot resolve is reported as an unresolved entry rather than skipped.
+
+### Security
+
+- Adding a Moodle version to a plugin copies its bake flag only for users
+  holding `local/oerexchange:managesandbox`. Without that capability the
+  version is added unbaked, so extending a baked plugin to another version
+  cannot change what the next bundle build ships.
+
 ## [1.0.10] - 2026-08-22
 
 ### Added

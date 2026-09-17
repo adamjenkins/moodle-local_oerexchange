@@ -1,68 +1,70 @@
-# Release notes — 1.0.10
+# Release notes — 1.0.11
 
-The Exchange now has a public contributors listing, and co-authors count as
-contributors everywhere rather than only where they could already edit.
+The sandbox plugin allowlist is now read and edited per plugin rather than per
+plugin-and-Moodle-version, and adding or removing a Moodle version no longer
+means deleting the plugin and starting again.
 
-## Contributors listing
+## One line per plugin
 
-A new public page at `/local_oerexchange/contributors` shows everyone with
-something currently published, as cards: profile picture, name, any badges
-they hold, up to three expertise tags, how many resources and courses they
-have shared, and how recently. The whole card links to that contributor's
-profile, using a single stretched anchor so assistive technology announces the
-contributor's name rather than the card's entire contents.
+The allowlist stores one row per plugin per Moodle version, because each
+version carries its own mirrored ZIP, its own pinned release and its own
+"bake into bundle" flag. The table showed exactly that: a plugin offered on
+5.0 and 5.2 appeared twice.
 
-A sort control offers most resources shared, most courses shared and recently
-shared; a view control switches between cards and a compact list. Both
-re-render in place over AJAX and still work with JavaScript turned off, where
-they fall back to an ordinary form submission.
+It now groups by plugin. The Moodle versions sit together in one column, and
+each keeps the things that genuinely differ between versions — its bake
+checkbox, its enable/disable control, the warning when it was added for a
+version the plugin does not claim to support, and its release number when
+that differs between versions. Nothing about the stored rows changed, so the
+sandbox configuration file and every other consumer read them exactly as
+before.
 
-Only people who have left their profile publicly visible are listed, and only
-those with at least one published resource — the visibility rule is enforced in
-SQL, not in the renderer.
+## Adding and removing Moodle versions
 
-The companion `block_oerexchangecontributors` renders the same listing on the
-Dashboard and front page through the same class, so the two surfaces cannot
-drift apart.
+Each listed version has its own **Remove** button. Removing one leaves the
+plugin listed for the others; removing the last one removes the plugin, with
+the same confirmation as before.
 
-## Co-authors are contributors
+A **+ 5.x** button appears for every Moodle version the sandbox deploys that
+the plugin is not yet listed for. It reuses the release already mirrored for
+that plugin rather than fetching a different one — the package an
+administrator reviewed stays the package that is offered — and needs no
+network access.
 
-A co-author holds exactly the same rights over a resource as its creator, so
-they now earn the same recognition:
+If the plugin's own `version.php` does not claim to support the version being
+added, it is still added, and the row keeps the existing "added for a Moodle
+version this plugin does not claim to support" warning. A `supported` range
+that nobody updated is the common case, and the warning keeps the decision
+visible.
 
-- `profile_manager::get_metrics()` counts co-authored resources, so the profile
-  page and the contributors listing report the same numbers.
-- The nightly badge task evaluates co-authors, not only creators — previously a
-  co-author who had created nothing was never assessed for Trusted Contributor
-  at all.
-- Being added as a co-author now creates that person's profile, the same way
-  publishing does. Existing co-authors are backfilled on upgrade.
-- Because that gives someone a public profile through another person's action,
-  the "you were added as a co-author" notification now says so and points at
-  the setting to turn it off.
+## Offering a selection on a new Moodle version
 
-## Fixed
+When a new Moodle version is added to the sandbox, a control below the table
+lists everything already offered on one version onto another in a single step.
 
-- The star button on a resource page worked exactly once per page load and then
-  stayed disabled. `core/ajax` returns a jQuery Deferred, and jQuery 3.7.1
-  promises have `then`/`catch`/`always` but no `finally`; chaining `.finally()`
-  threw a `TypeError` as the chain was built, after the button had been
-  disabled, so nothing ever re-enabled it. Present since 1.0.9.
+Unlike the per-plugin button, each plugin here is looked up in the Moodle
+plugins directory again **for the target version**, because a new Moodle
+release is exactly when a newer release of a plugin is likely to be the
+compatible one. It is a preview: the same "what will be added" screen a
+manual addition shows, with nothing written until it is confirmed. A plugin
+the directory cannot resolve appears as a visible unresolved entry rather
+than being quietly skipped.
 
-## Also
+## Bake flag and capabilities
 
-- `resource_manager::STATUS_PUBLISHED` replaces the bare `'published'` literal
-  for the catalogue-visibility test.
-- `badge_manager::get_badges_for_users()` is a batch lookup, so a listing does
-  not run one query per row.
+Adding a Moodle version to a plugin copies its bake flag only for
+administrators holding `local/oerexchange:managesandbox`. Without it the
+version is still added, but unbaked: extending a baked plugin to another
+version changes what the next sandbox bundle build ships, which is precisely
+what that capability governs.
 
-## Verified for this release
+## Checks run for this release
 
-- PHPUnit: 653 tests, 1824 assertions, green.
-- `scripts/phpcs-ci` (CI-equivalent, component-aware): clean, exit 0.
-- `scripts/verify-gates`: all local gates fire on known-bad input, so those
-  clean results are meaningful.
-- The listing, both sort orders and both views exercised in a real browser
-  against the test site.
-- The cross-database portability of the new aggregate query is proven on
-  MariaDB 11.8.6 only; the PostgreSQL leg runs in GitHub Actions.
+`moodle-plugin-ci` phplint, phpmd, `phpcs --max-warnings 0`,
+`phpdoc --max-warnings 0`, validate, savepoints and mustache each exited 0,
+matching this repository's own CI workflow. PHPUnit: 11 new tests covering
+the new behaviour and 101 tests across the allowlist suite, all passing. The
+reworked page was exercised in a browser on the test site — adding a version
+to a plugin, then removing it again — and the sandbox configuration stamp
+returned to its previous value afterwards, confirming the deployed bundle
+still matches the configuration.
