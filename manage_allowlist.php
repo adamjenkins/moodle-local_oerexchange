@@ -29,6 +29,7 @@
  */
 
 use local_oerexchange\form\allowlist_add_form;
+use local_oerexchange\local\allowlist\branch_editor;
 use local_oerexchange\local\allowlist\dependency_walker;
 use local_oerexchange\local\allowlist\directory_component_locator;
 use local_oerexchange\local\allowlist\entry_plan;
@@ -38,6 +39,7 @@ use local_oerexchange\local\allowlist\moodle_http_fetcher;
 use local_oerexchange\local\allowlist\resolution_exception;
 use local_oerexchange\local\allowlist\source_resolver;
 use local_oerexchange\local\allowlist\zip_inspector;
+use local_oerexchange\local\sandbox\playground;
 
 require(__DIR__ . '/../../config.php');
 require_login();
@@ -83,6 +85,83 @@ if (optional_param('savebake', 0, PARAM_INT) && confirm_sesskey()) {
 }
 
 $ingestor = new ingestor();
+$brancheditor = new branch_editor();
+
+// Listing an already-allowlisted plugin for one more branch. Copies the
+// release already pinned for it rather than resolving a new one: the admin
+// reviewed that ZIP, and "also offer it on 5.0" must not quietly swap it.
+$addbranchfor = optional_param('addbranchfor', '', PARAM_COMPONENT);
+if ($addbranchfor !== '' && confirm_sesskey()) {
+    $branch = optional_param('addbranch', '', PARAM_RAW_TRIMMED);
+    // Passing $cansandbox rather than true: inheriting the bake flag would let
+    // a user who cannot tick that box extend a baked plugin onto another branch, which
+    // changes what the next bundle build ships — the thing the capability
+    // exists to gate. They can still add the branch; it simply lands unbaked.
+    $result = $brancheditor->add_branch($addbranchfor, $branch, $cansandbox);
+
+    // Mapped explicitly rather than interpolating $result into the key: a
+    // string built at runtime is invisible to grep and to the lang tooling,
+    // which is how an untranslated key reaches a user.
+    [$stringid, $notify] = match ($result) {
+        branch_editor::ADDED => ['allowlistbranchadded', \core\output\notification::NOTIFY_SUCCESS],
+        branch_editor::EXISTS => ['allowlistbranchexists', \core\output\notification::NOTIFY_INFO],
+        default => ['allowlistbranchnosource', \core\output\notification::NOTIFY_ERROR],
+    };
+    redirect(
+        $pageurl,
+        get_string($stringid, 'local_oerexchange', (object) [
+            'plugin' => s($addbranchfor),
+            'branch' => s($branch),
+        ]),
+        null,
+        $notify
+    );
+}
+
+// Offering everything already on one branch on another one — the "5.3 just
+// came out" operation. Unlike add_branch above, each plugin is re-resolved
+// from the plugins directory for the target branch, then shown in the same
+// preview-and-confirm as a manual add. Nothing is written here.
+$rolloverfrom = optional_param('rolloverfrom', '', PARAM_RAW_TRIMMED);
+$rolloverto = optional_param('rolloverto', '', PARAM_RAW_TRIMMED);
+if ($rolloverfrom !== '' && $rolloverto !== '' && confirm_sesskey()) {
+    if ($rolloverfrom === $rolloverto) {
+        redirect(
+            $pageurl,
+            get_string('allowlistrolloversamebranch', 'local_oerexchange'),
+            null,
+            \core\output\notification::NOTIFY_ERROR
+        );
+    }
+
+    local_oerexchange_allowlist_forget_plan();
+
+    // Persistent, not a request directory: the downloaded packages have to
+    // survive until the admin confirms on the next request — same contract as
+    // the manual add above.
+    $workdir = make_temp_directory('local_oerexchange/allowlist/' . random_string(20));
+    $plan = $ingestor->preview($brancheditor->rollover_plan($rolloverfrom, $rolloverto, $workdir));
+
+    if ($plan->is_empty() && empty($plan->entries)) {
+        remove_dir($workdir);
+        redirect(
+            $pageurl,
+            get_string('allowlistrollovernothing', 'local_oerexchange', (object) [
+                'from' => s($rolloverfrom),
+                'to' => s($rolloverto),
+            ]),
+            null,
+            \core\output\notification::NOTIFY_INFO
+        );
+    }
+
+    $SESSION->local_oerexchange_allowlistplan = $plan;
+    $SESSION->local_oerexchange_allowlistdir = $workdir;
+    // Bake is per branch and the admin has said nothing about it here, so the
+    // rows land unbaked rather than inheriting a flag from another branch.
+    $SESSION->local_oerexchange_allowlistbake = false;
+    redirect($pageurl);
+}
 
 // Deleting an entry throws away its mirrored ZIP as well as the row, so it
 // asks first. Disabling, the reversible option, stays a one-click toggle.
@@ -256,6 +335,7 @@ if ($plan !== null) {
 }
 
 echo local_oerexchange_allowlist_render_entries($cansandbox);
+echo local_oerexchange_allowlist_render_rollover();
 
 echo $OUTPUT->footer();
 
@@ -403,6 +483,21 @@ function local_oerexchange_allowlist_render_entries(bool $cansandbox): string {
         $names[$entry->id] = $entry->component ?: ($entry->plugintype . '_' . $entry->pluginname);
     }
 
+    // Grouped by plugin, not by row: the table stores one row per plugin per
+    // branch because each carries its own mirrored ZIP and its own bake flag,
+    // but an admin reads the list as "this plugin, these branches". Status,
+    // bake and the override warning stay per branch inside the cell, because
+    // they genuinely differ per branch — config::render() emits
+    // BAKE_PLUGINS_<branch>, so flattening the checkbox would silently change
+    // what ships in a bundle.
+    $grouped = [];
+    foreach ($entries as $e) {
+        $grouped[$e->component ?: $e->plugintype . '_' . $e->pluginname][] = $e;
+    }
+
+    $branchorder = array_flip(playground::DEPLOYED_BRANCHES);
+    $brancheditor = new branch_editor();
+
     $html = $OUTPUT->heading(get_string('allowlistcurrent', 'local_oerexchange'), 3);
     $html .= html_writer::start_tag('form', ['method' => 'post', 'action' => $pageurl]);
     $html .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'savebake', 'value' => 1]);
@@ -411,63 +506,128 @@ function local_oerexchange_allowlist_render_entries(bool $cansandbox): string {
     $table = new html_table();
     $table->head = [
         get_string('allowlistplugin', 'local_oerexchange'),
-        get_string('allowlistbranch', 'local_oerexchange'),
-        get_string('sitestatus', 'local_oerexchange'),
-        get_string('allowlistbake', 'local_oerexchange') . ' ' . $OUTPUT->help_icon('allowlistbake', 'local_oerexchange'),
-        '',
+        get_string('allowlistbranches', 'local_oerexchange') . ' '
+            . $OUTPUT->help_icon('allowlistbake', 'local_oerexchange'),
+        get_string('allowlistaddbranch', 'local_oerexchange'),
     ];
 
-    foreach ($entries as $e) {
-        $toggleurl = new moodle_url($pageurl, ['toggleid' => $e->id, 'sesskey' => $sesskey]);
-        $label = $e->status === 'active'
-            ? get_string('allowlistdisable', 'local_oerexchange')
-            : get_string('allowlistenable', 'local_oerexchange');
+    foreach ($grouped as $component => $rows) {
+        usort($rows, static function ($a, $b) use ($branchorder): int {
+            return ($branchorder[$a->moodlebranch] ?? PHP_INT_MAX) <=> ($branchorder[$b->moodlebranch] ?? PHP_INT_MAX);
+        });
 
-        $name = html_writer::tag('strong', s($e->component ?: $e->plugintype . '_' . $e->pluginname));
-        if (!empty($e->pluginrelease)) {
-            $name .= ' ' . s($e->pluginrelease);
+        $releases = array_values(array_unique(array_filter(array_map(
+            static fn($r) => (string) $r->pluginrelease,
+            $rows
+        ))));
+
+        $name = html_writer::tag('strong', s($component));
+        // One release for every branch is the normal case and belongs beside
+        // the name; differing releases are shown per branch below instead of
+        // being averaged into something untrue.
+        if (count($releases) === 1) {
+            $name .= ' ' . s($releases[0]);
         }
-        if (!empty($e->parentid) && isset($names[$e->parentid])) {
-            $name .= html_writer::tag(
-                'div',
-                get_string('allowlistaddedasdependency', 'local_oerexchange', s($names[$e->parentid])),
-                ['class' => 'small text-muted']
+        foreach ($rows as $e) {
+            if (!empty($e->parentid) && isset($names[$e->parentid])) {
+                $name .= html_writer::tag(
+                    'div',
+                    get_string('allowlistaddedasdependency', 'local_oerexchange', s($names[$e->parentid])),
+                    ['class' => 'small text-muted']
+                );
+                break;
+            }
+        }
+
+        $chips = '';
+        foreach ($rows as $e) {
+            $toggleurl = new moodle_url($pageurl, ['toggleid' => $e->id, 'sesskey' => $sesskey]);
+            $togglelabel = $e->status === 'active'
+                ? get_string('allowlistdisable', 'local_oerexchange')
+                : get_string('allowlistenable', 'local_oerexchange');
+            $deleteurl = new moodle_url($pageurl, ['deleteid' => $e->id, 'sesskey' => $sesskey]);
+
+            // Rendered disabled (not hidden) for a user without managesandbox, and any
+            // submitted value from such a user is ignored server-side above — a
+            // disabled checkbox never submits a value at all, but the server-side
+            // check is what actually enforces the gate against a forged request.
+            $bakeid = 'bake-' . $e->id;
+            $bakeattrs = [
+                'type' => 'checkbox',
+                'name' => 'bake[' . $e->id . ']',
+                'id' => $bakeid,
+                'value' => 1,
+                'class' => 'me-1',
+            ] + ($e->bake ? ['checked' => 'checked'] : []) + ($cansandbox ? [] : ['disabled' => 'disabled']);
+
+            $chip = html_writer::tag('span', s($e->moodlebranch), [
+                'class' => 'badge bg-light text-dark border me-2',
+            ]);
+            if (count($releases) > 1 && !empty($e->pluginrelease)) {
+                $chip .= html_writer::tag('span', s($e->pluginrelease), ['class' => 'small text-muted me-2']);
+            }
+            if ($e->status !== 'active') {
+                $chip .= html_writer::tag('span', s($e->status), ['class' => 'small text-muted me-2']);
+            }
+            $chip .= html_writer::empty_tag('input', $bakeattrs)
+                . html_writer::tag('label', get_string('allowlistbake', 'local_oerexchange'), [
+                    'for' => $bakeid,
+                    'class' => 'small me-2',
+                ]);
+            $chip .= html_writer::link($toggleurl, $togglelabel, [
+                'class' => 'btn btn-sm btn-outline-secondary me-1',
+            ]);
+            $chip .= html_writer::link($deleteurl, get_string('allowlistremovebranch', 'local_oerexchange'), [
+                'class' => 'btn btn-sm btn-outline-danger',
+                // The button says "Remove" for every branch, so the branch it
+                // removes has to be in the accessible name.
+                'aria-label' => get_string('allowlistremovebrancharia', 'local_oerexchange', (object) [
+                    'plugin' => s($component),
+                    'branch' => s($e->moodlebranch),
+                ]),
+            ]);
+
+            // Without this, a row listing a plugin for a branch its own
+            // version.php disowns reads as a bug rather than a decision.
+            if ($e->notes === ingestor::NOTE_OVERRIDDEN) {
+                $chip .= html_writer::tag(
+                    'div',
+                    get_string('allowlistoverriddennote', 'local_oerexchange'),
+                    ['class' => 'small text-warning']
+                );
+            }
+
+            $chips .= html_writer::tag('div', $chip, ['class' => 'd-flex align-items-center flex-wrap mb-1']);
+        }
+
+        // Plain links, not a select inside a button: this cell sits inside the
+        // bake form, and a nested <form> is invalid HTML that browsers silently
+        // drop — taking the bake checkboxes with it.
+        $add = '';
+        foreach ($brancheditor->addable_branches($component) as $branch) {
+            $add .= html_writer::link(
+                new moodle_url($pageurl, [
+                    'addbranchfor' => $component,
+                    'addbranch' => $branch,
+                    'sesskey' => $sesskey,
+                ]),
+                '+ ' . s($branch),
+                [
+                    'class' => 'btn btn-sm btn-outline-primary me-1',
+                    'aria-label' => get_string('allowlistaddbrancharia', 'local_oerexchange', (object) [
+                        'plugin' => s($component),
+                        'branch' => s($branch),
+                    ]),
+                ]
             );
         }
-        // Without this, a row listing a plugin for a branch its own
-        // version.php disowns reads as a bug rather than a decision.
-        if ($e->notes === ingestor::NOTE_OVERRIDDEN) {
-            $name .= html_writer::tag(
-                'div',
-                get_string('allowlistoverriddennote', 'local_oerexchange'),
-                ['class' => 'small text-warning']
-            );
+        if ($add === '') {
+            $add = html_writer::tag('span', get_string('allowlistallbranches', 'local_oerexchange'), [
+                'class' => 'small text-muted',
+            ]);
         }
 
-        // Rendered disabled (not hidden) for a user without managesandbox, and any
-        // submitted value from such a user is ignored server-side above — a
-        // disabled checkbox never submits a value at all, but the server-side
-        // check is what actually enforces the gate against a forged request.
-        $bakeattrs = [
-            'type' => 'checkbox',
-            'name' => 'bake[' . $e->id . ']',
-            'value' => 1,
-        ] + ($e->bake ? ['checked' => 'checked'] : []) + ($cansandbox ? [] : ['disabled' => 'disabled']);
-
-        $deleteurl = new moodle_url($pageurl, ['deleteid' => $e->id, 'sesskey' => $sesskey]);
-
-        $table->data[] = [
-            $name,
-            s($e->moodlebranch),
-            s($e->status),
-            html_writer::empty_tag('input', $bakeattrs),
-            html_writer::link($toggleurl, $label, ['class' => 'btn btn-sm btn-outline-secondary me-1'])
-                . html_writer::link(
-                    $deleteurl,
-                    get_string('allowlistdelete', 'local_oerexchange'),
-                    ['class' => 'btn btn-sm btn-outline-danger']
-                ),
-        ];
+        $table->data[] = [$name, $chips, $add];
     }
 
     $html .= html_writer::table($table);
@@ -478,6 +638,83 @@ function local_oerexchange_allowlist_render_entries(bool $cansandbox): string {
             'class' => 'btn btn-primary',
         ]);
     }
+    $html .= html_writer::end_tag('form');
+
+    return $html;
+}
+
+/**
+ * The "offer everything from one branch on another" control.
+ *
+ * Separate from the entries table's form on purpose: that form posts the bake
+ * checkboxes, and a nested <form> is invalid HTML browsers drop silently.
+ *
+ * @return string
+ */
+function local_oerexchange_allowlist_render_rollover(): string {
+    global $DB, $OUTPUT;
+
+    $branches = playground::DEPLOYED_BRANCHES;
+    if (count($branches) < 2) {
+        // One deployed branch: there is nowhere to roll anything over to, and
+        // an empty pair of selects would only puzzle the reader.
+        return '';
+    }
+
+    $counts = $DB->get_records_sql(
+        'SELECT moodlebranch, COUNT(DISTINCT component) AS plugins
+           FROM {local_oerexchange_pluginallowlist}
+       GROUP BY moodlebranch'
+    );
+
+    $options = [];
+    foreach ($branches as $branch) {
+        $listed = isset($counts[$branch]) ? (int) $counts[$branch]->plugins : 0;
+        $options[$branch] = get_string('allowlistrolloveroption', 'local_oerexchange', (object) [
+            'branch' => $branch,
+            'plugins' => $listed,
+        ]);
+    }
+
+    // Defaults matching the common case: copy the branch carrying the most
+    // plugins onto the newest deployed one, which is the branch that has just
+    // appeared and is therefore empty.
+    $newest = (string) end($branches);
+    $fullest = $newest;
+    $most = -1;
+    foreach ($branches as $branch) {
+        $listed = isset($counts[$branch]) ? (int) $counts[$branch]->plugins : 0;
+        if ($branch !== $newest && $listed >= $most + 1) {
+            $most = $listed;
+            $fullest = $branch;
+        }
+    }
+
+    $pageurl = new moodle_url('/local/oerexchange/manage_allowlist.php');
+
+    $html = $OUTPUT->heading(get_string('allowlistrolloverheading', 'local_oerexchange'), 3);
+    $html .= html_writer::tag('p', get_string('allowlistrolloverintro', 'local_oerexchange'), ['class' => 'text-muted']);
+    $html .= html_writer::start_tag('form', ['method' => 'post', 'action' => $pageurl, 'class' => 'form-inline']);
+    $html .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    $html .= html_writer::label(
+        get_string('allowlistrolloverfrom', 'local_oerexchange'),
+        'rolloverfrom',
+        true,
+        ['class' => 'me-1']
+    );
+    $html .= html_writer::select($options, 'rolloverfrom', $fullest, false, ['id' => 'rolloverfrom', 'class' => 'me-2']);
+    $html .= html_writer::label(
+        get_string('allowlistrolloverto', 'local_oerexchange'),
+        'rolloverto',
+        true,
+        ['class' => 'me-1']
+    );
+    $html .= html_writer::select($options, 'rolloverto', $newest, false, ['id' => 'rolloverto', 'class' => 'me-2']);
+    $html .= html_writer::empty_tag('input', [
+        'type' => 'submit',
+        'value' => get_string('allowlistrolloversubmit', 'local_oerexchange'),
+        'class' => 'btn btn-secondary',
+    ]);
     $html .= html_writer::end_tag('form');
 
     return $html;
