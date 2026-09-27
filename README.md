@@ -225,7 +225,7 @@ stylesheets are emitted before theme CSS.
 
 ## Requirements
 
-- Moodle 5.0–5.2 (`$plugin->supported`).
+- Moodle 5.0–5.3 (`$plugin->supported`).
 - PHP as required by the target Moodle version.
 
 ## Installation

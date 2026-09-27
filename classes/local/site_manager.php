@@ -239,6 +239,11 @@ class site_manager {
         $user->mnethostid = $GLOBALS['CFG']->mnet_localhost_id;
         $user->suspended = 0;
 
+        // Moodle 5.3 deprecated user_create_user() in favour of
+        // \core\user::create_user(), which does not exist before 5.3.
+        if (method_exists(\core\user::class, 'create_user')) {
+            return \core\user::create_user($user, false, false);
+        }
         return user_create_user($user, false, false);
     }
 

@@ -48,6 +48,6 @@ $plugin->version   = 2026091700;
 // precisely on the independent second pass, 2026-07-19, correcting an
 // earlier off-by-one estimate of nine.
 $plugin->requires  = 2025041400;
-$plugin->supported = [500, 502];
+$plugin->supported = [500, 503];
 $plugin->release   = '1.0.11';
 $plugin->maturity  = MATURITY_STABLE;

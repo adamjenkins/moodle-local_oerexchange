@@ -3,6 +3,15 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [Unreleased]
+
+### Changed
+
+- Declare Moodle 5.3 support.
+- Site service accounts are created with `\core\user::create_user()` on
+  Moodle 5.3 and later, where `user_create_user()` is deprecated; earlier
+  versions keep using `user_create_user()`.
+
 ## [1.0.11] - 2026-09-17
 
 ### Changed
