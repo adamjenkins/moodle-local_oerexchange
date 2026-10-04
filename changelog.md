@@ -3,11 +3,12 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
-## [Unreleased]
+## [1.0.12] - 2026-10-04
 
 ### Changed
 
-- Declare Moodle 5.3 support.
+- Declare Moodle 5.3 support: `$plugin->supported` is now `[500, 503]`, and
+  composer.json's `moodle/moodle` constraint is now `>=5.0 <5.4`.
 - Site service accounts are created with `\core\user::create_user()` on
   Moodle 5.3 and later, where `user_create_user()` is deprecated; earlier
   versions keep using `user_create_user()`.
