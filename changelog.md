@@ -3,13 +3,17 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
-## [Unreleased]
+## [1.0.13] - 2026-10-04
 
 ### Changed
 
 - The Japanese language pack (lang/ja) is no longer included: releases ship the English strings
   only, as the Moodle Plugins directory expects. Japanese is provided through Moodle's language
   packs.
+- composer.json's `moodle/moodle` constraint is now `^5.0` (was `>=5.0 <5.4`), so new 5.x
+  releases are not excluded.
+- CI tests `MOODLE_503_STABLE` (PHP 8.3-8.4, PostgreSQL 17, MariaDB 11.4) as blocking rows,
+  replacing the non-blocking moodle.git `main` rows.
 
 ## [1.0.12] - 2026-10-04
 
