@@ -14,7 +14,7 @@
         "source": "https://github.com/adamjenkins/moodle-local_oerexchange"
     },
     "require": {
-        "moodle/moodle": ">=5.0 <5.4",
+        "moodle/moodle": "^5.0",
         "moodle/composer-installer": "^1.0"
     }
 }
