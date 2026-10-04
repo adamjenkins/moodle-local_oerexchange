@@ -3,6 +3,14 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [Unreleased]
+
+### Changed
+
+- The Japanese language pack (lang/ja) is no longer included: releases ship the English strings
+  only, as the Moodle Plugins directory expects. Japanese is provided through Moodle's language
+  packs.
+
 ## [1.0.12] - 2026-10-04
 
 ### Changed
