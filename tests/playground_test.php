@@ -37,12 +37,31 @@ final class playground_test extends \advanced_testcase {
         $this->assertSame('5.2', playground::map_branch('5.2.1+ (Build: 20260714)'));
     }
 
+    /**
+     * The newest deployed branch, derived rather than written out.
+     *
+     * The two fallback tests below assert "the NEWEST deployed branch", which is
+     * the contract — not "5.2", which is merely what that happened to be before
+     * 5.3 was deployed on 2026-10-07 (and what made both of them fail that day).
+     * Same reasoning as branch_mapper_test's note on not reading the constant for
+     * the mapping cases: a deployment should not break a test about fallback
+     * behaviour. The assertions still discriminate — falling back to the oldest
+     * branch, or to '', fails them.
+     *
+     * @return string
+     */
+    private function newest_deployed_branch(): string {
+        $branches = playground::DEPLOYED_BRANCHES;
+
+        return (string) end($branches);
+    }
+
     public function test_map_branch_falls_back_to_newest_when_source_is_newer_than_everything(): void {
-        $this->assertSame('5.2', playground::map_branch('5.9.0'));
+        $this->assertSame($this->newest_deployed_branch(), playground::map_branch('5.9.0'));
     }
 
     public function test_map_branch_falls_back_to_newest_when_unparseable(): void {
-        $this->assertSame('5.2', playground::map_branch('not a version string'));
+        $this->assertSame($this->newest_deployed_branch(), playground::map_branch('not a version string'));
     }
 
     public function test_build_blueprint_orders_steps_and_intersects_only_given_plugins(): void {

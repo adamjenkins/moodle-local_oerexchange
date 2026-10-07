@@ -36,7 +36,7 @@ class playground {
      *
      * @var string[]
      */
-    const DEPLOYED_BRANCHES = ['5.0', '5.2'];
+    const DEPLOYED_BRANCHES = ['5.0', '5.2', '5.3'];
 
     /**
      * The core $version each deployed branch starts at — its branching
@@ -54,12 +54,16 @@ class playground {
      *   requires, see version.php:33)
      * - 5.2 => 2026042000 (branching date 20260420, from
      *   /srv/lms/moodle/public/version.php:32 on the 5.2.1+ test site)
+     * - 5.3 => 2026100500 (branching date 20261005, read from core's own
+     *   public/version.php at tag v5.3.0 — `git -C /srv/lms/moodle show
+     *   v5.3.0:public/version.php`, 2026-10-07)
      *
      * @var array<string, int>
      */
     const BRANCH_CORE_VERSIONS = [
         '5.0' => 2025041400,
         '5.2' => 2026042000,
+        '5.3' => 2026100500,
     ];
 
     /**

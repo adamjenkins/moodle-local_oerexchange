@@ -206,7 +206,10 @@ final class branch_editor_test extends \advanced_testcase {
 
         $editor = new branch_editor($this->locator, new source_resolver($this->fetcher), new zip_inspector());
         $this->assertSame(['5.2'], $editor->branches_for('mod_thing'));
-        $this->assertSame(['5.0'], $editor->addable_branches('mod_thing'));
+        // Addable = every deployed branch the plugin is not listed on, in
+        // playground::DEPLOYED_BRANCHES order — so this grows when a branch is
+        // deployed (5.3 arrived 2026-10-07).
+        $this->assertSame(['5.0', '5.3'], $editor->addable_branches('mod_thing'));
     }
 
     public function test_rollover_plans_only_the_components_missing_from_the_target(): void {
