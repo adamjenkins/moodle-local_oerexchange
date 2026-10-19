@@ -28,7 +28,9 @@ Feature: Collections of OER resources
     Given I log in as "teacher1"
     When I visit "/local/oerexchange/collection_edit.php"
     And I set the field "Title" to "Week one reading"
-    And I press "Save collection"
+    # A new collection's button says "Create collection"; "Save collection"
+    # appears once it exists (edit_collection_form::definition()).
+    And I press "Create collection"
     # A new collection is always a draft: publishing is a separate, deliberate
     # act, so the owner is told so rather than left to guess.
     Then I should see "Week one reading"
