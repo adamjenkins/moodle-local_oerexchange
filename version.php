@@ -39,7 +39,20 @@ $plugin->component = 'local_oerexchange';
 // function. A services.php change only reaches the external_functions
 // table when the version serial moves, so adding the entry under the
 // previous serial left the endpoint unregistered.
-$plugin->version   = 2026100401;
+// 2026101900 adds collections: three new tables
+// (local_oerexchange_collections, _collection_items, _collection_curators)
+// plus a nullable collectionid on _reports and a now-nullable
+// _reports.resourceid, so the serial MUST move — a schema change does not
+// reach the database without it. It also adds the
+// local/oerexchange:createcollection capability and the collections web
+// services, both of which are likewise only re-read on a version change:
+// db/access.php reaches the capabilities table and db/services.php reaches
+// external_functions only when the serial moves, which is exactly what left
+// get_contributors unregistered under 2026082200. The release string moves
+// to 1.1.0 with it, on the owner's approval (2026-10-19): a minor rather
+// than a patch bump, because collections are a new feature with a new
+// capability and new schema, not a fix.
+$plugin->version   = 2026101900;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass
@@ -49,5 +62,5 @@ $plugin->version   = 2026100401;
 // earlier off-by-one estimate of nine.
 $plugin->requires  = 2025041400;
 $plugin->supported = [500, 503];
-$plugin->release   = '1.0.13';
+$plugin->release   = '1.1.0';
 $plugin->maturity  = MATURITY_STABLE;

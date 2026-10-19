@@ -66,6 +66,19 @@ plugin installed on their own Moodle sites.
   they have shared something themselves; only published resources are listed,
   since profiles are public. Stars are stored in Moodle's own favourites
   subsystem, so they are covered by core's privacy tooling.
+- **Collections**: anyone signed in can build an ordered list of catalogue
+  resources (their own or anyone's), with a note on each, at
+  `/local_oerexchange/c/{slug}`. Each has a cover (uploaded, or a mosaic of
+  its first four resources' thumbnails), is draft, unlisted or public, and can
+  be shared, starred and reported. Owners can name curators who manage its
+  items, or open it to additions from anyone signed in. Public collections are
+  listed at `/local_oerexchange/collections`, blended into catalogue search,
+  shown on their owner's profile, and an admin can feature chosen ones above,
+  below or instead of the catalogue on the front page. See
+  `classes/local/collection_manager.php`.
+- **Link previews**: Open Graph and Twitter Card tags on resource, collection
+  and profile pages, so a pasted link renders a preview card on social media
+  and in messaging apps; unlisted collections also ask not to be indexed.
 - **Co-authors**: an author can name further authors on anything they have
   shared, by username or email address, from the resource page. A co-author
   gets **the same rights as the creator** — replacing the file, the

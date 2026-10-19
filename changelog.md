@@ -3,6 +3,83 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.1.0] - 2026-10-19
+
+### Added
+
+- Collections: user-curated, ordered lists of catalogue resources with a
+  per-item curator note, three new tables (`local_oerexchange_collections`,
+  `_collection_items`, `_collection_curators`), and a routed page at
+  `/local_oerexchange/c/{slug}` (`collection_controller`).
+  `collection_manager` is the single authorisation gate for the three
+  contribution tiers (owner; named curator; any signed-in user when the
+  collection's `opencuration` flag is set) and for the draft / unlisted /
+  public visibility states, kept in a column separate from the moderator's
+  `modhidden` takedown so a restore returns a collection to its owner's own
+  choice.
+- `/local_oerexchange/collections` (`collections_controller`,
+  `collection_list`): the public listing, sortable by newest, most starred or
+  most items, as cards or a list, re-rendered over AJAX by the new
+  `local_oerexchange_get_collections` function.
+- `collection_edit.php` (moodleform): title, description, web address,
+  visibility, open curation, cover image, named curators, delete.
+- Cover images in a new `collectioncover` filearea, and an automatic 2×2
+  mosaic of the first four items' covers in `collectionmosaic` when none is
+  uploaded: 1200×630 (the link-preview card shape), laid out by the number of
+  covers and centre-cropped to fill, stored content-addressed so its URL
+  changes whenever it is rebuilt.
+- "Add to collection" inside the resource page's "Share this resource"
+  section (`share_targets::render()` gains an optional extra-content
+  argument), and an "Add resources" search on the collection page.
+- Collections in the catalogue: blended into search results (a fourth type
+  filter value, `collection`), merged with resources in PHP rather than with a
+  SQL `UNION`.
+- Featured collections on the front page: `featuredcollections` (stored as
+  collection ids, so renaming a slug does not unfeature it),
+  `featuredplacement` (above / below / instead) and `featuredheading`,
+  rendered inside `catalogue_view::render()` so the anonymous landing page and
+  the signed-in catalogue are driven by the same setting. `collectionsenabled`
+  switches the whole feature off.
+- A "Collections" section on educator profiles: a visitor sees the
+  educator's public collections; the educator sees all of their own, badged by
+  state, plus those they curate, and a "Create collection" button.
+- Starring collections through core favourites (`star_manager` gains an
+  itemtype; most-starred is a listing sort), with
+  `local_oerexchange_set_collection_star` and `amd/src/collectionstar.js`.
+  Only publicly listable collections can be starred, because every starred
+  list is public-only.
+- Reports and takedowns for collections: `local_oerexchange_reports` gains a
+  nullable `collectionid` and its `resourceid` becomes nullable; every reader
+  of that table now says which kind it wants. `moderate.php` and
+  `moderate_hidden.php` list collections alongside resources.
+- `local/oerexchange:createcollection` (RISK_SPAM, Authenticated user allowed
+  by default), the plugin's first capability granted beyond managers.
+- Message providers `collectioncurator` (you were made a curator) and
+  `collectionitem` (someone else added a resource to your collection).
+- Open Graph tags on resource and collection pages, and `twitter:card` on
+  those and on profiles; `noindex` on unlisted collections.
+- `slug_helper`, extracted from `profile_manager` so profiles and collections
+  share one validated, race-safe slug generator (profile slugs are generated
+  exactly as before).
+- `tests/generator/lib.php`, this plugin's first data generator.
+
+### Changed
+
+- `error_invalidslug` and `error_slugtaken` say "web address" rather than
+  "profile URL", since collections raise them too.
+
+### Security
+
+- `cover_image::save_from_draft()` validated only the first file
+  `get_area_files()` returned. That list includes files in sub-folders, which
+  `file_save_draft_area_files()` with `subdirs => 0` then skips before counting
+  towards `maxfiles`, so a valid image in a sub-folder could vouch for a
+  non-image at the root, which was stored and served inline. The draft area is
+  now refused unless it holds at most one file, at its root.
+  `local_oerexchange_pluginfile()` additionally refuses to serve any file whose
+  mimetype is not an allowed image type, which neutralises a file already
+  stored this way.
+
 ## [1.0.13] - 2026-10-04
 
 ### Changed
