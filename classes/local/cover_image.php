@@ -103,6 +103,21 @@ class cover_image {
 
         // Validate before saving, so a rejected file never reaches the
         // permanent area even briefly.
+        //
+        // Every file in the area is refused unless it is the one root-level
+        // file the save below would keep. Validating only reset($draftfiles)
+        // was a bypass: the draft itemid is client-supplied, the draft-file
+        // AJAX lets a user create subdirectories, get_area_files() returns
+        // files inside them, and file_save_draft_area_files() with
+        // subdirs => 0 skips those BEFORE counting towards maxfiles
+        // (lib/filelib.php, the merge loop). So a real PNG in /sub/ with a
+        // lower id was validated while an HTML file at the root was stored
+        // and served inline from the site origin. The filepicker this area
+        // is edited through allows one file and no folders, so nothing a
+        // legitimate form posts is refused here.
+        if (count($draftfiles) > 1 || (($first = reset($draftfiles)) && $first->get_filepath() !== '/')) {
+            throw new \moodle_exception('error_thumbnailnotanimage', 'local_oerexchange');
+        }
         if (!empty($draftfiles)) {
             $draftfile = reset($draftfiles);
 

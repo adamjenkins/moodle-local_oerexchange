@@ -423,4 +423,44 @@ final class cover_image_save_test extends \advanced_testcase {
         $this->assertCount(1, $files, 'one cover per resource, never two');
         $this->assertSame('second.png', reset($files)->get_filename());
     }
+
+    /**
+     * A valid image in a subdirectory must not vouch for an HTML file at the
+     * root of the same draft area.
+     *
+     * Up to 1.0.13 only the first file get_area_files() returned was
+     * validated, and that includes files inside subdirectories, which
+     * file_save_draft_area_files() then skips (subdirs => 0) before counting
+     * towards maxfiles. So the PNG below was checked while payload.html was
+     * stored, and served inline. The draft itemid is client-supplied and the
+     * draft-file AJAX can create folders, so an author could reach this.
+     *
+     * @return void
+     */
+    public function test_a_payload_beside_a_valid_image_in_a_subdirectory_is_rejected(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+        $resource = $this->make_resource(['creatorid' => (int) $user->id]);
+        $fs = get_file_storage();
+        $usercontextid = \context_user::instance((int) $user->id)->id;
+        $draftitemid = file_get_unused_draft_itemid();
+        $draft = ['contextid' => $usercontextid, 'component' => 'user', 'filearea' => 'draft', 'itemid' => $draftitemid];
+
+        $fs->create_directory($usercontextid, 'user', 'draft', $draftitemid, '/sub/');
+        $fs->create_file_from_string($draft + ['filepath' => '/sub/', 'filename' => 'cover.png'], $this->png_bytes());
+        $fs->create_file_from_string(
+            $draft + ['filepath' => '/', 'filename' => 'payload.html'],
+            '<html><body><script>alert(document.cookie)</script></body></html>'
+        );
+
+        try {
+            cover_image::save_from_draft((int) $resource->id, $draftitemid);
+            $this->fail('the root-level HTML file is what would be stored, so the save must refuse');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('error_thumbnailnotanimage', $e->errorcode);
+        }
+
+        $this->assertSame([], $this->stored_covers((int) $resource->id), 'nothing may reach the inline-served area');
+    }
 }
