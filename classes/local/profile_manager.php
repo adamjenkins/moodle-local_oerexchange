@@ -117,11 +117,17 @@ class profile_manager {
     /**
      * Slugs are used in a URL path segment — restrict to a safe, readable charset.
      *
+     * The rule itself lives in slug_helper, which collections share: two
+     * copies of "which characters may appear in a URL slug" is how one of them
+     * ends up accepting what the other's router rejects. This method stays as
+     * the profile-facing name for it — it is called from the edit controller
+     * and from the profile tests.
+     *
      * @param string $slug
      * @return bool
      */
     public static function is_valid_slug(string $slug): bool {
-        return (bool) preg_match('/^[A-Za-z0-9_-]{1,100}$/', $slug);
+        return slug_helper::is_valid($slug);
     }
 
     /**
@@ -132,9 +138,7 @@ class profile_manager {
      * @return bool
      */
     public static function slug_available(string $slug, int $excludeuserid): bool {
-        global $DB;
-        $holder = $DB->get_record('local_oerexchange_profiles', ['slug' => $slug], 'userid');
-        return !$holder || (int) $holder->userid === $excludeuserid;
+        return slug_helper::available('local_oerexchange_profiles', $slug, 'userid', $excludeuserid);
     }
 
     /**
@@ -147,12 +151,10 @@ class profile_manager {
     public static function save(int $userid, array $data): void {
         global $DB;
 
-        if (!self::is_valid_slug($data['slug'])) {
-            throw new \moodle_exception('error_invalidslug', 'local_oerexchange');
-        }
-        if (!self::slug_available($data['slug'], $userid)) {
-            throw new \moodle_exception('error_slugtaken', 'local_oerexchange');
-        }
+        // Raises error_invalidslug or error_slugtaken, in that order — the
+        // same two exceptions, in the same order, this method has always
+        // thrown. Both rules now live in slug_helper, shared with collections.
+        slug_helper::validate('local_oerexchange_profiles', $data['slug'], 'userid', $userid);
 
         $profile = self::get_or_create_for_user($userid);
         try {
@@ -165,14 +167,15 @@ class profile_manager {
                 'timemodified' => time(),
             ]);
         } catch (\dml_write_exception $e) {
-            // The is_valid_slug()/slug_available() checks above are
-            // TOCTOU-prone: a concurrent save() can take $data['slug']
-            // between our check and this write. The unique index on slug
-            // (db/install.xml) prevents any data corruption, but without
-            // this catch the loser of that race would see a raw
-            // dml_write_exception instead of the documented error_slugtaken
-            // contract every other slug-taken path already gives.
-            throw new \moodle_exception('error_slugtaken', 'local_oerexchange');
+            // The slug_helper::validate() check above is TOCTOU-prone: a
+            // concurrent save() can take $data['slug'] between that check and
+            // this write. The unique index on slug (db/install.xml) prevents
+            // any data corruption, but without this catch the loser of that
+            // race would see a raw dml_write_exception instead of the
+            // documented error_slugtaken contract every other slug-taken path
+            // already gives. collection_manager::update_metadata() resolves
+            // the identical race through the identical helper.
+            throw slug_helper::taken_exception();
         }
     }
 
@@ -307,6 +310,12 @@ class profile_manager {
      * Generate a unique slug seeded from the user's username, falling back to
      * userN / userN-2 / userN-3 ... on collision.
      *
+     * compact_seed() rather than slugify(): a username is one token and has
+     * always been compacted by deleting what is unusable, case intact
+     * ('Adam.Jenkins' -> 'AdamJenkins'). Hyphenating it instead would start
+     * issuing profile slugs in a different spelling from every slug this site
+     * has already handed out — see slug_helper's class docblock.
+     *
      * @param int $userid
      * @return string
      */
@@ -314,19 +323,13 @@ class profile_manager {
         global $DB;
 
         $user = $DB->get_record('user', ['id' => $userid], 'username', MUST_EXIST);
-        $base = preg_replace('/[^A-Za-z0-9_-]/', '', $user->username);
-        if ($base === '') {
-            $base = 'user' . $userid;
-        }
-        $base = substr($base, 0, 90);
 
-        $slug = $base;
-        $suffix = 2;
-        while (!self::slug_available($slug, $userid)) {
-            $slug = $base . '-' . $suffix;
-            $suffix++;
-        }
-
-        return $slug;
+        return slug_helper::generate_unique(
+            'local_oerexchange_profiles',
+            slug_helper::compact_seed($user->username),
+            'userid',
+            $userid,
+            'user' . $userid
+        );
     }
 }

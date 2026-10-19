@@ -17,12 +17,13 @@
 namespace local_oerexchange\local;
 
 /**
- * Starred resources, on top of Moodle's own favourites subsystem.
+ * Starred resources and starred collections, on top of Moodle's own
+ * favourites subsystem.
  *
  * Nothing here stores anything of its own. A star is a row in core's
- * {favourite} table under component 'local_oerexchange', itemtype 'resource',
- * itemid = the resource id, in the system context — which is what this
- * platform's resources live in.
+ * {favourite} table under component 'local_oerexchange', itemtype 'resource'
+ * or 'collection', itemid = the resource or collection id, in the system
+ * context — which is what this platform's content lives in.
  *
  * Using the subsystem rather than a twelfth plugin table is deliberate. It is
  * documented as holding "an arbitrary item (itemtype, itemid)" for a user, it
@@ -35,6 +36,14 @@ namespace local_oerexchange\local;
  * Every other file talks to stars through this class, never to the subsystem
  * directly, the same way coauthor_manager and badge_manager wrap their storage.
  *
+ * Collections joined later, and did so by adding an OPTIONAL TRAILING
+ * $itemtype to each method rather than by growing a parallel
+ * collection_star_manager. Two wrappers around one subsystem would be two
+ * places to remember the component string, the system context and the
+ * read-back-don't-assume rule — and every existing resource call site keeps
+ * working untouched, which is the other half of why the parameter goes last
+ * and defaults to ITEMTYPE.
+ *
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -45,6 +54,12 @@ class star_manager {
 
     /** @var string The favourites itemtype a starred resource uses. */
     const ITEMTYPE = 'resource';
+
+    /** @var string The favourites itemtype a starred collection uses. */
+    const ITEMTYPE_COLLECTION = 'collection';
+
+    /** @var string[] Every itemtype this plugin stars. */
+    const ITEMTYPES = [self::ITEMTYPE, self::ITEMTYPE_COLLECTION];
 
     /**
      * The favourites service for one user.
@@ -59,20 +74,22 @@ class star_manager {
     }
 
     /**
-     * Whether a user has starred a resource.
+     * Whether a user has starred a resource (or, with $itemtype, a collection).
      *
-     * @param int $resourceid
+     * @param int $resourceid the resource id, or the collection id when $itemtype says so
      * @param int $userid
+     * @param string $itemtype one of self::ITEMTYPES
      * @return bool
      */
-    public static function is_starred(int $resourceid, int $userid): bool {
+    public static function is_starred(int $resourceid, int $userid, string $itemtype = self::ITEMTYPE): bool {
         if (!$userid || isguestuser($userid)) {
             return false;
         }
+        self::check_itemtype($itemtype);
 
         return self::service($userid)->favourite_exists(
             self::COMPONENT,
-            self::ITEMTYPE,
+            $itemtype,
             $resourceid,
             \context_system::instance()
         );
@@ -93,30 +110,37 @@ class star_manager {
      * entry point that throws where its siblings return is a trap for the next
      * one.
      *
-     * @param int $resourceid
+     * @param int $resourceid the resource id, or the collection id when $itemtype says so
      * @param int $userid
      * @param bool $starred the state wanted
+     * @param string $itemtype one of self::ITEMTYPES
      * @return bool the state after the call, read back rather than assumed
      */
-    public static function set_starred(int $resourceid, int $userid, bool $starred): bool {
+    public static function set_starred(
+        int $resourceid,
+        int $userid,
+        bool $starred,
+        string $itemtype = self::ITEMTYPE
+    ): bool {
         if (!$userid || isguestuser($userid)) {
             return false;
         }
+        self::check_itemtype($itemtype);
 
         $service = self::service($userid);
         $context = \context_system::instance();
-        $exists = $service->favourite_exists(self::COMPONENT, self::ITEMTYPE, $resourceid, $context);
+        $exists = $service->favourite_exists(self::COMPONENT, $itemtype, $resourceid, $context);
 
         if ($starred && !$exists) {
-            $service->create_favourite(self::COMPONENT, self::ITEMTYPE, $resourceid, $context);
+            $service->create_favourite(self::COMPONENT, $itemtype, $resourceid, $context);
         } else if (!$starred && $exists) {
-            $service->delete_favourite(self::COMPONENT, self::ITEMTYPE, $resourceid, $context);
+            $service->delete_favourite(self::COMPONENT, $itemtype, $resourceid, $context);
         }
 
         // Read back rather than echoing the request. The web service hands
         // this value to the browser as the authoritative state, so it should
         // be what the store actually holds.
-        return $service->favourite_exists(self::COMPONENT, self::ITEMTYPE, $resourceid, $context);
+        return $service->favourite_exists(self::COMPONENT, $itemtype, $resourceid, $context);
     }
 
     /**
@@ -126,18 +150,67 @@ class star_manager {
      * always scopes itself to the calling user, so it cannot answer a public
      * "how many people" question at all.
      *
-     * @param int $resourceid
+     * @param int $resourceid the resource id, or the collection id when $itemtype says so
+     * @param string $itemtype one of self::ITEMTYPES
      * @return int
      */
-    public static function star_count(int $resourceid): int {
+    public static function star_count(int $resourceid, string $itemtype = self::ITEMTYPE): int {
         global $DB;
+
+        self::check_itemtype($itemtype);
 
         return $DB->count_records('favourite', [
             'component' => self::COMPONENT,
-            'itemtype' => self::ITEMTYPE,
+            'itemtype' => $itemtype,
             'itemid' => $resourceid,
             'contextid' => \context_system::instance()->id,
         ]);
+    }
+
+    /**
+     * Star counts for many items at once, in ONE query.
+     *
+     * The collections browser shows a star count on every card and can sort
+     * by it; star_count() per card is how that page becomes twenty queries.
+     * (public_collections() gets its own counts inside its single query — this
+     * is for the pages that already have their rows.)
+     *
+     * @param int[] $itemids
+     * @param string $itemtype one of self::ITEMTYPES
+     * @return array<int, int> keyed by itemid; every id asked for is present, 0 if unstarred
+     */
+    public static function star_counts_for(array $itemids, string $itemtype = self::ITEMTYPE): array {
+        global $DB;
+
+        self::check_itemtype($itemtype);
+
+        $itemids = array_values(array_unique(array_map('intval', $itemids)));
+        if (!$itemids) {
+            return [];
+        }
+
+        [$insql, $inparams] = $DB->get_in_or_equal($itemids, SQL_PARAMS_NAMED, 'itemid');
+        $rows = $DB->get_records_sql(
+            "SELECT f.itemid, COUNT(1) AS starcount
+               FROM {favourite} f
+              WHERE f.component = :component
+                    AND f.itemtype = :itemtype
+                    AND f.contextid = :contextid
+                    AND f.itemid $insql
+           GROUP BY f.itemid",
+            $inparams + [
+                'component' => self::COMPONENT,
+                'itemtype' => $itemtype,
+                'contextid' => \context_system::instance()->id,
+            ]
+        );
+
+        $counts = array_fill_keys($itemids, 0);
+        foreach ($rows as $row) {
+            $counts[(int) $row->itemid] = (int) $row->starcount;
+        }
+
+        return $counts;
     }
 
     /**
@@ -147,39 +220,71 @@ class star_manager {
      * sort to get_records_select(), so the subsystem returns rows in no
      * defined order.
      *
-     * Only published resources are returned. The profile page that shows this
-     * list is world-readable, so a starred resource that has since been hidden,
-     * taken down or deleted must not be advertised there by someone else's
-     * bookmark.
+     * Only publicly visible rows are returned. The profile page that shows
+     * this list is world-readable, so a starred resource that has since been
+     * hidden, taken down or deleted — or a starred collection that has been
+     * unpublished, taken down or deleted — must not be advertised there by
+     * someone else's bookmark.
+     *
+     * With $itemtype = ITEMTYPE_COLLECTION this returns COLLECTION rows, not
+     * resource rows; starred_collections() is the readable spelling of that
+     * call and exists so no page has to pass the itemtype by hand.
      *
      * @param int $userid
      * @param int $limit 0 for no limit
-     * @return \stdClass[] resources rows, keyed by resource id
+     * @param string $itemtype one of self::ITEMTYPES
+     * @return \stdClass[] rows of the table matching $itemtype, keyed by id, each with ->timestarred
      */
-    public static function starred_resources(int $userid, int $limit = 0): array {
+    public static function starred_resources(int $userid, int $limit = 0, string $itemtype = self::ITEMTYPE): array {
         global $DB;
 
         if (!$userid || isguestuser($userid)) {
             return [];
         }
+        self::check_itemtype($itemtype);
 
-        $sql = "SELECT r.*, f.timecreated AS timestarred
+        // The "may a stranger be shown this" rule belongs to whoever owns the
+        // content, not to this class. resource_manager's is one status
+        // comparison; collection_manager::public_where() is three conditions
+        // and is asked for rather than copied, so an unpublished collection
+        // cannot leak through here the day that rule changes.
+        if ($itemtype === self::ITEMTYPE_COLLECTION) {
+            $table = collection_manager::TABLE;
+            $visible = collection_manager::public_where('i.');
+            $visibleparams = collection_manager::public_params();
+        } else {
+            $table = 'local_oerexchange_resources';
+            $visible = 'i.status = :status';
+            $visibleparams = ['status' => resource_manager::STATUS_PUBLISHED];
+        }
+
+        $sql = "SELECT i.*, f.timecreated AS timestarred
                   FROM {favourite} f
-                  JOIN {local_oerexchange_resources} r ON r.id = f.itemid
+                  JOIN {" . $table . "} i ON i.id = f.itemid
                  WHERE f.component = :component
                        AND f.itemtype = :itemtype
                        AND f.contextid = :contextid
                        AND f.userid = :userid
-                       AND r.status = :status
-              ORDER BY f.timecreated DESC, r.id DESC";
+                       AND $visible
+              ORDER BY f.timecreated DESC, i.id DESC";
 
-        return $DB->get_records_sql($sql, [
+        return $DB->get_records_sql($sql, $visibleparams + [
             'component' => self::COMPONENT,
-            'itemtype' => self::ITEMTYPE,
+            'itemtype' => $itemtype,
             'contextid' => \context_system::instance()->id,
             'userid' => $userid,
-            'status' => 'published',
         ], 0, $limit);
+    }
+
+    /**
+     * The public collections a user has starred, most recently starred first.
+     *
+     * @param int $userid
+     * @param int $limit 0 for no limit
+     * @return \stdClass[] collections rows, keyed by collection id, each with ->timestarred
+     */
+    public static function starred_collections(int $userid, int $limit = 0): array {
+        return self::starred_resources($userid, $limit, self::ITEMTYPE_COLLECTION);
     }
 
     /**
@@ -191,14 +296,16 @@ class star_manager {
      * the wrong answer to a subject access request.
      *
      * @param int $userid
+     * @param string $itemtype one of self::ITEMTYPES
      * @return int[]
      */
-    public static function all_starred_ids(int $userid): array {
+    public static function all_starred_ids(int $userid, string $itemtype = self::ITEMTYPE): array {
         global $DB;
 
         if (!$userid || isguestuser($userid)) {
             return [];
         }
+        self::check_itemtype($itemtype);
 
         $ids = $DB->get_fieldset_select(
             'favourite',
@@ -206,7 +313,7 @@ class star_manager {
             'component = :component AND itemtype = :itemtype AND contextid = :contextid AND userid = :userid',
             [
                 'component' => self::COMPONENT,
-                'itemtype' => self::ITEMTYPE,
+                'itemtype' => $itemtype,
                 'contextid' => \context_system::instance()->id,
                 'userid' => $userid,
             ]
@@ -226,7 +333,51 @@ class star_manager {
      * @return void
      */
     public static function delete_for_resource(int $resourceid): void {
+        self::delete_for_item(self::ITEMTYPE, $resourceid);
+    }
+
+    /**
+     * Drop every star on a collection.
+     *
+     * Called when a collection is tombstoned, for exactly the reason
+     * delete_for_resource() exists: the stars belong to other people, live in
+     * a core table, and nothing in collection_manager::delete() would
+     * otherwise reach them.
+     *
+     * @param int $collectionid
+     * @return void
+     */
+    public static function delete_for_collection(int $collectionid): void {
+        self::delete_for_item(self::ITEMTYPE_COLLECTION, $collectionid);
+    }
+
+    /**
+     * Drop every star on one item of one type.
+     *
+     * @param string $itemtype
+     * @param int $itemid
+     * @return void
+     */
+    protected static function delete_for_item(string $itemtype, int $itemid): void {
         \core_favourites\service_factory::get_service_for_component(self::COMPONENT)
-            ->delete_favourites_by_type_and_item(self::ITEMTYPE, $resourceid, \context_system::instance());
+            ->delete_favourites_by_type_and_item($itemtype, $itemid, \context_system::instance());
+    }
+
+    /**
+     * Refuse an itemtype this plugin does not star.
+     *
+     * A typo'd itemtype is far worse than it looks: create_favourite() would
+     * happily store it, favourite_exists() would then answer false for the
+     * star the user just created, and the row would be invisible to every
+     * count, listing and delete path in this class — an orphan in a core
+     * table that nothing cleans up.
+     *
+     * @param string $itemtype
+     * @throws \coding_exception
+     */
+    protected static function check_itemtype(string $itemtype): void {
+        if (!in_array($itemtype, self::ITEMTYPES, true)) {
+            throw new \coding_exception('Unknown local_oerexchange star itemtype: ' . $itemtype);
+        }
     }
 }

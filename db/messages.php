@@ -30,4 +30,12 @@ $messageproviders = [
     'report' => [],
     'stale' => [],
     'coauthor' => [],
+    // Being handed curating rights over somebody else's published list
+    // without being told would be worse than noisy — sent by
+    // collection_curator_manager::notify_added().
+    'collectioncurator' => [],
+    // Tells a collection's owner that somebody ELSE put a resource in their
+    // collection: a named curator, or anyone at all while open curation is
+    // on. The owner's own additions never notify — they did it.
+    'collectionitem' => [],
 ];

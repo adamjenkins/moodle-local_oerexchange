@@ -180,6 +180,75 @@ if ($action === 'report' && isloggedin() && !isguestuser()) {
     $wanted = !\local_oerexchange\local\star_manager::is_starred((int) $resource->id, (int) $USER->id);
     \local_oerexchange\local\star_manager::set_starred((int) $resource->id, (int) $USER->id, $wanted);
     redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
+} else if ($action === 'addtocollection' && isloggedin() && !isguestuser()) {
+    // The "Add to collection" action, from the picker inside this page's Share
+    // disclosure. Its own branch, deliberately outside the edit-gated group
+    // below: putting a resource in YOUR collection is a reader's act over
+    // somebody else's material, so it must not require the right to edit this
+    // resource — and must not be mistaken for it either.
+    require_login();
+    require_sesskey();
+    // The control is only drawn for capability holders; this is the check
+    // that actually enforces it, since markup is never the gate.
+    require_capability('local/oerexchange:createcollection', context_system::instance());
+
+    // PARAM_ALPHANUM, because this one <select> carries two kinds of value:
+    // a numeric collection id, or the literal 'new' meaning "make me one".
+    // '' is the unchosen placeholder.
+    $collectiontarget = optional_param('collectionid', '', PARAM_ALPHANUM);
+
+    if ($collectiontarget === 'new') {
+        // Hand the whole job to collection_edit.php, which creates the
+        // collection and adds this resource in one step. The resource id is a
+        // request, not an authorisation: that page re-derives both the
+        // capability and user_can_add_items() before it adds anything.
+        redirect(new moodle_url('/local/oerexchange/collection_edit.php', ['addresourceid' => $resource->id]));
+    }
+
+    $collectionid = (int) $collectiontarget;
+    if (!$collectionid) {
+        \core\notification::warning(get_string('error_collectionnotchosen', 'local_oerexchange'));
+        redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
+    }
+
+    // Re-derived from the database, never from the posted id's presence in the
+    // select: the collection is loaded fresh and asked whether THIS user may
+    // add to it. add_item() then validates state as well — the collection has
+    // to be live and the resource one the public can actually see.
+    $targetcollection = \local_oerexchange\local\collection_manager::get($collectionid);
+    if (
+        !$targetcollection
+        || !\local_oerexchange\local\collection_manager::user_can_add_items($targetcollection, (int) $USER->id)
+    ) {
+        throw new moodle_exception('error_collectioncannotadd', 'local_oerexchange');
+    }
+
+    try {
+        \local_oerexchange\local\collection_manager::add_item(
+            (int) $targetcollection->id,
+            (int) $resource->id,
+            (int) $USER->id
+        );
+        \core\notification::success(get_string(
+            'addtocollectionadded',
+            'local_oerexchange',
+            // Filter, then flatten back to plain text: a notification is not
+            // an HTML sink, so format_string()'s '&amp;' would be read out as
+            // characters. Same ordering as the share title below.
+            content_to_text(
+                format_string($targetcollection->title, true, ['context' => context_system::instance()]),
+                FORMAT_HTML
+            )
+        ));
+    } catch (moodle_exception $e) {
+        // Errors such as "already in that collection" or "that resource is not available" — a
+        // double-tapped button or a resource hidden a moment ago. Ordinary
+        // mistakes, so the reason goes back to the page rather than to a
+        // full-page error.
+        \core\notification::error($e->getMessage());
+    }
+
+    redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
 } else if (
     in_array(
         $action,
@@ -1004,10 +1073,21 @@ $sharetitle = content_to_text(
     format_string($resource->title, true, ['context' => context_system::instance()]),
     FORMAT_HTML
 );
+// The "Add to collection" control lives INSIDE the share disclosure (owner's decision),
+// not in a second panel beside it: putting a resource on your own reading
+// list is the same reflex as sending someone the link, so the two belong in
+// one place. share_targets::render()'s optional fourth argument exists for
+// exactly this, and every other call site (the profile page, the collection
+// page) passes nothing and is unaffected.
 echo \local_oerexchange\local\share_targets::render(
     $PAGE->url->out(false),
     $sharetitle,
-    get_string('shareresource', 'local_oerexchange')
+    get_string('shareresource', 'local_oerexchange'),
+    // Returns '' for a visitor who is not signed in, lacks
+    // local/oerexchange:createcollection, or is looking at a resource that
+    // cannot be collected — in which case render() produces exactly the
+    // markup it always did.
+    \local_oerexchange\local\collection_view::render_add_to_collection($resource, (int) $USER->id, $PAGE->url)
 );
 
 // Star. Rendered as a real link to this page's own 'star' action so it works

@@ -22,6 +22,8 @@ use core_privacy\local\request\approved_userlist;
 use core_privacy\local\request\contextlist;
 use core_privacy\local\request\userlist;
 use core_privacy\local\request\writer;
+use local_oerexchange\local\collection_curator_manager;
+use local_oerexchange\local\collection_manager;
 use local_oerexchange\local\star_manager;
 
 /**
@@ -90,9 +92,12 @@ class provider implements
             'timemodified' => 'privacy:metadata:local_oerexchange_modnotes:timemodified',
         ], 'privacy:metadata:local_oerexchange_modnotes');
 
-        // Starred resources are rows in core's favourites subsystem rather
-        // than a table of this plugin's own, so the subsystem's provider does
-        // the export and the deletions; this only declares the link.
+        // Starred resources AND starred collections are rows in core's
+        // favourites subsystem rather than a table of this plugin's own, so
+        // the subsystem's provider does the export and the deletions; this
+        // only declares the link. One declaration covers both: they differ
+        // only by itemtype (star_manager::ITEMTYPES), and every path below
+        // walks both itemtypes explicitly.
         $collection->add_subsystem_link(
             'core_favourites',
             [],
@@ -108,6 +113,45 @@ class provider implements
             'addedby' => 'privacy:metadata:local_oerexchange_coauthors:addedby',
             'timecreated' => 'privacy:metadata:local_oerexchange_coauthors:timecreated',
         ], 'privacy:metadata:local_oerexchange_coauthors');
+
+        // A collection is its owner's own editorial work — the title and
+        // description are their words, and the slug is the address those
+        // words were published under. The row is tombstoned rather than
+        // removed on a normal delete, but an erasure scrubs all three and
+        // unlinks the owner (see erase_collection()).
+        $collection->add_database_table('local_oerexchange_collections', [
+            'userid' => 'privacy:metadata:local_oerexchange_collections:userid',
+            'title' => 'privacy:metadata:local_oerexchange_collections:title',
+            'summary' => 'privacy:metadata:local_oerexchange_collections:summary',
+            'slug' => 'privacy:metadata:local_oerexchange_collections:slug',
+            // Which moderator took a collection down, scrubbed to 0 on that
+            // moderator's erasure exactly as resources.modhiddenby is.
+            'modhiddenby' => 'privacy:metadata:local_oerexchange_collections:modhiddenby',
+            'timepublished' => 'privacy:metadata:local_oerexchange_collections:timepublished',
+            'timecreated' => 'privacy:metadata:local_oerexchange_collections:timecreated',
+            'timemodified' => 'privacy:metadata:local_oerexchange_collections:timemodified',
+        ], 'privacy:metadata:local_oerexchange_collections');
+
+        // An item names a second person besides the collection's owner:
+        // whoever put it there. With open curation on that can be any
+        // logged-in user, and the note is that person's own prose, so
+        // 'addedby' gets its own clause in every discovery and deletion path
+        // below — the same treatment coauthors.addedby gets.
+        $collection->add_database_table('local_oerexchange_collection_items', [
+            'addedby' => 'privacy:metadata:local_oerexchange_collection_items:addedby',
+            'note' => 'privacy:metadata:local_oerexchange_collection_items:note',
+            'timecreated' => 'privacy:metadata:local_oerexchange_collection_items:timecreated',
+        ], 'privacy:metadata:local_oerexchange_collection_items');
+
+        // Two people per row again: the invited curator, and the owner who
+        // invited them. Both are serviced below — 'userid' as the curator's
+        // own data (the row goes), 'addedby' as an attribution that is
+        // scrubbed rather than removed.
+        $collection->add_database_table('local_oerexchange_collection_curators', [
+            'userid' => 'privacy:metadata:local_oerexchange_collection_curators:userid',
+            'addedby' => 'privacy:metadata:local_oerexchange_collection_curators:addedby',
+            'timecreated' => 'privacy:metadata:local_oerexchange_collection_curators:timecreated',
+        ], 'privacy:metadata:local_oerexchange_collection_curators');
 
         $collection->add_database_table('local_oerexchange_imports', [
             'userid' => 'privacy:metadata:local_oerexchange_imports:userid',
@@ -189,20 +233,31 @@ class provider implements
             || $DB->record_exists('local_oerexchange_coauthors', ['addedby' => $userid])
             || $DB->record_exists('local_oerexchange_resources', ['modhiddenby' => $userid])
             || $DB->record_exists('local_oerexchange_modnotes', ['usermodified' => $userid])
+            // Collections name a person in five places across three tables:
+            // the owner, the moderator who held it, whoever added each item,
+            // and both ends of a curator invitation.
+            || $DB->record_exists(collection_manager::TABLE, ['userid' => $userid])
+            || $DB->record_exists(collection_manager::TABLE, ['modhiddenby' => $userid])
+            || $DB->record_exists(collection_manager::ITEM_TABLE, ['addedby' => $userid])
+            || $DB->record_exists(collection_curator_manager::TABLE, ['userid' => $userid])
+            || $DB->record_exists(collection_curator_manager::TABLE, ['addedby' => $userid])
             || self::site_registration_ids($userid) !== [];
 
         if ($hasdata) {
             $contextlist->add_system_context();
         }
 
-        // Starred resources live in core's favourites subsystem, which knows
-        // its own contexts.
-        \core_favourites\privacy\provider::add_contexts_for_userid(
-            $contextlist,
-            $userid,
-            star_manager::COMPONENT,
-            star_manager::ITEMTYPE
-        );
+        // Starred resources and starred collections live in core's
+        // favourites subsystem, which knows its own contexts. Two calls, not
+        // one: the subsystem filters on a single itemtype per call.
+        foreach (star_manager::ITEMTYPES as $itemtype) {
+            \core_favourites\privacy\provider::add_contexts_for_userid(
+                $contextlist,
+                $userid,
+                star_manager::COMPONENT,
+                $itemtype
+            );
+        }
 
         return $contextlist;
     }
@@ -240,8 +295,10 @@ class provider implements
             $userlist->add_user($uid);
         }
 
-        // Anyone who has starred a resource.
-        \core_favourites\privacy\provider::add_userids_for_context($userlist, star_manager::ITEMTYPE);
+        // Anyone who has starred a resource or a collection.
+        foreach (star_manager::ITEMTYPES as $itemtype) {
+            \core_favourites\privacy\provider::add_userids_for_context($userlist, $itemtype);
+        }
         // Creatorid = 0 marks a tombstoned/anonymized resource
         // (profile_manager::delete_creator_resource()) — it is not a real
         // user id and must not appear in the userlist (final whole-branch
@@ -261,6 +318,25 @@ class provider implements
         $adders = $DB->get_fieldset_select('local_oerexchange_coauthors', 'DISTINCT addedby', 'addedby <> 0');
         foreach ($adders as $uid) {
             $userlist->add_user($uid);
+        }
+
+        // Collections, their items and their curator invitations. Five
+        // columns, each filtered for the same 0 = "no attributable user"
+        // sentinel creatorid and coauthors.addedby use: an erased owner's
+        // tombstone keeps collections.userid = 0 (erase_collection()), and a
+        // surviving item added by an erased user keeps addedby = 0.
+        $collectioncolumns = [
+            [collection_manager::TABLE, 'userid'],
+            [collection_manager::TABLE, 'modhiddenby'],
+            [collection_manager::ITEM_TABLE, 'addedby'],
+            [collection_curator_manager::TABLE, 'userid'],
+            [collection_curator_manager::TABLE, 'addedby'],
+        ];
+        foreach ($collectioncolumns as [$table, $column]) {
+            $userids = $DB->get_fieldset_select($table, "DISTINCT $column", "$column <> 0");
+            foreach ($userids as $uid) {
+                $userlist->add_user($uid);
+            }
         }
 
         // Site registrations link to a local account two ways: the dedicated
@@ -345,6 +421,11 @@ class provider implements
         $coauthored = $DB->get_records('local_oerexchange_coauthors', ['userid' => $userid]);
         $coauthorsadded = $DB->get_records('local_oerexchange_coauthors', ['addedby' => $userid]);
         $modnotes = $DB->get_records('local_oerexchange_modnotes', ['usermodified' => $userid]);
+        $collections = $DB->get_records(collection_manager::TABLE, ['userid' => $userid], 'id ASC');
+        $itemsadded = $DB->get_records(collection_manager::ITEM_TABLE, ['addedby' => $userid], 'collectionid ASC, sortorder ASC');
+        $curatorships = $DB->get_records(collection_curator_manager::TABLE, ['userid' => $userid]);
+        $curatorsadded = $DB->get_records(collection_curator_manager::TABLE, ['addedby' => $userid]);
+        $takedowns = $DB->get_records(collection_manager::TABLE, ['modhiddenby' => $userid]);
         $siteids = self::site_registration_ids($userid);
         $sites = $siteids ? $DB->get_records_list('local_oerexchange_sites', 'id', $siteids) : [];
 
@@ -400,6 +481,32 @@ class provider implements
                 'resourceid' => $r->resourceid,
                 'timecreated' => \core_privacy\local\request\transform::datetime($r->timecreated),
             ], $coauthorsadded)),
+            // Collections somebody else owns that this user was invited to
+            // help curate.
+            'collectionscurated' => array_values(array_map(fn($r) => [
+                'collectionid' => $r->collectionid,
+                'timecreated' => \core_privacy\local\request\transform::datetime($r->timecreated),
+            ], $curatorships)),
+            // The invitations this user issued over their own collections.
+            // Only the collection is named, not who was invited: that
+            // person's identity is their personal data, not this user's —
+            // the same stance 'coauthorsadded' takes, and the owner can read
+            // the current curator list on the collection itself.
+            'collectioncuratorsadded' => array_values(array_map(fn($r) => [
+                'collectionid' => $r->collectionid,
+                'timecreated' => \core_privacy\local\request\transform::datetime($r->timecreated),
+            ], $curatorsadded)),
+            // Collections this user took down as a moderator. The takedown
+            // itself is the site's decision and survives their erasure with
+            // the attribution scrubbed; while it still names them it is
+            // their data, so it is exported.
+            'collectiontakedowns' => array_values(array_map(fn($r) => [
+                'collectionid' => $r->id,
+                'modhidden' => \core_privacy\local\request\transform::yesno($r->modhidden),
+                'modhiddentime' => $r->modhiddentime
+                    ? \core_privacy\local\request\transform::datetime($r->modhiddentime)
+                    : '',
+            ], $takedowns)),
             // Registrations this user is the named contact for, or whose
             // service account they are. Declared since 0.1.5 but exported
             // only from 0.1.6 — an unserviced declaration is the defect this
@@ -423,31 +530,113 @@ class provider implements
             $data
         );
 
-        // Starred resources. The subsystem's helper RETURNS the row's export
-        // shape rather than writing it — writing is the consumer's job, which
-        // is how core_course uses it too — so each one is written under its
-        // own subcontext here.
-        // all_starred_ids(), not starred_resources(): the latter shows only
-        // published resources because it feeds a public page, and an export
-        // that dropped a star on a since-hidden resource would be an
-        // incomplete answer to a subject access request.
-        foreach (star_manager::all_starred_ids($userid) as $starredid) {
-            $favourite = \core_favourites\privacy\provider::get_favourites_info_for_user(
-                $userid,
-                \context_system::instance(),
-                star_manager::COMPONENT,
-                star_manager::ITEMTYPE,
-                $starredid
+        // The user's own collections get their own subcontext rather than a
+        // key in the object above: a collection is a titled document with an
+        // ordered body, and flattening its items into the same flat object
+        // as their badges would bury which resource sat where.
+        if ($collections) {
+            $items = $DB->get_records_list(
+                collection_manager::ITEM_TABLE,
+                'collectionid',
+                array_keys($collections),
+                'collectionid ASC, sortorder ASC'
             );
-            if ($favourite) {
-                writer::with_context(\context_system::instance())->export_data(
-                    [
-                        get_string('pluginname', 'local_oerexchange'),
-                        get_string('privacy:starredpath', 'local_oerexchange'),
-                        (string) $starredid,
-                    ],
-                    (object) $favourite
+            // One query for every collection's items, grouped here — a
+            // get_items() call per collection would be an N+1 on an export
+            // that can legitimately cover hundreds of lists.
+            $itemsby = [];
+            foreach ($items as $item) {
+                // The 'addedby' column is deliberately absent: on an open-curation
+                // collection it names somebody else. The note is included —
+                // it is published on the owner's own collection page, so it
+                // is content they already hold, not a third party's secret.
+                $itemsby[(int) $item->collectionid][] = [
+                    'resourceid' => $item->resourceid,
+                    'sortorder' => $item->sortorder,
+                    'note' => $item->note,
+                    'timecreated' => \core_privacy\local\request\transform::datetime($item->timecreated),
+                ];
+            }
+
+            writer::with_context(\context_system::instance())->export_data(
+                [
+                    get_string('pluginname', 'local_oerexchange'),
+                    get_string('privacy:collectionspath', 'local_oerexchange'),
+                ],
+                (object) [
+                    'collections' => array_values(array_map(fn($c) => [
+                        'title' => $c->title,
+                        'summary' => $c->summary,
+                        'slug' => $c->slug,
+                        'visibility' => $c->visibility,
+                        'status' => $c->status,
+                        'opencuration' => \core_privacy\local\request\transform::yesno($c->opencuration),
+                        'timepublished' => $c->timepublished
+                            ? \core_privacy\local\request\transform::datetime($c->timepublished)
+                            : '',
+                        'timecreated' => \core_privacy\local\request\transform::datetime($c->timecreated),
+                        'timemodified' => \core_privacy\local\request\transform::datetime($c->timemodified),
+                        'items' => $itemsby[(int) $c->id] ?? [],
+                    ], $collections)),
+                ]
+            );
+        }
+
+        // Resources this user put into a collection, whoever owns it. Their
+        // own collections appear above as well; this is the one place the
+        // note they wrote is reported as THEIR prose, which is what it is.
+        if ($itemsadded) {
+            writer::with_context(\context_system::instance())->export_data(
+                [
+                    get_string('pluginname', 'local_oerexchange'),
+                    get_string('privacy:collectionitemspath', 'local_oerexchange'),
+                ],
+                (object) [
+                    'items' => array_values(array_map(fn($r) => [
+                        'collectionid' => $r->collectionid,
+                        'resourceid' => $r->resourceid,
+                        'note' => $r->note,
+                        'timecreated' => \core_privacy\local\request\transform::datetime($r->timecreated),
+                    ], $itemsadded)),
+                ]
+            );
+        }
+
+        // Starred resources, then starred collections: the same shape and
+        // the same reasoning, with a different itemtype and a different
+        // subcontext name so the export never presents a collection id as a
+        // resource id. The subsystem's helper RETURNS the row's export shape
+        // rather than writing it — writing is the consumer's job, which is
+        // how core_course uses it too — so each one is written under its own
+        // subcontext here.
+        // all_starred_ids(), not starred_resources()/starred_collections():
+        // those show only publicly visible items because they feed public
+        // pages, and an export that dropped a star on a since-hidden
+        // resource or an unlisted collection would be an incomplete answer
+        // to a subject access request.
+        $starpaths = [
+            star_manager::ITEMTYPE => get_string('privacy:starredpath', 'local_oerexchange'),
+            star_manager::ITEMTYPE_COLLECTION => get_string('privacy:starredcollectionspath', 'local_oerexchange'),
+        ];
+        foreach ($starpaths as $itemtype => $pathname) {
+            foreach (star_manager::all_starred_ids($userid, $itemtype) as $starredid) {
+                $favourite = \core_favourites\privacy\provider::get_favourites_info_for_user(
+                    $userid,
+                    \context_system::instance(),
+                    star_manager::COMPONENT,
+                    $itemtype,
+                    $starredid
                 );
+                if ($favourite) {
+                    writer::with_context(\context_system::instance())->export_data(
+                        [
+                            get_string('pluginname', 'local_oerexchange'),
+                            $pathname,
+                            (string) $starredid,
+                        ],
+                        (object) $favourite
+                    );
+                }
             }
         }
     }
@@ -489,17 +678,36 @@ class provider implements
         $DB->delete_records('local_oerexchange_trials');
         $DB->delete_records('local_oerexchange_linkcodes');
         $DB->delete_records('local_oerexchange_modnotes');
+
+        // Every collection on the site, since every owner is being erased
+        // here. erase_collection() tombstones each one the way the per-user
+        // path does, which also takes its items, curator rows, stars and
+        // images with it.
+        $allcollections = $DB->get_records(collection_manager::TABLE);
+        foreach ($allcollections as $collection) {
+            self::erase_collection($collection);
+        }
+        // Belt and braces for rows hanging off collections that were already
+        // tombstoned before this ran (a tombstone's items are deleted, but a
+        // row written in the gap would otherwise outlive every owner) — the
+        // same reason the coauthors delete above follows its loop.
+        $DB->delete_records(collection_manager::ITEM_TABLE);
+        $DB->delete_records(collection_curator_manager::TABLE);
+
         // Which moderator held a resource is personal data about that
         // moderator; the takedown itself (the status) is a record of the
         // site's own decision and stays.
         $DB->set_field_select('local_oerexchange_resources', 'modhiddenby', 0, 'modhiddenby <> 0');
 
-        // Everyone's stars, via the subsystem that owns them.
-        \core_favourites\privacy\provider::delete_favourites_for_all_users(
-            $context,
-            star_manager::COMPONENT,
-            star_manager::ITEMTYPE
-        );
+        // Everyone's stars, on resources and on collections, via the
+        // subsystem that owns them.
+        foreach (star_manager::ITEMTYPES as $itemtype) {
+            \core_favourites\privacy\provider::delete_favourites_for_all_users(
+                $context,
+                star_manager::COMPONENT,
+                $itemtype
+            );
+        }
 
         // Every registration contact, including the ones belonging to people
         // with no account here — this path is "erase everyone", and a contact
@@ -522,11 +730,13 @@ class provider implements
         // Handled here rather than inside delete_for_userid() because the
         // subsystem's helper needs the contextlist itself, which that shared
         // routine does not receive.
-        \core_favourites\privacy\provider::delete_favourites_for_user(
-            $contextlist,
-            star_manager::COMPONENT,
-            star_manager::ITEMTYPE
-        );
+        foreach (star_manager::ITEMTYPES as $itemtype) {
+            \core_favourites\privacy\provider::delete_favourites_for_user(
+                $contextlist,
+                star_manager::COMPONENT,
+                $itemtype
+            );
+        }
     }
 
     #[\Override]
@@ -537,10 +747,12 @@ class provider implements
 
         // Reads the component from the userlist itself, hence no component
         // argument here.
-        \core_favourites\privacy\provider::delete_favourites_for_userlist(
-            $userlist,
-            star_manager::ITEMTYPE
-        );
+        foreach (star_manager::ITEMTYPES as $itemtype) {
+            \core_favourites\privacy\provider::delete_favourites_for_userlist(
+                $userlist,
+                $itemtype
+            );
+        }
     }
 
     /**
@@ -589,6 +801,28 @@ class provider implements
         // them, the same scrub coauthors.addedby gets.
         $DB->delete_records('local_oerexchange_modnotes', ['usermodified' => $userid]);
         $DB->set_field('local_oerexchange_resources', 'modhiddenby', 0, ['modhiddenby' => $userid]);
+        $DB->set_field(collection_manager::TABLE, 'modhiddenby', 0, ['modhiddenby' => $userid]);
+
+        // Curatorship: their own rows go entirely, rows they merely granted
+        // keep somebody else's rights but lose the attribution.
+        collection_curator_manager::delete_for_user($userid);
+
+        // Their own collections are tombstoned and scrubbed. Done before the
+        // addedby pass below, which then only has other people's collections
+        // left to touch.
+        $owncollections = $DB->get_records(collection_manager::TABLE, ['userid' => $userid]);
+        foreach ($owncollections as $collection) {
+            self::erase_collection($collection);
+        }
+
+        // Items this user added to OTHER people's collections stay, with the
+        // attribution dropped: the owner's list is their curation and must
+        // not lose entries because a contributor left, but the row stops
+        // naming the contributor. The owner decided this. The note stays
+        // with the item for the same reason — it is prose published on
+        // somebody else's page, which an erasure does not reach into — and
+        // nothing in it identifies its writer once addedby is 0.
+        $DB->set_field(collection_manager::ITEM_TABLE, 'addedby', 0, ['addedby' => $userid]);
 
         // Registrations naming this user as the contact keep their row (see
         // delete_data_for_all_users_in_context() for why severing a live
@@ -606,5 +840,55 @@ class provider implements
                 ['contact' => $user->email]
             );
         }
+    }
+
+    /**
+     * Erase one collection on behalf of its owner's deletion request.
+     *
+     * Two halves, because deleting your own list and being erased from a site
+     * are different acts with different answers:
+     *
+     * - collection_manager::delete() does the structural half (items, curator
+     *   rows, everyone's stars, the uploaded cover, the generated mosaic, and
+     *   the flip to status = deleted). It deliberately KEEPS the title, so a
+     *   tombstone can say which list it was.
+     * - This method then does what an erasure additionally requires: the
+     *   owner's own words go, and the row stops pointing at them.
+     *
+     * The row itself survives as a tombstone — the same stance
+     * profile_manager::delete_creator_resource() takes for a resource, and the
+     * reason delete_data_for_all_users_in_context() keeps the catalogue
+     * skeleton: an inbound link that degrades to "this is gone" beats a 404.
+     *
+     * The slug cannot be kept, though, which is the one place this differs
+     * from the resource tombstone (whose URL is an id, carrying none of the
+     * author's text): a collection's address is its title, hyphenated, so
+     * leaving it in place would leave the erased words readable in the URL
+     * bar. It is replaced with 'deleted.<id>' — a spelling slug_helper::is_valid()
+     * rejects, so no live collection can ever hold it and the UNIQUE index on
+     * slug can never be the thing that fails an erasure.
+     *
+     * @param \stdClass $collection a collections row
+     */
+    protected static function erase_collection(\stdClass $collection): void {
+        global $DB;
+
+        collection_manager::delete((int) $collection->id);
+
+        $DB->update_record(collection_manager::TABLE, (object) [
+            'id' => $collection->id,
+            // 0 = "no attributable user", as in resources.creatorid.
+            'userid' => 0,
+            'title' => '',
+            'summary' => null,
+            'slug' => 'deleted.' . $collection->id,
+            // The takedown record goes with the content: it names a
+            // moderator, and a tombstone must not carry that once there is
+            // nothing left to moderate.
+            'modhidden' => 0,
+            'modhiddentime' => 0,
+            'modhiddenby' => 0,
+            'timemodified' => time(),
+        ]);
     }
 }

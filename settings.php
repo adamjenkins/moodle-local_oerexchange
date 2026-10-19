@@ -209,6 +209,83 @@ if ($hassiteconfig) {
         15
     ));
 
+    // Collections: ordered, annotated reading lists of catalogue resources,
+    // built by educators on this site. The master switch is on by default —
+    // unlike publiclanding and anonymousdownload, turning collections on
+    // changes nothing about what the world can already see (a collection is
+    // a draft until its owner publishes it), and shipping the pages dark
+    // would leave every "Add to collection" control on the site pointing at
+    // a feature nobody could reach.
+    $settings->add(new admin_setting_heading(
+        'local_oerexchange/collectionsheading',
+        get_string('settings_collectionsheading', 'local_oerexchange'),
+        get_string('settings_collectionsheading_desc', 'local_oerexchange')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'local_oerexchange/collectionsenabled',
+        get_string('settings_collectionsenabled', 'local_oerexchange'),
+        get_string('settings_collectionsenabled_desc', 'local_oerexchange'),
+        1
+    ));
+
+    // Which collections are showcased on the catalogue landing page. The
+    // chooser is a DB-backed list, like allowedlicenses above, but a much
+    // bigger one, so two things are different here:
+    //
+    // - it is built only when $ADMIN->fulltree is set. Every admin page in
+    // the site builds this tree; only the pages that actually render or
+    // save a setting ask for the full one, and this query has no business
+    // running on the other ones. (Core's own convention — see e.g.
+    // admin/settings/plugins.php.)
+    // - featured_collections::setting_choices() returns [] rather than
+    // querying when the collections table is not there yet. The admin tree
+    // is built on the plugins-check page too, i.e. BEFORE this plugin's
+    // upgrade step has created that table, and a settings file that fatals
+    // there locks the admin out of the upgrade itself.
+    //
+    // Stored values are collection ids, so a collection keeps its place in
+    // the strip when its owner changes its slug; one that stops being public
+    // is skipped silently at render time (featured_collections::collections()).
+    $featuredchoices = $ADMIN->fulltree
+        ? \local_oerexchange\local\featured_collections::setting_choices()
+        : [];
+    $settings->add(new admin_setting_configmultiselect(
+        'local_oerexchange/featuredcollections',
+        get_string('settings_featuredcollections', 'local_oerexchange'),
+        get_string('settings_featuredcollections_desc', 'local_oerexchange'),
+        [],
+        $featuredchoices
+    ));
+
+    $settings->add(new admin_setting_configselect(
+        'local_oerexchange/featuredplacement',
+        get_string('settings_featuredplacement', 'local_oerexchange'),
+        get_string('settings_featuredplacement_desc', 'local_oerexchange'),
+        \local_oerexchange\local\featured_collections::PLACEMENT_ABOVE,
+        [
+            \local_oerexchange\local\featured_collections::PLACEMENT_ABOVE
+                => get_string('settings_featuredplacementabove', 'local_oerexchange'),
+            \local_oerexchange\local\featured_collections::PLACEMENT_BELOW
+                => get_string('settings_featuredplacementbelow', 'local_oerexchange'),
+            \local_oerexchange\local\featured_collections::PLACEMENT_INSTEAD
+                => get_string('settings_featuredplacementinstead', 'local_oerexchange'),
+        ]
+    ));
+
+    // PARAM_RAW_TRIMMED rather than PARAM_TEXT so an admin on a multilingual
+    // site can write a multilang <span> here, exactly as they can in the
+    // catalogue intro above. It is made safe at the sink instead:
+    // featured_collections::strip() renders it with format_string(), which
+    // both runs the filters and escapes.
+    $settings->add(new admin_setting_configtext(
+        'local_oerexchange/featuredheading',
+        get_string('settings_featuredheading', 'local_oerexchange'),
+        get_string('settings_featuredheading_desc', 'local_oerexchange'),
+        '',
+        PARAM_RAW_TRIMMED
+    ));
+
     // Which destinations the "Share this resource" / "Share my profile"
     // disclosures offer. Every network target is a plain link to that
     // network's own share endpoint - no third-party script or SDK is ever

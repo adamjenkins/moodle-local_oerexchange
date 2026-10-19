@@ -31,6 +31,7 @@
 require(__DIR__ . '/../../config.php');
 require_login();
 
+use local_oerexchange\local\moderation_collections;
 use local_oerexchange\local\moderation_report;
 use local_oerexchange\local\resource_type;
 
@@ -44,6 +45,22 @@ $PAGE->set_title(get_string('hiddenreporttitle', 'local_oerexchange'));
 $PAGE->set_heading(get_string('hiddenreporttitle', 'local_oerexchange'));
 
 $noteid = optional_param('noteid', 0, PARAM_INT);
+$collectionrestoreid = optional_param('collectionrestoreid', 0, PARAM_INT);
+
+if ($collectionrestoreid) {
+    // Using require_sesskey(), not confirm_sesskey(), for the same reason as the
+    // note form below: a stale submission must fail loudly rather than
+    // redirect as though it had worked.
+    require_sesskey();
+    // The posted id is only a hint: moderation_collections::restore() re-reads
+    // the collection and refuses anything that is not an active, currently
+    // held one, so this page cannot be used to "restore" a tombstone or to
+    // reach a collection nobody took down.
+    if (moderation_collections::restore($collectionrestoreid)) {
+        \core\notification::success(get_string('collectionmodrestoredone', 'local_oerexchange'));
+    }
+    redirect(new moodle_url('/local/oerexchange/moderate_hidden.php'));
+}
 
 if ($noteid) {
     // Use require_sesskey(), not confirm_sesskey(): the latter returns
@@ -64,8 +81,14 @@ if ($noteid) {
 echo $OUTPUT->header();
 
 $resources = moderation_report::hidden_resources();
+// Collections are held by a flag of their own rather than by a status, so they
+// are a second list on this page rather than more rows in the first. Read
+// before the early return below: a moderator holding a collection and no
+// resource must still see this page's contents, which it used to end before
+// reaching anything but resources.
+$collections = moderation_collections::held_collections();
 
-if (!$resources) {
+if (!$resources && !$collections) {
     echo html_writer::tag('p', get_string('nohiddenresources', 'local_oerexchange'));
     echo html_writer::link(
         new moodle_url('/local/oerexchange/moderate.php'),
@@ -76,7 +99,14 @@ if (!$resources) {
     die;
 }
 
-echo html_writer::tag('p', get_string('hiddenreportintro', 'local_oerexchange'));
+if ($resources) {
+    echo html_writer::tag('p', get_string('hiddenreportintro', 'local_oerexchange'));
+} else {
+    // Reached only when collections are being held and resources are not:
+    // the no-resources message still belongs on the page, because its
+    // absence would otherwise read as "no resource section exists here".
+    echo html_writer::tag('p', get_string('nohiddenresources', 'local_oerexchange'));
+}
 
 foreach ($resources as $r) {
     $resourceurl = new moodle_url('/local/oerexchange/resource.php', ['id' => $r->id]);
@@ -192,5 +222,88 @@ foreach ($resources as $r) {
     echo html_writer::end_tag('div');
     echo html_writer::end_tag('div');
 }
+
+// Held collections, presented as the resource cards above are: the title
+// linked to the page, when and by whom it was taken down, and the one action
+// that applies. There is no shared note and no changed-since badge, because
+// neither exists for a collection — {local_oerexchange_modnotes} is keyed on
+// resourceid, and a collection has no served version to compare against.
+echo $OUTPUT->heading(get_string('moderatecollectionsheld', 'local_oerexchange'), 3);
+
+if (!$collections) {
+    echo html_writer::tag('p', get_string('moderatecollectionsheldnone', 'local_oerexchange'));
+}
+
+foreach ($collections as $c) {
+    echo html_writer::start_tag('div', ['class' => 'card mb-3']);
+    echo html_writer::start_tag('div', ['class' => 'card-body']);
+
+    // The title, its link and its state badge come from the one shared
+    // renderer, which filters with format_string() rather than s() for the
+    // same multilang reason as the resource titles above.
+    echo html_writer::tag(
+        'h5',
+        moderation_collections::render_title_cell(
+            $c->title,
+            $c->slug,
+            (string) $c->status,
+            true,
+            $context
+        ),
+        ['class' => 'card-title']
+    );
+
+    // The s() around fullname() is for the reason spelled out above: neither
+    // fullname(), nor get_string(), nor html_writer::tag() escapes it.
+    if (!empty($c->modhiddentime)) {
+        echo html_writer::tag('p', get_string(
+            'hiddenwhen',
+            'local_oerexchange',
+            (object) [
+                'when' => userdate($c->modhiddentime),
+                'who' => $c->modhiddenbyuser
+                    ? s(fullname($c->modhiddenbyuser))
+                    : get_string('hiddenbyunknown', 'local_oerexchange'),
+            ]
+        ), ['class' => 'small text-muted mb-2']);
+    } else {
+        echo html_writer::tag(
+            'p',
+            get_string('hiddenwhenunknown', 'local_oerexchange'),
+            ['class' => 'small text-muted mb-2']
+        );
+    }
+
+    // A POST, not a link: restoring a collection changes state, and the
+    // note form beside it has already established require_sesskey() as this
+    // page's idiom for that.
+    echo html_writer::start_tag('form', [
+        'method' => 'post',
+        'action' => new moodle_url('/local/oerexchange/moderate_hidden.php'),
+    ]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    echo html_writer::empty_tag('input', [
+        'type' => 'hidden',
+        'name' => 'collectionrestoreid',
+        'value' => $c->id,
+    ]);
+    echo html_writer::empty_tag('input', [
+        'type' => 'submit',
+        'value' => get_string('collectionmodrestore', 'local_oerexchange'),
+        'class' => 'btn btn-outline-success btn-sm',
+    ]);
+    echo html_writer::end_tag('form');
+
+    echo html_writer::end_tag('div');
+    echo html_writer::end_tag('div');
+}
+
+// One page-level way back. The resource cards above each carry their own
+// link, but a page showing only held collections used to have none at all.
+echo html_writer::link(
+    new moodle_url('/local/oerexchange/moderate.php'),
+    get_string('moderatetitle', 'local_oerexchange'),
+    ['class' => 'btn btn-outline-secondary btn-sm']
+);
 
 echo $OUTPUT->footer();

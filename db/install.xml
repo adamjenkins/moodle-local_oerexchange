@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="local/oerexchange/db" VERSION="20260801" COMMENT="XMLDB file for Moodle local/oerexchange"
+<XMLDB PATH="local/oerexchange/db" VERSION="20261019" COMMENT="XMLDB file for Moodle local/oerexchange"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
 >
@@ -126,10 +126,10 @@
       </KEYS>
     </TABLE>
 
-    <TABLE NAME="local_oerexchange_reports" COMMENT="Moderation reports">
+    <TABLE NAME="local_oerexchange_reports" COMMENT="Moderation reports. Exactly one of resourceid/collectionid is set: a report is about one thing, and which thing it is decides which takedown a moderator can apply">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
-        <FIELD NAME="resourceid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="resourceid" TYPE="int" LENGTH="10" NOTNULL="false" COMMENT="The reported resource, or null when the report is about a collection. Became nullable when collections became reportable: 0 would have been indistinguishable from a real id in every join"/>
         <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true"/>
         <FIELD NAME="type" TYPE="char" LENGTH="30" NOTNULL="true" COMMENT="copyright|quality|spam|other"/>
         <FIELD NAME="details" TYPE="text" NOTNULL="false"/>
@@ -137,10 +137,12 @@
         <FIELD NAME="resolvernote" TYPE="text" NOTNULL="false"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
         <FIELD NAME="timeresolved" TYPE="int" LENGTH="10" NOTNULL="false"/>
+        <FIELD NAME="collectionid" TYPE="int" LENGTH="10" NOTNULL="false" COMMENT="The reported collection, or null when the report is about a resource"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
         <KEY NAME="resourceid" TYPE="foreign" FIELDS="resourceid" REFTABLE="local_oerexchange_resources" REFFIELDS="id"/>
+        <KEY NAME="collectionid" TYPE="foreign" FIELDS="collectionid" REFTABLE="local_oerexchange_collections" REFFIELDS="id"/>
       </KEYS>
     </TABLE>
 
@@ -270,6 +272,73 @@
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
         <KEY NAME="resourceid" TYPE="foreign-unique" FIELDS="resourceid" REFTABLE="local_oerexchange_resources" REFFIELDS="id"/>
       </KEYS>
+    </TABLE>
+
+    <TABLE NAME="local_oerexchange_collections" COMMENT="A curated, ordered reading list of catalogue resources, owned by one user. Rows are tombstoned (status=deleted) rather than deleted, so links already handed out still resolve">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" COMMENT="Exchange-local userid of the owner. The owner holds every right over the collection and is never a row in local_oerexchange_collection_curators, which is what makes them structurally unremovable"/>
+        <FIELD NAME="slug" TYPE="char" LENGTH="100" NOTNULL="true" COMMENT="Drives the /c/{slug} URL"/>
+        <FIELD NAME="title" TYPE="char" LENGTH="255" NOTNULL="true"/>
+        <FIELD NAME="summary" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="summaryformat" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="1" COMMENT="FORMAT_* of summary. Defaults to FORMAT_HTML(1), matching local_oerexchange_resources.summaryformat so both kinds of card render their teaser the same way"/>
+        <FIELD NAME="visibility" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="draft" COMMENT="draft|unlisted|public — draft is the owner alone (moderators included), unlisted is reachable by link but never listed and noindexed, public is listed. New collections are drafts: publishing is a separate deliberate act"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="active" COMMENT="active|deleted — &apos;deleted&apos; is a tombstone shown to everyone, never a removed row"/>
+        <FIELD NAME="modhidden" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" COMMENT="1 = held by a moderator. Deliberately NOT a fourth visibility: a takedown the owner could lift by pressing &apos;publish&apos; is not a takedown — the same split local_oerexchange_resources keeps between &apos;hidden&apos; and &apos;modhidden&apos;"/>
+        <FIELD NAME="modhiddentime" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="when a moderator took this collection down; 0 = not currently held. Reset to 0 on restore"/>
+        <FIELD NAME="modhiddenby" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="the moderator who took it down; 0 once that user has been through GDPR erasure, and 0 for an automated removal"/>
+        <FIELD NAME="opencuration" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" COMMENT="1 = any logged-in user may add resources, and may remove only the items they added themselves (local_oerexchange_collection_items.addedby). Turning it off never removes what open curators already added"/>
+        <FIELD NAME="timepublished" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="when the collection FIRST became public; 0 = never has been. Never moved again, so a collection unpublished and republished does not jump to the top of the browser&apos;s &apos;recent&apos; sort. Survives a return to draft: it records that this collection has been public before"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" COMMENT="Moved by metadata AND by membership/order/note changes — the items are the collection&apos;s content as much as its title is"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="slug" UNIQUE="true" FIELDS="slug" COMMENT="Unique: the slug is the URL, and it is also the arbiter of the generate-then-insert race slug_helper documents"/>
+        <INDEX NAME="userid" UNIQUE="false" FIELDS="userid"/>
+        <INDEX NAME="visibilitystatus" UNIQUE="false" FIELDS="visibility, status" COMMENT="Every public listing filters on exactly this pair plus modhidden (collection_manager::public_where())"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_oerexchange_collection_items" COMMENT="One resource&apos;s place in one collection, with the curator&apos;s note about why it is there">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="collectionid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="resourceid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="sortorder" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="The curator&apos;s order, rewritten as a contiguous 1..n sequence on every change (collection_manager::write_order()) so the page can tell first from last without a second query"/>
+        <FIELD NAME="note" TYPE="text" NOTNULL="false" COMMENT="The curator&apos;s own prose about this resource, published under the collection&apos;s name. null, never &apos;&apos;, when there is none"/>
+        <FIELD NAME="addedby" TYPE="int" LENGTH="10" NOTNULL="true" COMMENT="Exchange-local userid who added this item; 0 once that user has been through GDPR erasure. Load-bearing, not just provenance: under open curation this is what decides whose items a non-curator may remove"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="collectionid" TYPE="foreign" FIELDS="collectionid" REFTABLE="local_oerexchange_collections" REFFIELDS="id"/>
+        <KEY NAME="resourceid" TYPE="foreign" FIELDS="resourceid" REFTABLE="local_oerexchange_resources" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="collectionidresourceid" UNIQUE="true" FIELDS="collectionid, resourceid" COMMENT="Unique: a resource appears at most once in a collection. Also what makes a double-submitted &apos;add to collection&apos; a reported duplicate rather than two rows"/>
+        <INDEX NAME="collectionidsortorder" UNIQUE="false" FIELDS="collectionid, sortorder"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_oerexchange_collection_curators" COMMENT="People the owner invited to help curate a collection. A row grants add/remove/reorder/annotate over the items and NOTHING over the collection itself (title, cover, slug, visibility, curator list, delete) — deliberately less than local_oerexchange_coauthors grants over a resource. The owner themself is never a row here (they are collections.userid)">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="collectionid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" COMMENT="Exchange-local userid of the curator"/>
+        <FIELD NAME="addedby" TYPE="int" LENGTH="10" NOTNULL="true" COMMENT="Exchange-local userid who added them; 0 once that user has been through GDPR erasure"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="collectionid" TYPE="foreign" FIELDS="collectionid" REFTABLE="local_oerexchange_collections" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="collectioniduserid" UNIQUE="true" FIELDS="collectionid, userid"/>
+        <INDEX NAME="userid" UNIQUE="false" FIELDS="userid"/>
+      </INDEXES>
     </TABLE>
   </TABLES>
 </XMLDB>

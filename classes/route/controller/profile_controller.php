@@ -19,6 +19,10 @@ namespace local_oerexchange\route\controller;
 use core\router\require_login;
 use core\router\route;
 use local_oerexchange\local\badge_manager;
+use local_oerexchange\local\catalogue_view;
+use local_oerexchange\local\collection_cover;
+use local_oerexchange\local\collection_manager;
+use local_oerexchange\local\collection_view;
 use local_oerexchange\local\profile_manager;
 use local_oerexchange\local\share_targets;
 use local_oerexchange\router\parameters\path_profileslug;
@@ -294,6 +298,8 @@ class profile_controller {
             $out .= self::render_resource_grid($resources);
         }
 
+        $out .= self::render_collections_section($profile);
+
         // The "Liked resources" section — what this educator has starred, shown only to
         // people looking at a profile that has something on it. A profile with
         // no shares of its own is not an educator profile yet, and listing
@@ -316,6 +322,134 @@ class profile_controller {
 
         $response->getBody()->write($out);
         return $response;
+    }
+
+    /**
+     * The "Collections" section.
+     *
+     * Two audiences, two lists. A visitor sees the educator's own PUBLIC
+     * collections only (collection_manager::is_publicly_listable(), the same
+     * rule every other listing uses): this page is world-readable, so a draft
+     * or unlisted collection must not be advertised here, and an unlisted one
+     * would lose the only thing that makes it unlisted. The educator looking
+     * at their own profile sees everything they own, drafts and takedowns
+     * included and badged as such, plus the collections they curate for
+     * somebody else, and a "Create collection" button. That makes this
+     * section the owner's way back to their own drafts, which nothing else on
+     * the site lists.
+     *
+     * Renders nothing for a visitor when there is nothing public, and nothing
+     * at all while collections are switched off.
+     *
+     * @param \stdClass $profile the profiles row
+     * @return string HTML
+     */
+    protected static function render_collections_section(\stdClass $profile): string {
+        global $DB, $OUTPUT, $USER;
+
+        if (!collection_view::enabled()) {
+            return '';
+        }
+
+        $userid = (int) $profile->userid;
+        $isself = isloggedin() && !isguestuser() && (int) $USER->id === $userid;
+
+        if ($isself) {
+            $all = collection_manager::collections_for_user($userid, true);
+        } else {
+            $all = array_filter(
+                collection_manager::collections_for_user($userid, false),
+                fn($collection) => collection_manager::is_publicly_listable($collection)
+            );
+        }
+        $cancreate = $isself
+            && has_capability('local/oerexchange:createcollection', \context_system::instance());
+        if (!$all && !$cancreate) {
+            return '';
+        }
+
+        // Batched, as every other card grid here is: one query for the
+        // covers, one for the counts, one for the owners of curated ones.
+        $ids = array_keys($all);
+        $images = $ids ? collection_cover::display_urls($ids) : [];
+        $counts = $ids ? collection_manager::counts_for($ids) : [];
+        $ownerids = [];
+        foreach ($all as $collection) {
+            if (empty($collection->isowner)) {
+                $ownerids[] = (int) $collection->userid;
+            }
+        }
+        $owners = $ownerids ? $DB->get_records_list('user', 'id', array_unique($ownerids)) : [];
+
+        $owned = [];
+        $curated = [];
+        foreach ($all as $id => $collection) {
+            $collection->itemcount = $counts[$id] ?? 0;
+            $owner = empty($collection->isowner) ? ($owners[(int) $collection->userid] ?? null) : null;
+            $card = catalogue_view::collection_card(
+                $collection,
+                $images[$id] ?? null,
+                // The profile is the owner's, so their name on their own cards
+                // would repeat the page heading; a curated one names its owner.
+                $owner ? fullname($owner) : '',
+                $isself ? self::collection_state_badges($collection) : ''
+            );
+            if (!empty($collection->isowner)) {
+                $owned[] = $card;
+            } else {
+                $curated[] = $card;
+            }
+        }
+
+        $out = $OUTPUT->heading(get_string('profilecollectionsheading', 'local_oerexchange'), 4);
+        if ($cancreate) {
+            $out .= \html_writer::div(\html_writer::link(
+                new \moodle_url('/local/oerexchange/collection_edit.php'),
+                get_string('collectioncreate', 'local_oerexchange'),
+                ['class' => 'btn btn-outline-primary btn-sm', 'id' => 'oerexchange-profile-newcollection']
+            ), 'mb-3');
+        }
+        $grid = ['class' => 'row row-cols-1 row-cols-md-3 g-3 mb-4'];
+        if ($owned) {
+            $out .= \html_writer::tag('div', implode('', $owned), $grid);
+        } else if ($isself) {
+            $out .= \html_writer::tag('p', get_string('profilecollectionsnoneself', 'local_oerexchange'));
+        }
+        if ($curated) {
+            $out .= $OUTPUT->heading(get_string('collectionscurated', 'local_oerexchange'), 5);
+            $out .= \html_writer::tag('div', implode('', $curated), $grid);
+        }
+
+        return $out;
+    }
+
+    /**
+     * The owner-only state badges for one of their own collection cards.
+     *
+     * Only states a visitor would never see the card in: a public, live
+     * collection gets no badge, because on the owner's own page "Public" would
+     * be on nearly every card and say nothing.
+     *
+     * @param \stdClass $collection
+     * @return string HTML
+     */
+    protected static function collection_state_badges(\stdClass $collection): string {
+        $keys = [];
+        if (!empty($collection->modhidden)) {
+            $keys[] = ['collectionmodhidden', 'bg-danger'];
+        }
+        if ((string) $collection->visibility === collection_manager::VISIBILITY_DRAFT) {
+            $keys[] = ['collectionvisibilitydraft', 'bg-warning text-dark'];
+        } else if ((string) $collection->visibility === collection_manager::VISIBILITY_UNLISTED) {
+            $keys[] = ['collectionvisibilityunlisted', 'bg-info text-dark'];
+        }
+
+        $out = '';
+        foreach ($keys as [$key, $class]) {
+            $out .= \html_writer::tag('span', get_string($key, 'local_oerexchange'), ['class' => 'badge me-1 ' . $class]);
+        }
+
+        return $out;
     }
 
     /**

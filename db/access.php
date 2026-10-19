@@ -25,6 +25,30 @@
 defined('MOODLE_INTERNAL') || die();
 
 $capabilities = [
+    // Creating a collection is the one thing an ordinary signed-in user does
+    // here that this plugin gates by capability rather than by ownership, so
+    // that a site which does not want everybody minting public pages can take
+    // it away from the authenticated-user role without touching anything
+    // else. 'user' => CAP_ALLOW is the default because the feature is for
+    // educators, not administrators, and a collection nobody can create is
+    // not a feature.
+    //
+    // RISK_SPAM, not RISK_XSS: a collection carries a title, a summary and
+    // per-item notes that become publicly visible, which is spam-shaped
+    // (moderate.php and the modhidden takedown exist for it). It is not
+    // RISK_XSS because none of that text is ever trusted — every sink filters
+    // or escapes it (format_string(), format_text(), s()), exactly as
+    // resource titles and summaries are. RISK_PERSONAL does not apply either:
+    // a collection holds no personal data about anyone but its own
+    // contributors, who put themselves there.
+    'local/oerexchange:createcollection' => [
+        'riskbitmask' => RISK_SPAM,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => [
+            'user' => CAP_ALLOW,
+        ],
+    ],
     'local/oerexchange:moderate' => [
         'riskbitmask' => RISK_SPAM | RISK_PERSONAL,
         'captype' => 'write',

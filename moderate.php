@@ -39,6 +39,8 @@ $reportaction = optional_param('reportaction', '', PARAM_ALPHA);
 $hideid = optional_param('hideid', 0, PARAM_INT);
 $removeid = optional_param('removeid', 0, PARAM_INT);
 $restoreid = optional_param('restoreid', 0, PARAM_INT);
+$collectionhideid = optional_param('collectionhideid', 0, PARAM_INT);
+$collectionrestoreid = optional_param('collectionrestoreid', 0, PARAM_INT);
 
 if ($reportid && $reportaction && confirm_sesskey()) {
     $status = $reportaction === 'resolve' ? 'resolved' : 'dismissed';
@@ -86,11 +88,43 @@ if ($restoreid && confirm_sesskey()) {
     }
     redirect(new moodle_url('/local/oerexchange/moderate.php'));
 }
+if ($collectionhideid && confirm_sesskey()) {
+    // The collection equivalent of the hide branch above, and guarded the same
+    // way: moderation_collections::take_down() re-reads the collection and
+    // refuses a tombstone or an already-held collection, so a replayed link
+    // cannot restamp the takedown date over the real one. A collection
+    // takedown is a single flag rather than a status, so there is no
+    // author-owned switch it can collide with — the owner's own draft/
+    // unlisted/public setting is a separate column they keep control of, and
+    // modhidden overrides it without being changed by it.
+    if (\local_oerexchange\local\moderation_collections::take_down($collectionhideid, (int) $USER->id)) {
+        \core\notification::success(get_string('collectionmodhidedone', 'local_oerexchange'));
+    }
+    redirect(new moodle_url('/local/oerexchange/moderate.php'));
+}
+if ($collectionrestoreid && confirm_sesskey()) {
+    if (\local_oerexchange\local\moderation_collections::restore($collectionrestoreid)) {
+        \core\notification::success(get_string('collectionmodrestoredone', 'local_oerexchange'));
+    }
+    redirect(new moodle_url('/local/oerexchange/moderate.php'));
+}
 
 echo $OUTPUT->header();
 
 echo $OUTPUT->heading(get_string('openreports', 'local_oerexchange'), 3);
-$reports = $DB->get_records('local_oerexchange_reports', ['status' => 'open'], 'timecreated ASC');
+// Resource reports only, said explicitly. {local_oerexchange_reports} became
+// polymorphic when collections became reportable (nullable resourceid, new
+// nullable collectionid, exactly one of the two set), and the loop below joins
+// every row to {local_oerexchange_resources} by resourceid — so without this
+// filter a collection report would have listed here as a row whose resource
+// "no longer exists", with a Hide button pointing at resource id nothing. The
+// collection reports have their own section further down.
+$reports = $DB->get_records_select(
+    'local_oerexchange_reports',
+    'status = :status AND resourceid IS NOT NULL',
+    ['status' => 'open'],
+    'timecreated ASC'
+);
 if (empty($reports)) {
     echo html_writer::tag('p', get_string('noopenreports', 'local_oerexchange'));
 } else {
@@ -140,6 +174,132 @@ if (empty($reports)) {
             // for a language the moderator is not viewing in.
             s($rep->details),
             $actions,
+        ];
+    }
+    echo html_writer::table($table);
+}
+
+// Collections. A separate section rather than extra rows in the table above:
+// the two kinds of report lead to different actions (a resource takedown is a
+// status with an author-owned switch beside it, a collection takedown is a
+// moderator-only flag), and the resource table's columns and Hide link are all
+// built from a resourceid these rows do not have.
+//
+// Deliberately NOT gated on the collectionsenabled setting, which the public
+// pages do check. Turning collections off hides the feature; it does not
+// resolve the reports already filed or release the collections a moderator is
+// holding, and a queue that quietly stopped showing outstanding work would be
+// the worst possible reading of an admin switch.
+echo $OUTPUT->heading(get_string('moderatecollections', 'local_oerexchange'), 3);
+$collectionreports = \local_oerexchange\local\moderation_collections::open_reports();
+$heldcollections = \local_oerexchange\local\moderation_collections::held_collections();
+if (!$collectionreports && !$heldcollections) {
+    echo html_writer::tag('p', get_string('moderatecollectionsnone', 'local_oerexchange'));
+}
+if ($collectionreports) {
+    echo $OUTPUT->heading(get_string('moderatecollectionsopen', 'local_oerexchange'), 4);
+    $table = new html_table();
+    $table->head = [
+        get_string('collection', 'local_oerexchange'),
+        get_string('reporttype', 'local_oerexchange'),
+        get_string('reportdetails', 'local_oerexchange'),
+        '',
+    ];
+    foreach ($collectionreports as $rep) {
+        $sesskey = sesskey();
+        $resolveurl = new moodle_url('/local/oerexchange/moderate.php', [
+            'reportid' => $rep->id, 'reportaction' => 'resolve', 'sesskey' => $sesskey,
+        ]);
+        $dismissurl = new moodle_url('/local/oerexchange/moderate.php', [
+            'reportid' => $rep->id, 'reportaction' => 'dismiss', 'sesskey' => $sesskey,
+        ]);
+        $actions = html_writer::link(
+            $resolveurl,
+            get_string('resolvereport', 'local_oerexchange'),
+            ['class' => 'btn btn-sm btn-success me-1']
+        )
+            . html_writer::link(
+                $dismissurl,
+                get_string('dismissreport', 'local_oerexchange'),
+                ['class' => 'btn btn-sm btn-secondary me-1']
+            );
+        // Which takedown action is offered is decided from the collection's
+        // own row, not from the report: a collection that is already held
+        // needs Restore, and a tombstone needs neither. The handlers at the
+        // top of this file re-derive the same thing, so a stale link from a
+        // page left open does nothing rather than something wrong.
+        $isactive = (string) $rep->collectionstatus === \local_oerexchange\local\collection_manager::STATUS_ACTIVE;
+        if ($isactive && empty($rep->collectionmodhidden)) {
+            $actions .= html_writer::link(
+                new moodle_url('/local/oerexchange/moderate.php', [
+                    'collectionhideid' => $rep->collectionid, 'sesskey' => $sesskey,
+                ]),
+                get_string('collectionmodhide', 'local_oerexchange'),
+                ['class' => 'btn btn-sm btn-outline-danger']
+            );
+        } else if ($isactive) {
+            $actions .= html_writer::link(
+                new moodle_url('/local/oerexchange/moderate.php', [
+                    'collectionrestoreid' => $rep->collectionid, 'sesskey' => $sesskey,
+                ]),
+                get_string('collectionmodrestore', 'local_oerexchange'),
+                ['class' => 'btn btn-sm btn-outline-success']
+            );
+        }
+        $table->data[] = [
+            \local_oerexchange\local\moderation_collections::render_title_cell(
+                $rep->collectiontitle,
+                $rep->collectionslug,
+                (string) $rep->collectionstatus,
+                !empty($rep->collectionmodhidden),
+                $context
+            ),
+            get_string('reporttype_' . $rep->type, 'local_oerexchange'),
+            // Escaped with s(), not format_string(), for the same reason as the resource
+            // table above: the reporter's own words are the evidence.
+            s($rep->details),
+            $actions,
+        ];
+    }
+    echo html_writer::table($table);
+}
+if ($heldcollections) {
+    echo $OUTPUT->heading(get_string('moderatecollectionsheld', 'local_oerexchange'), 4);
+    $table = new html_table();
+    $table->head = [
+        get_string('collection', 'local_oerexchange'),
+        get_string('moderatecollectionsheldwhen', 'local_oerexchange'),
+        '',
+    ];
+    foreach ($heldcollections as $held) {
+        $restoreurl = new moodle_url('/local/oerexchange/moderate.php', [
+            'collectionrestoreid' => $held->id, 'sesskey' => sesskey(),
+        ]);
+        // The name from fullname() is unescaped and get_string() does
+        // not escape its placeholders, so the name is escaped here — the same
+        // three-functions-in-a-row trap moderate_hidden.php documents.
+        $when = empty($held->modhiddentime)
+            ? get_string('hiddenwhenunknown', 'local_oerexchange')
+            : get_string('hiddenwhen', 'local_oerexchange', (object) [
+                'when' => userdate($held->modhiddentime),
+                'who' => $held->modhiddenbyuser
+                    ? s(fullname($held->modhiddenbyuser))
+                    : get_string('hiddenbyunknown', 'local_oerexchange'),
+            ]);
+        $table->data[] = [
+            \local_oerexchange\local\moderation_collections::render_title_cell(
+                $held->title,
+                $held->slug,
+                (string) $held->status,
+                true,
+                $context
+            ),
+            $when,
+            html_writer::link(
+                $restoreurl,
+                get_string('collectionmodrestore', 'local_oerexchange'),
+                ['class' => 'btn btn-sm btn-outline-success']
+            ),
         ];
     }
     echo html_writer::table($table);

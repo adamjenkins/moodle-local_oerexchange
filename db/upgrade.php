@@ -477,5 +477,123 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026082200, 'local', 'oerexchange');
     }
 
+    if ($oldversion < 2026101900) {
+        // Collections: a curated, ordered reading list of catalogue
+        // resources, owned by one user and optionally curated by others.
+        // Three tables, plus making moderation reports able to point at a
+        // collection instead of a resource.
+        //
+        // No data is backfilled. Nothing in the existing schema is a
+        // collection in disguise, so there is nothing to migrate — unlike the
+        // 2026082200 step above, which had existing co-authors to give
+        // profiles to.
+        $table = new xmldb_table('local_oerexchange_collections');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('slug', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('title', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('summary', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('summaryformat', XMLDB_TYPE_INTEGER, '2', null, XMLDB_NOTNULL, null, '1');
+        $table->add_field('visibility', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'draft');
+        $table->add_field('status', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'active');
+        $table->add_field('modhidden', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('modhiddentime', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('modhiddenby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('opencuration', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timepublished', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        // The unique slug index is not decoration: it is the arbiter of the
+        // generate-then-insert race that slug_helper documents and that
+        // collection_manager::create() retries against.
+        $table->add_index('slug', XMLDB_INDEX_UNIQUE, ['slug']);
+        $table->add_index('userid', XMLDB_INDEX_NOTUNIQUE, ['userid']);
+        $table->add_index('visibilitystatus', XMLDB_INDEX_NOTUNIQUE, ['visibility', 'status']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        $table = new xmldb_table('local_oerexchange_collection_items');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('collectionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('resourceid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('sortorder', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('note', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('addedby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_key('collectionid', XMLDB_KEY_FOREIGN, ['collectionid'], 'local_oerexchange_collections', ['id']);
+        $table->add_key('resourceid', XMLDB_KEY_FOREIGN, ['resourceid'], 'local_oerexchange_resources', ['id']);
+        // Unique: a resource appears at most once in a collection, and this
+        // is what turns a double-submitted "add to collection" into a
+        // reported duplicate rather than two rows.
+        $table->add_index('collectionidresourceid', XMLDB_INDEX_UNIQUE, ['collectionid', 'resourceid']);
+        $table->add_index('collectionidsortorder', XMLDB_INDEX_NOTUNIQUE, ['collectionid', 'sortorder']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        $table = new xmldb_table('local_oerexchange_collection_curators');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('collectionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('addedby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_key('collectionid', XMLDB_KEY_FOREIGN, ['collectionid'], 'local_oerexchange_collections', ['id']);
+        $table->add_index('collectioniduserid', XMLDB_INDEX_UNIQUE, ['collectionid', 'userid']);
+        $table->add_index('userid', XMLDB_INDEX_NOTUNIQUE, ['userid']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        // A moderation report is about one thing, and from this version that
+        // thing may be a collection. collectionid is added nullable and
+        // resourceid becomes nullable, so exactly one of the two is ever set.
+        //
+        // Nullable rather than a 0 sentinel on either column: every existing
+        // report joins {local_oerexchange_reports}.resourceid to
+        // {local_oerexchange_resources}.id (moderate.php, moderation_report),
+        // and a 0 would survive that join as a silent extra row attributed to
+        // no resource, which is exactly the mistake modhiddenversionid was
+        // made nullable to avoid in the 2026080400 step above.
+        $table = new xmldb_table('local_oerexchange_reports');
+
+        $field = new xmldb_field('collectionid', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'timeresolved');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // The foreign key's underlying index must go first: changing the
+        // nullability of an indexed column throws ddldependencyerror
+        // (database_manager::check_field_dependencies()). Both halves are
+        // safe to re-run over a half-applied step: getDropKeySQL() drops the
+        // index only if it exists (lib/ddl/sql_generator.php:942-944), and
+        // add_key() skips one that is present (:876).
+        $resourcekey = new xmldb_key('resourceid', XMLDB_KEY_FOREIGN, ['resourceid'], 'local_oerexchange_resources', ['id']);
+        $dbman->drop_key($table, $resourcekey);
+        $field = new xmldb_field('resourceid', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'id');
+        if ($dbman->field_exists($table, $field)) {
+            $dbman->change_field_notnull($table, $field);
+        }
+        $dbman->add_key($table, $resourcekey);
+
+        // After the add_field above, so the column the key indexes exists.
+        // Unguarded by design: getAddKeySQL() already skips a foreign key
+        // whose underlying index is present (lib/ddl/sql_generator.php:876),
+        // and no key_exists() counterpart to field_exists() is offered.
+        $key = new xmldb_key(
+            'collectionid',
+            XMLDB_KEY_FOREIGN,
+            ['collectionid'],
+            'local_oerexchange_collections',
+            ['id']
+        );
+        $dbman->add_key($table, $key);
+
+        upgrade_plugin_savepoint(true, 2026101900, 'local', 'oerexchange');
+    }
+
     return true;
 }

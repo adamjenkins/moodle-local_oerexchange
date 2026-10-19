@@ -109,6 +109,32 @@ $functions = [
         'loginrequired' => false,
     ],
 
+    // Same reasoning as get_contributors above: the visitor's own browser,
+    // never a client site over a token, so it is NOT added to the 'OER
+    // Exchange service' below. loginrequired is false because the
+    // /collections page is public, and this returns only the public
+    // collections that page already shows anonymously.
+    'local_oerexchange_get_collections' => [
+        'classname'   => 'local_oerexchange\external\get_collections',
+        'methodname'  => 'execute',
+        'description' => 'Re-render the collection listing for a chosen sort and view.',
+        'type'        => 'read',
+        'ajax'        => true,
+        'loginrequired' => false,
+    ],
+
+    // Same reasoning as set_resource_star above: the visitor's own browser,
+    // session-authenticated, never a client site over a token — so it is
+    // deliberately left out of the 'OER Exchange service' below.
+    'local_oerexchange_set_collection_star' => [
+        'classname'   => 'local_oerexchange\external\set_collection_star',
+        'methodname'  => 'execute',
+        'description' => 'Star or unstar a collection as the calling user.',
+        'type'        => 'write',
+        'ajax'        => true,
+        'loginrequired' => true,
+    ],
+
     'local_oerexchange_get_config' => [
         'classname'   => 'local_oerexchange\external\get_config',
         'methodname'  => 'execute',

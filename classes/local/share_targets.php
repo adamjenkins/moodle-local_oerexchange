@@ -145,14 +145,38 @@ class share_targets {
      * @param string $shareurl absolute URL being shared
      * @param string $title human-readable title of the thing being shared
      * @param string $summarylabel the disclosure's own label, e.g. "Share this resource"
+     * @param string $extracontent optional already-built HTML to place inside the same
+     *      disclosure, below the share destinations. It exists so a control that belongs
+     *      with "share this" — today, the resource page's "Add to collection" picker —
+     *      can live in THIS panel rather than in a second, near-identical one beside it.
+     *      Callers that pass nothing (the profile page, the collection page) get exactly
+     *      the markup this method produced before the parameter existed.
      * @return string HTML
      */
-    public static function render(string $shareurl, string $title, string $summarylabel): string {
+    public static function render(
+        string $shareurl,
+        string $title,
+        string $summarylabel,
+        string $extracontent = ''
+    ): string {
         global $OUTPUT, $PAGE;
 
         $targets = self::build($shareurl, $title);
         if (empty($targets)) {
-            return '';
+            // The admin has unticked every destination, which this class reads
+            // strictly as "share nothing" (see enabled()). Honour that — no
+            // disclosure, and not even the copyable link field.
+            //
+            // But an empty target list must not silently swallow
+            // $extracontent: that is a different feature which merely shares
+            // this panel, and dropping it would mean turning the share
+            // buttons off also removed the only "Add to collection" control on
+            // the resource page. So it is rendered on its own instead.
+            return $extracontent === ''
+                ? ''
+                : \html_writer::tag('div', $extracontent, [
+                    'class' => 'oerexchange-share-extra d-inline-block me-2',
+                ]);
         }
 
         $PAGE->requires->js_call_amd('local_oerexchange/share', 'init');
@@ -223,6 +247,14 @@ class share_targets {
             }
         }
         $out .= \html_writer::end_tag('div');
+
+        if ($extracontent !== '') {
+            // Separated by a rule so the panel reads as two things in one
+            // place rather than one long row of unrelated controls.
+            $out .= \html_writer::empty_tag('hr', ['class' => 'my-2']);
+            $out .= $extracontent;
+        }
+
         $out .= \html_writer::end_tag('div');
         $out .= \html_writer::end_tag('details');
 

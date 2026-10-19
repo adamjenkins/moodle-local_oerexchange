@@ -19,6 +19,7 @@ namespace local_oerexchange;
 use PHPUnit\Framework\Attributes\CoversClass;
 use core\router\route_loader_interface;
 use core\tests\router\route_testcase;
+use local_oerexchange\local\collection_manager;
 use local_oerexchange\local\profile_manager;
 use local_oerexchange\route\controller\profile_controller;
 
@@ -910,5 +911,89 @@ final class profile_controller_test extends route_testcase {
             'modhiddenby' => 0,
             'modhiddenversionid' => null,
         ], $overrides));
+    }
+
+    /**
+     * The Collections section shows a visitor the educator's PUBLIC
+     * collections only, and shows the educator everything they own (badged)
+     * plus a "Create collection" button.
+     *
+     * The draft and the unlisted collection are the point: this page is
+     * world-readable, so either appearing for a visitor would advertise
+     * something its owner has not published, and an unlisted collection
+     * listed here would no longer be unlisted.
+     *
+     * @return void
+     */
+    public function test_collections_section_shows_visitors_public_only_and_the_owner_everything(): void {
+        $this->resetAfterTest();
+        $owner = $this->getDataGenerator()->create_user();
+        profile_manager::get_or_create_for_user((int) $owner->id);
+        profile_manager::save((int) $owner->id, ['slug' => 'curatorpage', 'bio' => '', 'expertise' => [], 'visible' => true]);
+
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_oerexchange');
+        $generator->create_collection([
+            'userid' => (int) $owner->id,
+            'title' => 'Listed reading',
+            'visibility' => collection_manager::VISIBILITY_PUBLIC,
+            'timepublished' => time(),
+        ]);
+        $generator->create_collection([
+            'userid' => (int) $owner->id,
+            'title' => 'Half-finished draft',
+            'visibility' => collection_manager::VISIBILITY_DRAFT,
+        ]);
+        $generator->create_collection([
+            'userid' => (int) $owner->id,
+            'title' => 'Link-only list',
+            'visibility' => collection_manager::VISIBILITY_UNLISTED,
+            'timepublished' => time(),
+        ]);
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+
+        // A visitor, anonymous: the public one only, and no create button.
+        $this->setUser(null);
+        $body = (string) $this->process_request('GET', 'u/curatorpage', route_loader_interface::ROUTE_GROUP_PAGE)->getBody();
+        $this->assertStringContainsString(get_string('profilecollectionsheading', 'local_oerexchange'), $body);
+        $this->assertStringContainsString('Listed reading', $body);
+        $this->assertStringNotContainsString('Half-finished draft', $body);
+        $this->assertStringNotContainsString('Link-only list', $body);
+        $this->assertStringNotContainsString('oerexchange-profile-newcollection', $body);
+
+        // The owner: all three, the non-public two badged, and the button.
+        $this->setUser($owner);
+        $body = (string) $this->process_request('GET', 'u/curatorpage', route_loader_interface::ROUTE_GROUP_PAGE)->getBody();
+        $this->assertStringContainsString('Listed reading', $body);
+        $this->assertStringContainsString('Half-finished draft', $body);
+        $this->assertStringContainsString('Link-only list', $body);
+        $this->assertStringContainsString(get_string('collectionvisibilitydraft', 'local_oerexchange'), $body);
+        $this->assertStringContainsString(get_string('collectionvisibilityunlisted', 'local_oerexchange'), $body);
+        $this->assertStringContainsString('oerexchange-profile-newcollection', $body);
+    }
+
+    /**
+     * A visitor sees no Collections heading at all when the educator has no
+     * public collection, rather than an empty section.
+     *
+     * @return void
+     */
+    public function test_collections_section_is_absent_for_a_visitor_when_nothing_is_public(): void {
+        $this->resetAfterTest();
+        $owner = $this->getDataGenerator()->create_user();
+        profile_manager::get_or_create_for_user((int) $owner->id);
+        profile_manager::save((int) $owner->id, ['slug' => 'nolists', 'bio' => '', 'expertise' => [], 'visible' => true]);
+        $this->getDataGenerator()->get_plugin_generator('local_oerexchange')->create_collection([
+            'userid' => (int) $owner->id,
+            'title' => 'Still a draft',
+            'visibility' => collection_manager::VISIBILITY_DRAFT,
+        ]);
+
+        $this->add_class_routes_to_route_loader(profile_controller::class, '');
+        $this->setUser($this->getDataGenerator()->create_user());
+        $body = (string) $this->process_request('GET', 'u/nolists', route_loader_interface::ROUTE_GROUP_PAGE)->getBody();
+
+        $this->assertStringNotContainsString(get_string('profilecollectionsheading', 'local_oerexchange') . '</h4>', $body);
+        $this->assertStringNotContainsString('Still a draft', $body);
     }
 }
