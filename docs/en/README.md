@@ -132,6 +132,13 @@ Sandbox plugin allowlist**:
    allowlist entry for the trial's branch will have that plugin
    automatically installed when someone clicks Try it. Entries can be
    disabled without deleting them.
+4. When the sandbox gains a new Moodle version, **Offer an existing
+   selection on another Moodle version** copies every plugin listed for one
+   version to another. Each plugin is looked up again in the plugins
+   directory and downloaded, a few seconds apiece, so this runs in the
+   background (it needs cron): the page shows which plugin is being looked
+   up, then the usual preview to confirm. Site administrators can press
+   **Run now** if cron has not picked it up yet.
 
 ### Moderation
 

@@ -57,7 +57,11 @@ $plugin->component = 'local_oerexchange';
 // 1.2.0 on the owner's approval (2026-10-20): a minor bump, because
 // collection downloads, collection-only resources, bulk editing, badge
 // colours and the share options are new features.
-$plugin->version   = 2026102000;
+// 2026102001 is the 1.2.1 release: the allowlist rollover moves into an ad
+// hoc task (adhoc tasks need no registration), readable badges and warning
+// text, upright curator notes and new lang strings. No schema, services or
+// capability change; the serial moves so the new strings are re-read.
+$plugin->version   = 2026102001;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass
@@ -67,5 +71,5 @@ $plugin->version   = 2026102000;
 // earlier off-by-one estimate of nine.
 $plugin->requires  = 2025041400;
 $plugin->supported = [500, 503];
-$plugin->release   = '1.2.0';
+$plugin->release   = '1.2.1';
 $plugin->maturity  = MATURITY_STABLE;

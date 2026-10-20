@@ -59,6 +59,20 @@ labels:
 links:
   docs: https://github.com/adamjenkins/moodle-local_oerexchange#readme
   issues: https://github.com/adamjenkins/moodle-local_oerexchange/issues
-# screenshots:
-#   - path: .camp/screenshots/overview.png
-#     caption: Main view
+screenshots:
+  - path: .camp/screenshots/01-catalogue.png
+    caption: "The catalogue, with featured collections, filters and coloured type badges."
+  - path: .camp/screenshots/02-resource.png
+    caption: "A resource page: cover, licence, size, Try it and Download, and the share buttons."
+  - path: .camp/screenshots/03-structure-preview.png
+    caption: "Look inside before importing: every section and activity in the backup, and the plugins it needs."
+  - path: .camp/screenshots/04-collection.png
+    caption: "A collection: ordered resources with the curator's notes, a mosaic cover and a one-zip download."
+  - path: .camp/screenshots/05-collections.png
+    caption: "Public collections, newest, most starred or largest first, as cards or a list."
+  - path: .camp/screenshots/06-profile.png
+    caption: "An educator profile: badges, expertise, collections and shared resources."
+  - path: .camp/screenshots/07-moderation.png
+    caption: "The moderation queue: reported resources and collections, with takedown and restore."
+  - path: .camp/screenshots/08-settings.png
+    caption: "Administrator settings for collections, featured collections, badge colours and sharing."
