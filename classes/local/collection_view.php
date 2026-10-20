@@ -55,7 +55,7 @@ namespace local_oerexchange\local;
  */
 final class collection_view {
     /** @var int how many catalogue matches the "Add resources" search offers at once */
-    public const ADDPERPAGE = 10;
+    public const ADDPERPAGE = 25;
 
     /** @var int how many characters of a resource teaser an add-search result shows */
     public const TEASER_LENGTH = 140;
@@ -259,9 +259,7 @@ final class collection_view {
             ['class' => 'oerexchange-collection-cover mb-3', 'style' => 'max-width:48rem;']
         );
 
-        $out .= \html_writer::tag('p', get_string('collection', 'local_oerexchange'), [
-            'class' => 'text-muted small mb-1',
-        ]);
+        $out .= \html_writer::tag('p', resource_type::collection_badge(''), ['class' => 'mb-1']);
         $out .= \html_writer::tag(
             'h2',
             format_string($collection->title, true, ['context' => \context_system::instance()]),
@@ -446,13 +444,53 @@ final class collection_view {
     }
 
     /**
-     * Edit, star and share.
+     * The "Download collection" control, or the reason there is none.
      *
-     * The star is a real submit button in its own POST form rather than the
-     * link-plus-AMD arrangement resource.php uses for resources: there is no
-     * web service for starring a collection, so there is nothing for an AMD
-     * module to call, and a state change with nothing to intercept belongs in
-     * a POST rather than in a GET link carrying a sesskey.
+     * Only reports the state: it never queues a build itself. queue()
+     * reschedules a waiting build a minute later each time, so calling it on
+     * every page view would let a popular collection postpone its own zip
+     * indefinitely; the change points and the scheduled sweep queue builds.
+     *
+     * @param \stdClass $collection
+     * @return string HTML
+     */
+    protected static function render_download(\stdClass $collection): string {
+        $state = collection_zip::state($collection);
+
+        switch ($state->state) {
+            case collection_zip::STATE_READY:
+                return \html_writer::link(
+                    new \moodle_url('/local/oerexchange/collection_download.php', ['id' => $collection->id]),
+                    get_string('collectionzipdownload', 'local_oerexchange', display_size((int) $state->file->get_filesize())),
+                    ['class' => 'btn btn-outline-primary me-2', 'id' => 'oerexchange-collection-download']
+                );
+            case collection_zip::STATE_PENDING:
+                return \html_writer::tag(
+                    'span',
+                    get_string('collectionzippending', 'local_oerexchange'),
+                    ['class' => 'small text-muted me-2']
+                );
+            case collection_zip::STATE_TOOLARGE:
+                return \html_writer::tag(
+                    'span',
+                    get_string('collectionziptoolarge', 'local_oerexchange', (object) [
+                        'size' => display_size($state->bytes),
+                        'limit' => display_size(collection_zip::max_bytes()),
+                    ]),
+                    ['class' => 'small text-muted me-2']
+                );
+            default:
+                return '';
+        }
+    }
+
+    /**
+     * Edit, download, star and share.
+     *
+     * The star is a real submit button in its own POST form, which
+     * amd/src/collectionstar.js takes over to star over AJAX
+     * (local_oerexchange_set_collection_star) without a page reload; with
+     * scripting off the form still works.
      *
      * @param \stdClass $collection
      * @param \moodle_url $pageurl
@@ -477,6 +515,8 @@ final class collection_view {
                 ['class' => 'btn btn-outline-primary me-2', 'id' => 'oerexchange-collection-editlink']
             );
         }
+
+        $out .= self::render_download($collection);
 
         $isstarred = $userid > 0 && !isguestuser($userid) && star_manager::is_starred(
             (int) $collection->id,
@@ -590,6 +630,13 @@ final class collection_view {
         $adders = self::adder_names($items);
 
         $itemlist = array_values($items);
+        // Bulk removal. Each row already holds its own forms (move, remove,
+        // note) and forms cannot nest, so the checkboxes join ONE form drawn
+        // after the list through the HTML form attribute. A checkbox is drawn
+        // only where this viewer may remove that item; the controller asks
+        // user_can_remove_item() again for each posted id regardless.
+        $bulkremoveid = 'oerexchange-bulkremove-' . (int) $collection->id;
+        $anyremovable = false;
         $out .= \html_writer::start_tag('ol', [
             'class' => 'oerexchange-collection-items list-unstyled',
             'data-region' => 'oerexchange-collection-items',
@@ -607,6 +654,8 @@ final class collection_view {
                 $item = clone $item;
                 $item->resource = null;
             }
+            $removable = collection_manager::user_can_remove_item($collection, $item, $userid);
+            $anyremovable = $anyremovable || $removable;
             $out .= self::render_item(
                 $collection,
                 $pageurl,
@@ -616,10 +665,21 @@ final class collection_view {
                 $coverurls[(int) $item->resourceid] ?? null,
                 $adders[(int) $item->addedby] ?? null,
                 $position === 0,
-                $position === count($itemlist) - 1
+                $position === count($itemlist) - 1,
+                $removable ? $bulkremoveid : ''
             );
         }
         $out .= \html_writer::end_tag('ol');
+
+        if ($anyremovable) {
+            $out .= self::bulk_form(
+                $pageurl,
+                $bulkremoveid,
+                'removeitems',
+                get_string('collectionbulkremove', 'local_oerexchange'),
+                'btn btn-outline-danger btn-sm'
+            );
+        }
 
         if ($cancurate) {
             // The optimistic-reorder/remove enhancement. Everything above
@@ -643,6 +703,8 @@ final class collection_view {
      * @param string|null $addername already-escaped name of whoever added it, or null
      * @param bool $isfirst
      * @param bool $islast
+     * @param string $bulkformid id of the bulk-remove form this row's checkbox
+     *      belongs to, or '' for no checkbox (the viewer may not remove it)
      * @return string HTML
      */
     protected static function render_item(
@@ -654,7 +716,8 @@ final class collection_view {
         ?\moodle_url $coverurl,
         ?string $addername,
         bool $isfirst,
-        bool $islast
+        bool $islast,
+        string $bulkformid = ''
     ): string {
         $resource = $item->resource;
         $available = !empty($item->available);
@@ -664,6 +727,10 @@ final class collection_view {
             'data-region' => 'oerexchange-collection-item',
             'data-itemid' => (int) $item->id,
         ]);
+
+        if ($bulkformid !== '') {
+            $out .= self::bulk_checkbox($bulkformid, 'itemids[]', (int) $item->id, $resource);
+        }
 
         if ($resource) {
             $out .= cover_image::listitem($coverurl);
@@ -683,7 +750,7 @@ final class collection_view {
             );
             $out .= \html_writer::tag(
                 'div',
-                resource_type::label($resource) . ' · ' . licence_display::html($resource->licenseshortname),
+                resource_type::badge($resource) . licence_display::html($resource->licenseshortname),
                 ['class' => 'small text-muted mb-1']
             );
         } else {
@@ -975,16 +1042,33 @@ final class collection_view {
         }
         $coverurls = cover_image::urls_for(array_keys($matches));
 
+        // Bulk add: tick several results and add them in one go, through one
+        // form joined by the HTML form attribute (each row also keeps its
+        // own one-click Add form, and forms cannot nest).
+        $bulkaddid = 'oerexchange-bulkadd';
+        $anyaddable = false;
         $out .= \html_writer::start_tag('ul', ['class' => 'list-unstyled']);
         foreach ($matches as $match) {
+            $alreadyin = isset($present[(int) $match->id]);
+            $anyaddable = $anyaddable || !$alreadyin;
             $out .= self::render_add_candidate(
                 $pageurl,
                 $match,
                 $coverurls[(int) $match->id] ?? null,
-                isset($present[(int) $match->id])
+                $alreadyin,
+                $bulkaddid
             );
         }
         $out .= \html_writer::end_tag('ul');
+        if ($anyaddable) {
+            $out .= self::bulk_form(
+                $pageurl,
+                $bulkaddid,
+                'additems',
+                get_string('collectionbulkadd', 'local_oerexchange'),
+                'btn btn-primary btn-sm mb-3'
+            );
+        }
 
         if ($truncated) {
             $out .= \html_writer::tag(
@@ -1004,18 +1088,23 @@ final class collection_view {
      * @param \stdClass $resource a published resources row
      * @param \moodle_url|null $coverurl
      * @param bool $alreadyin whether this resource is already in the collection
+     * @param string $bulkformid id of the bulk-add form its checkbox belongs to
      * @return string HTML
      */
     protected static function render_add_candidate(
         \moodle_url $pageurl,
         \stdClass $resource,
         ?\moodle_url $coverurl,
-        bool $alreadyin
+        bool $alreadyin,
+        string $bulkformid = ''
     ): string {
         $resourceurl = new \moodle_url('/local/oerexchange/resource.php', ['id' => $resource->id]);
         $title = format_string($resource->title, true, ['context' => \context_system::instance()]);
 
         $out = \html_writer::start_tag('li', ['class' => 'd-flex gap-3 mb-3 align-items-start']);
+        if ($bulkformid !== '' && !$alreadyin) {
+            $out .= self::bulk_checkbox($bulkformid, 'resourceids[]', (int) $resource->id, $resource);
+        }
         $out .= cover_image::listitem($coverurl);
         $out .= \html_writer::start_tag('div', ['class' => 'flex-grow-1']);
         $out .= \html_writer::tag('div', \html_writer::link($resourceurl, $title), ['class' => 'fw-semibold']);
@@ -1406,6 +1495,65 @@ final class collection_view {
         }
 
         return \html_writer::tag('option', s($label), $attributes);
+    }
+
+    /**
+     * One row's checkbox for a bulk form, joined to it by the form attribute.
+     *
+     * Labelled with the resource's title for screen readers, flattened to
+     * text because html_writer escapes the attribute itself.
+     *
+     * @param string $formid the bulk form's id
+     * @param string $name the posted field, e.g. itemids[]
+     * @param int $value the id this checkbox posts
+     * @param \stdClass|null $resource the row's resource, or null when it is not to be named
+     * @return string HTML
+     */
+    protected static function bulk_checkbox(string $formid, string $name, int $value, ?\stdClass $resource): string {
+        $label = $resource
+            ? content_to_text(format_string($resource->title, true, ['context' => \context_system::instance()]), FORMAT_HTML)
+            : get_string('collectionitemunavailable', 'local_oerexchange');
+
+        return \html_writer::empty_tag('input', [
+            'type' => 'checkbox',
+            'class' => 'form-check-input mt-1 flex-shrink-0',
+            'name' => $name,
+            'value' => $value,
+            'form' => $formid,
+            'aria-label' => get_string('collectionbulkselect', 'local_oerexchange', $label),
+        ]);
+    }
+
+    /**
+     * The form a set of bulk checkboxes posts with.
+     *
+     * @param \moodle_url $pageurl
+     * @param string $formid the id the checkboxes name in their form attribute
+     * @param string $action the controller action
+     * @param string $label the submit button's label
+     * @param string $buttonclass the submit button's classes
+     * @return string HTML
+     */
+    protected static function bulk_form(
+        \moodle_url $pageurl,
+        string $formid,
+        string $action,
+        string $label,
+        string $buttonclass
+    ): string {
+        $out = \html_writer::start_tag('form', [
+            'method' => 'post',
+            'action' => $pageurl,
+            'id' => $formid,
+            'class' => 'mb-3',
+            'data-region' => 'oerexchange-collection-bulk',
+        ]);
+        $out .= \html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => $action]);
+        $out .= \html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+        $out .= \html_writer::empty_tag('input', ['type' => 'submit', 'class' => $buttonclass, 'value' => $label]);
+        $out .= \html_writer::end_tag('form');
+
+        return $out;
     }
 
     /**

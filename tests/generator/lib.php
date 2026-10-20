@@ -173,4 +173,42 @@ class local_oerexchange_generator extends component_generator_base {
 
         return $DB->get_record(collection_manager::TABLE, ['id' => $id], '*', MUST_EXIST);
     }
+
+    /**
+     * Give a resource a stored version: a versions row plus its file in the
+     * 'resource' filearea (itemid = version id), where
+     * resource_manager::get_version_file() looks for it.
+     *
+     * @param int $resourceid
+     * @param string $content the file's bytes; its length is recorded as filesize
+     * @param array $record field => value pairs replacing the defaults (filename,
+     *      versionnumber, status, filesize)
+     * @return stdClass the stored versions row
+     */
+    public function create_version(int $resourceid, string $content = 'backup bytes', array $record = []): stdClass {
+        global $DB;
+
+        $version = (object) array_merge([
+            'resourceid' => $resourceid,
+            'versionnumber' => 1,
+            'itemid' => 0,
+            'filename' => 'backup.mbz',
+            'filesize' => strlen($content),
+            'status' => 'ready',
+            'timecreated' => time(),
+        ], $record);
+        $version->id = $DB->insert_record('local_oerexchange_versions', $version);
+        $DB->set_field('local_oerexchange_versions', 'itemid', $version->id, ['id' => $version->id]);
+
+        get_file_storage()->create_file_from_string([
+            'contextid' => \context_system::instance()->id,
+            'component' => 'local_oerexchange',
+            'filearea' => 'resource',
+            'itemid' => $version->id,
+            'filepath' => '/',
+            'filename' => $version->filename,
+        ], $content);
+
+        return $DB->get_record('local_oerexchange_versions', ['id' => $version->id], '*', MUST_EXIST);
+    }
 }

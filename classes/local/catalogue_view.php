@@ -181,6 +181,10 @@ final class catalogue_view {
 
         $where = ['status = :status'];
         $sqlparams = ['status' => 'published'];
+        // Not a resource its authors chose to show only inside collections.
+        [$standalone, $standaloneparams] = resource_manager::standalone_where();
+        $where[] = $standalone;
+        $sqlparams += $standaloneparams;
 
         if ($this->type !== '') {
             $where[] = 'type = :type';
@@ -358,11 +362,14 @@ final class catalogue_view {
     private function get_distinct(string $column): array {
         global $DB;
 
+        // The same standalone rule as the listing, so a filter never offers
+        // a value that only collection-only resources carry.
+        [$standalone, $standaloneparams] = resource_manager::standalone_where();
         $values = $DB->get_fieldset_select(
             'local_oerexchange_resources',
             'DISTINCT ' . $column,
-            "status = :status AND {$column} <> ''",
-            ['status' => 'published']
+            "status = :status AND {$column} <> '' AND {$standalone}",
+            ['status' => 'published'] + $standaloneparams
         );
         sort($values);
         return $values;
@@ -472,11 +479,7 @@ final class catalogue_view {
         // The kind label is not decoration: in a blended grid it is the only
         // thing that tells a visitor this card is a reading list rather than a
         // single resource.
-        $meta = \html_writer::tag(
-            'span',
-            get_string('collection', 'local_oerexchange'),
-            ['class' => 'badge bg-secondary me-1']
-        );
+        $meta = resource_type::collection_badge();
         $meta .= $badgeshtml;
         if ($ownername !== '') {
             $meta .= s(get_string('collectionby', 'local_oerexchange', $ownername));
@@ -538,7 +541,10 @@ final class catalogue_view {
         // CSS class rather than transforming the text. The filter dropdown
         // deliberately keeps the stored spelling — its labels are also its
         // values, matched against the column in get_records_select().
-        $meta = resource_type::label($resource) . ' · ' . licence_display::html($resource->licenseshortname);
+        // The type is a coloured badge (colours are admin settings), the same
+        // shape as the collection cards' badge, so a blended grid reads by
+        // colour as well as by word.
+        $meta = resource_type::badge($resource) . licence_display::html($resource->licenseshortname);
         if (!empty($size)) {
             $meta .= ' · ' . s(size_advice::format($size));
         }

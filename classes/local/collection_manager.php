@@ -314,6 +314,8 @@ class collection_manager {
             // Same race, same resolution, as profile_manager::save().
             throw slug_helper::taken_exception();
         }
+        // The title and description are in the download zip's manifest.
+        collection_zip::queue((int) $collection->id);
     }
 
     /**
@@ -357,6 +359,9 @@ class collection_manager {
         }
 
         $DB->update_record(self::TABLE, $update);
+        // Publishing (or unlisting) makes a download zip worth building; a
+        // draft has none, and the build removes any it left behind.
+        collection_zip::queue((int) $collection->id);
     }
 
     /**
@@ -479,6 +484,7 @@ class collection_manager {
                 $collection->id
             );
             collection_cover::invalidate_mosaic((int) $collection->id);
+            collection_zip::delete((int) $collection->id);
 
             $DB->update_record(self::TABLE, (object) [
                 'id' => $collection->id,
@@ -1388,5 +1394,8 @@ class collection_manager {
         global $DB;
 
         $DB->set_field(self::TABLE, 'timemodified', time(), ['id' => $collectionid]);
+        // Every item change (add, remove, reorder, note) passes through here,
+        // and each one changes what the download zip should hold.
+        collection_zip::queue($collectionid);
     }
 }

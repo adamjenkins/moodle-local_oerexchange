@@ -54,6 +54,8 @@ function xmldb_local_oerexchange_uninstall() {
     // (collection_cover, and collection_manager::delete() alongside it).
     $fs->delete_area_files($contextid, 'local_oerexchange', \local_oerexchange\local\collection_cover::FILEAREA);
     $fs->delete_area_files($contextid, 'local_oerexchange', \local_oerexchange\local\collection_cover::MOSAIC_FILEAREA);
+    // The prebuilt collection download zips.
+    $fs->delete_area_files($contextid, 'local_oerexchange', \local_oerexchange\local\collection_zip::FILEAREA);
 
     // Stars are rows this plugin wrote into core's {favourite} table, so
     // drop_plugin_tables() cannot see them: it drops local_oerexchange_*

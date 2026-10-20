@@ -66,10 +66,15 @@ use Psr\Http\Message\ServerRequestInterface;
 class collection_controller {
     use \core\router\route_controller;
 
+    /** @var int Most ids one bulk add or remove acts on. */
+    public const BULK_LIMIT = 100;
+
     /** @var string[] the POST actions this controller dispatches */
     protected const ACTIONS = [
         'additem',
+        'additems',
         'removeitem',
+        'removeitems',
         'moveitem',
         'setnote',
         'report',
@@ -258,6 +263,12 @@ class collection_controller {
             case 'removeitem':
                 $this->remove_item($collection, $userid);
                 break;
+            case 'additems':
+                $this->add_items($collection, $userid);
+                break;
+            case 'removeitems':
+                $this->remove_items($collection, $userid);
+                break;
             case 'moveitem':
                 $this->move_item($collection, $userid);
                 break;
@@ -355,6 +366,121 @@ class collection_controller {
 
         collection_manager::remove_item((int) $collection->id, $resourceid);
         \core\notification::success(get_string('collectionitemremoved', 'local_oerexchange'));
+    }
+
+    /**
+     * Add several resources at once: the ticked rows of the "Add resources"
+     * search.
+     *
+     * The same gate as add_item(), asked once for the collection, and the same
+     * per-resource state checks inside collection_manager::add_item(). A
+     * resource that cannot be added (already in, hidden a moment ago) is
+     * counted and skipped rather than failing the whole batch.
+     *
+     * @param \stdClass $collection
+     * @param int $userid
+     * @throws access_denied_exception when $userid may not add to this collection
+     */
+    protected function add_items(\stdClass $collection, int $userid): void {
+        if (!collection_manager::user_can_add_items($collection, $userid)) {
+            throw new access_denied_exception('error_collectioncannotadd', 'local_oerexchange');
+        }
+
+        $resourceids = self::posted_ids('resourceids');
+        if (!$resourceids) {
+            \core\notification::warning(get_string('collectionbulknoneselected', 'local_oerexchange'));
+            return;
+        }
+
+        $added = 0;
+        foreach ($resourceids as $resourceid) {
+            try {
+                collection_manager::add_item((int) $collection->id, $resourceid, $userid);
+                $added++;
+            } catch (\moodle_exception $e) {
+                // Counted below as skipped; the reasons are the ordinary
+                // ones add_item() documents, not worth a message each.
+                continue;
+            }
+        }
+
+        self::bulk_notification('collectionbulkadded', $added, count($resourceids) - $added);
+    }
+
+    /**
+     * Remove several items at once: the ticked rows of the item list.
+     *
+     * Each item is loaded by (this collection, posted item id), never by the
+     * posted id alone, and handed whole to user_can_remove_item(), exactly as
+     * remove_item() does for one. An item this user may not remove (an open
+     * contributor ticking someone else's) is skipped, not an error for the
+     * rest: the checkboxes are only drawn where removal is allowed, so this is
+     * a forged or stale form, and the safe answer is to do only what is
+     * permitted.
+     *
+     * @param \stdClass $collection
+     * @param int $userid
+     */
+    protected function remove_items(\stdClass $collection, int $userid): void {
+        global $DB;
+
+        $itemids = self::posted_ids('itemids');
+        if (!$itemids) {
+            \core\notification::warning(get_string('collectionbulknoneselected', 'local_oerexchange'));
+            return;
+        }
+
+        [$insql, $params] = $DB->get_in_or_equal($itemids, SQL_PARAMS_NAMED, 'item');
+        $items = $DB->get_records_select(
+            collection_manager::ITEM_TABLE,
+            "collectionid = :collectionid AND id {$insql}",
+            $params + ['collectionid' => $collection->id]
+        );
+
+        $removed = 0;
+        foreach ($items as $item) {
+            if (collection_manager::user_can_remove_item($collection, $item, $userid)) {
+                collection_manager::remove_item((int) $collection->id, (int) $item->resourceid);
+                $removed++;
+            }
+        }
+
+        self::bulk_notification('collectionbulkremoved', $removed, count($itemids) - $removed);
+    }
+
+    /**
+     * Ids posted as an array field, de-duplicated, positive, and capped so a
+     * forged form cannot turn one request into thousands of writes.
+     *
+     * @param string $name the form field, posted as name[]
+     * @return int[]
+     */
+    protected static function posted_ids(string $name): array {
+        $ids = array_unique(array_filter(
+            array_map('intval', optional_param_array($name, [], PARAM_INT)),
+            fn($id) => $id > 0
+        ));
+
+        return array_slice(array_values($ids), 0, self::BULK_LIMIT);
+    }
+
+    /**
+     * The one notification a bulk action ends with.
+     *
+     * @param string $donekey string for how many were done
+     * @param int $done
+     * @param int $skipped
+     */
+    protected static function bulk_notification(string $donekey, int $done, int $skipped): void {
+        $message = get_string($donekey, 'local_oerexchange', $done);
+        if ($skipped > 0) {
+            $message .= ' ' . get_string('collectionbulkskipped', 'local_oerexchange', $skipped);
+        }
+        if ($done > 0) {
+            \core\notification::success($message);
+        } else {
+            \core\notification::warning($message);
+        }
     }
 
     /**

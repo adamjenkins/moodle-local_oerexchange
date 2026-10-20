@@ -120,7 +120,7 @@ foreach ($resources as $r) {
     $title = format_string($r->title, true, ['context' => $context]);
     echo html_writer::tag('h5', html_writer::link($resourceurl, $title), ['class' => 'card-title']);
 
-    echo html_writer::tag('span', resource_type::label($r), ['class' => 'badge bg-secondary me-1']);
+    echo resource_type::badge($r);
 
     // Whether the author has touched it since the takedown — the question a
     // moderator revisiting a held resource actually has.

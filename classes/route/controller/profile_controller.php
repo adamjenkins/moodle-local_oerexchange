@@ -100,10 +100,16 @@ class profile_controller {
         $isowner = isloggedin() && !isguestuser() && (int) $USER->id === (int) $profile->userid;
         $statuses = $isowner ? ['published', 'hidden'] : ['published'];
         [$insql, $inparams] = $DB->get_in_or_equal($statuses, SQL_PARAMS_NAMED, 'status');
+        // A visitor does not see resources shown only inside collections; the
+        // owner does (badged in render_resource_grid()), for the same reason
+        // they see their hidden ones.
+        [$standalone, $standaloneparams] = $isowner
+            ? ['1 = 1', []]
+            : \local_oerexchange\local\resource_manager::standalone_where();
         $resources = $DB->get_records_select(
             'local_oerexchange_resources',
-            'creatorid = :creatorid AND status ' . $insql,
-            array_merge(['creatorid' => $profile->userid], $inparams),
+            'creatorid = :creatorid AND status ' . $insql . ' AND ' . $standalone,
+            array_merge(['creatorid' => $profile->userid], $inparams, $standaloneparams),
             'timeshared DESC'
         );
 
@@ -541,11 +547,17 @@ class profile_controller {
             }
 
             $out .= \html_writer::start_tag('div', ['class' => 'card-body']);
-            $out .= \html_writer::tag(
-                'span',
-                \local_oerexchange\local\resource_type::label($r),
-                ['class' => 'badge bg-secondary mb-1']
-            );
+            $out .= \local_oerexchange\local\resource_type::badge($r, 'mb-1');
+            if (!empty($r->collectiononly)) {
+                // Only the owner's own grid includes these (see the
+                // standalone filter above), so this tells them why it is
+                // missing from the catalogue a visitor sees.
+                $out .= \html_writer::tag(
+                    'span',
+                    get_string('collectiononlybadge', 'local_oerexchange'),
+                    ['class' => 'badge bg-info text-dark mb-1 ms-1']
+                );
+            }
             if ($r->status === 'hidden') {
                 // Only ever reachable by the profile's owner (see the
                 // status filter above), so this doubles as the marker

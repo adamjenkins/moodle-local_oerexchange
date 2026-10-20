@@ -18,3 +18,54 @@
 .oer-licence-name--upper {
     text-transform: uppercase;
 }
+
+/* Share buttons in each network's own brand colour (share_targets::render()).
+   Solid fills with white text; the scripted, non-network targets (copy link,
+   the device share sheet) use the theme's primary colour. Each fill meets
+   WCAG AA (4.5:1) against its text.
+
+   The colours are fed in through Bootstrap's own button variables rather
+   than by setting background-color directly. Plugin stylesheets are emitted
+   BEFORE the theme's, so a one-class rule here loses to the theme's .btn
+   rule (background-color: var(--bs-btn-bg)) at equal specificity; the
+   two-class selector below outranks .btn's variable defaults instead, and
+   Bootstrap's own hover/active/focus rules then use these colours. Hover and
+   active darken rather than change colour, so the brand stays recognisable.
+   A theme can restyle any of them with the same selectors. */
+.btn.oerexchange-share-target {
+    --oerexchange-share-bg: var(--bs-primary, #0f6cbf);
+    --bs-btn-color: #fff;
+    --bs-btn-bg: var(--oerexchange-share-bg);
+    --bs-btn-border-color: var(--oerexchange-share-bg);
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: var(--oerexchange-share-bg);
+    --bs-btn-hover-border-color: var(--oerexchange-share-bg);
+    --bs-btn-active-color: #fff;
+    --bs-btn-active-bg: var(--oerexchange-share-bg);
+    --bs-btn-active-border-color: var(--oerexchange-share-bg);
+}
+.btn.oerexchange-share-target:hover,
+.btn.oerexchange-share-target:active {
+    filter: brightness(0.88);
+}
+.btn.oerexchange-share-target .icon {
+    color: inherit;
+}
+.btn.oerexchange-share-target-facebook {
+    --oerexchange-share-bg: #0866ff;
+}
+.btn.oerexchange-share-target-x {
+    --oerexchange-share-bg: #000;
+}
+.btn.oerexchange-share-target-linkedin {
+    --oerexchange-share-bg: #0a66c2;
+}
+.btn.oerexchange-share-target-mastodon {
+    --oerexchange-share-bg: #563acc;
+}
+.btn.oerexchange-share-target-email {
+    --oerexchange-share-bg: #c5221f;
+}
+.btn.oerexchange-share-target-sms {
+    --oerexchange-share-bg: #1e7e34;
+}

@@ -56,4 +56,17 @@ $tasks = [
         'dayofweek' => '*',
         'disabled' => 1,
     ],
+    [
+        // Safety net for collection download zips: queues a build for any
+        // collection whose zip is out of date. The usual change points queue
+        // their own build; this catches the rest. The builds themselves wait
+        // for a quiet moment (task\build_collection_zip).
+        'classname' => 'local_oerexchange\task\queue_collection_zips',
+        'blocking' => 0,
+        'minute' => '*/30',
+        'hour' => '*',
+        'day' => '*',
+        'month' => '*',
+        'dayofweek' => '*',
+    ],
 ];

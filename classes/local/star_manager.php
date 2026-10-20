@@ -254,8 +254,11 @@ class star_manager {
             $visibleparams = collection_manager::public_params();
         } else {
             $table = 'local_oerexchange_resources';
-            $visible = 'i.status = :status';
-            $visibleparams = ['status' => resource_manager::STATUS_PUBLISHED];
+            // A starred list is a standalone listing on a public profile, so
+            // it follows the catalogue's collection-only rule too.
+            [$standalone, $standaloneparams] = resource_manager::standalone_where('i');
+            $visible = 'i.status = :status AND ' . $standalone;
+            $visibleparams = ['status' => resource_manager::STATUS_PUBLISHED] + $standaloneparams;
         }
 
         $sql = "SELECT i.*, f.timecreated AS timestarred

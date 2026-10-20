@@ -50,6 +50,31 @@ class share_targets {
      */
     const SCRIPTED = ['copylink', 'nativeshare', 'mastodon'];
 
+    /** @var string Display mode: the buttons shown open, with no collapsing. */
+    const DISPLAY_OPEN = 'open';
+
+    /** @var string Display mode: collapsed behind a "Share this ..." button (the original behaviour). */
+    const DISPLAY_COLLAPSED = 'collapsed';
+
+    /** @var string Display mode: no share buttons at all. */
+    const DISPLAY_HIDDEN = 'hidden';
+
+    /** @var string[] Every display mode, in the order the setting offers them. */
+    const DISPLAYS = [self::DISPLAY_OPEN, self::DISPLAY_COLLAPSED, self::DISPLAY_HIDDEN];
+
+    /**
+     * How the share buttons are presented on resource, collection and profile
+     * pages, from the 'sharedisplay' setting.
+     *
+     * An unknown or never-saved value is the original collapsed behaviour.
+     *
+     * @return string one of DISPLAYS
+     */
+    public static function display(): string {
+        $value = (string) get_config('local_oerexchange', 'sharedisplay');
+        return in_array($value, self::DISPLAYS, true) ? $value : self::DISPLAY_COLLAPSED;
+    }
+
     /**
      * Default value for the admin setting: everything on.
      *
@@ -161,7 +186,8 @@ class share_targets {
     ): string {
         global $OUTPUT, $PAGE;
 
-        $targets = self::build($shareurl, $title);
+        $display = self::display();
+        $targets = $display === self::DISPLAY_HIDDEN ? [] : self::build($shareurl, $title);
         if (empty($targets)) {
             // The admin has unticked every destination, which this class reads
             // strictly as "share nothing" (see enabled()). Honour that — no
@@ -191,14 +217,26 @@ class share_targets {
 
         $inputid = \html_writer::random_id('oerexchange-share-url-');
 
-        $out = \html_writer::start_tag('details', [
-            'class' => 'oerexchange-share d-inline-block me-2',
+        // Open mode is the same panel without the <details> wrapper. share.js
+        // finds its controls through data-region, not the element type, so
+        // both forms are wired up identically.
+        $open = $display === self::DISPLAY_OPEN;
+        $regionattrs = [
             'data-region' => 'oerexchange-share',
             'data-share-url' => $shareurl,
             'data-share-title' => $title,
-        ]);
-        $out .= \html_writer::tag('summary', $summarylabel, ['class' => 'btn btn-outline-secondary']);
-        $out .= \html_writer::start_tag('div', ['class' => 'mt-2 p-2 border rounded']);
+        ];
+        if ($open) {
+            $out = \html_writer::start_tag('div', $regionattrs + ['class' => 'oerexchange-share oerexchange-share-open my-2']);
+            $out .= \html_writer::start_tag('div', ['class' => 'p-2 border rounded']);
+            // The panel still needs a name when it is not behind a button that
+            // carries one: a heading-sized label, not a control.
+            $out .= \html_writer::tag('div', $summarylabel, ['class' => 'fw-bold mb-2']);
+        } else {
+            $out = \html_writer::start_tag('details', $regionattrs + ['class' => 'oerexchange-share d-inline-block me-2']);
+            $out .= \html_writer::tag('summary', $summarylabel, ['class' => 'btn btn-outline-secondary']);
+            $out .= \html_writer::start_tag('div', ['class' => 'mt-2 p-2 border rounded']);
+        }
 
         // The always-works fallback: the URL, selectable, whatever the
         // browser allows. Labelled rather than placeholder-only so screen
@@ -223,10 +261,13 @@ class share_targets {
             $label = $usefontawesome
                 ? $OUTPUT->pix_icon('sharetarget_' . $target['key'], '', 'local_oerexchange') . $target['label']
                 : $target['label'];
+            // Each target in its network's own colour (styles.css), so the
+            // row reads as "these are the places to share to" at a glance.
+            $buttonclass = 'btn btn-sm oerexchange-share-target oerexchange-share-target-' . $target['key'];
             if ($target['href'] === null) {
                 $attrs = [
                     'type' => 'button',
-                    'class' => 'btn btn-outline-secondary btn-sm',
+                    'class' => $buttonclass,
                     'data-action' => 'oerexchange-share-' . $target['key'],
                 ];
                 if ($target['key'] === 'nativeshare') {
@@ -237,7 +278,7 @@ class share_targets {
                 $out .= \html_writer::tag('button', $label, $attrs);
             } else {
                 $out .= \html_writer::link($target['href'], $label, [
-                    'class' => 'btn btn-outline-secondary btn-sm',
+                    'class' => $buttonclass,
                     'target' => '_blank',
                     // Using noopener/noreferrer: never hand the target site a
                     // window handle back to us, and don't leak the referring
@@ -256,7 +297,7 @@ class share_targets {
         }
 
         $out .= \html_writer::end_tag('div');
-        $out .= \html_writer::end_tag('details');
+        $out .= \html_writer::end_tag($open ? 'div' : 'details');
 
         return $out;
     }

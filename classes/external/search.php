@@ -79,6 +79,11 @@ class search extends external_api {
 
         $where = ['status = :status'];
         $sqlparams = ['status' => 'published'];
+        // Client sites search the catalogue: a resource its authors chose to
+        // show only inside collections is not a catalogue entry there either.
+        [$standalone, $standaloneparams] = \local_oerexchange\local\resource_manager::standalone_where();
+        $where[] = $standalone;
+        $sqlparams += $standaloneparams;
 
         if ($params['type'] !== '') {
             $where[] = 'type = :type';

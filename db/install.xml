@@ -52,6 +52,7 @@
         <FIELD NAME="modhiddentime" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="when a moderator took this resource down; 0 = not currently held. Reset to 0 on restore"/>
         <FIELD NAME="modhiddenby" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="the moderator who took it down; 0 once that user has been through GDPR erasure, and 0 for the stale-courseware janitor's automatic removals, which is what distinguishes them from a real takedown"/>
         <FIELD NAME="modhiddenversionid" TYPE="int" LENGTH="10" NOTNULL="false" COMMENT="the current ready version at the moment of the takedown, so the moderator report can tell whether the content has changed since. timemodified cannot answer that: it does not move for a cover-image or co-author change, and it does move for hide/unhide itself"/>
+        <FIELD NAME="collectiononly" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" COMMENT="1 = its authors chose to show it only inside collections, not as a standalone catalogue entry; honoured only while it is in at least one public collection (resource_manager::standalone_where())"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>

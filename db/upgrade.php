@@ -595,5 +595,18 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026101900, 'local', 'oerexchange');
     }
 
+    if ($oldversion < 2026102000) {
+        // An author may show a resource only inside the collections it is
+        // in, not as a standalone catalogue entry. Default 0, so every
+        // existing resource keeps showing exactly as before.
+        $table = new xmldb_table('local_oerexchange_resources');
+        $field = new xmldb_field('collectiononly', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'modhiddenversionid');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026102000, 'local', 'oerexchange');
+    }
+
     return true;
 }

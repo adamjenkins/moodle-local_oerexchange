@@ -229,6 +229,25 @@ if ($hassiteconfig) {
         1
     ));
 
+    // Whole-collection downloads. The limit is on the combined size of the
+    // files, checked before anything is built; 0 switches the downloads off.
+    // Zips are built in the background (task\build_collection_zip), so the
+    // limit is about disk and bandwidth rather than request time.
+    $settings->add(new admin_setting_configtext(
+        'local_oerexchange/collectionzipmaxmb',
+        get_string('settings_collectionzipmaxmb', 'local_oerexchange'),
+        get_string('settings_collectionzipmaxmb_desc', 'local_oerexchange'),
+        \local_oerexchange\local\collection_zip::DEFAULT_MAX_MB,
+        PARAM_INT
+    ));
+    $settings->add(new admin_setting_configtext(
+        'local_oerexchange/collectionzipbusyusers',
+        get_string('settings_collectionzipbusyusers', 'local_oerexchange'),
+        get_string('settings_collectionzipbusyusers_desc', 'local_oerexchange'),
+        \local_oerexchange\local\collection_zip::DEFAULT_BUSY_USERS,
+        PARAM_INT
+    ));
+
     // Which collections are showcased on the catalogue landing page. The
     // chooser is a DB-backed list, like allowedlicenses above, but a much
     // bigger one, so two things are different here:
@@ -308,6 +327,37 @@ if ($hassiteconfig) {
         array_fill_keys(\local_oerexchange\local\share_targets::ALL, 1),
         $sharechoices
     ));
+
+    // How those buttons are presented, on resource, collection and profile
+    // pages alike. Collapsed is the original behaviour and the default.
+    $sharedisplays = [];
+    foreach (\local_oerexchange\local\share_targets::DISPLAYS as $sharedisplay) {
+        $sharedisplays[$sharedisplay] = get_string('settings_sharedisplay_' . $sharedisplay, 'local_oerexchange');
+    }
+    $settings->add(new admin_setting_configselect(
+        'local_oerexchange/sharedisplay',
+        get_string('settings_sharedisplay', 'local_oerexchange'),
+        get_string('settings_sharedisplay_desc', 'local_oerexchange'),
+        \local_oerexchange\local\share_targets::DISPLAY_COLLAPSED,
+        $sharedisplays
+    ));
+
+    // Colours of the type badges on catalogue cards, collection pages and
+    // profiles. Any colour works: the text is black or white, whichever
+    // contrasts better (resource_type::text_colour()).
+    $settings->add(new admin_setting_heading(
+        'local_oerexchange/badgecoloursheading',
+        get_string('settings_badgecoloursheading', 'local_oerexchange'),
+        get_string('settings_badgecoloursheading_desc', 'local_oerexchange')
+    ));
+    foreach (\local_oerexchange\local\resource_type::BADGE_DEFAULTS as $badgekind => $badgedefault) {
+        $settings->add(new admin_setting_configcolourpicker(
+            'local_oerexchange/badgecolour_' . $badgekind,
+            get_string('settings_badgecolour_' . $badgekind, 'local_oerexchange'),
+            get_string('settings_badgecolour_desc', 'local_oerexchange', $badgedefault),
+            $badgedefault
+        ));
+    }
 
     // Which licences courseware may be shared under. Enforced server-side in
     // resource_manager::publish() (so the web-service publish path a client

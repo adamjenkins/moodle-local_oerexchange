@@ -524,6 +524,8 @@ class resource_manager {
             $fs->delete_area_files($contextid, 'local_oerexchange', 'resource', $version->id);
             $DB->set_field('local_oerexchange_versions', 'status', 'superseded', ['id' => $version->id]);
         }
+        // A new version is what a collection zip should now carry.
+        collection_zip::queue_for_resource($resourceid);
 
         return count($stale);
     }
@@ -644,6 +646,8 @@ class resource_manager {
             'status' => $to,
             'timemodified' => time(),
         ]);
+        // A hidden resource leaves every collection zip it was in.
+        collection_zip::queue_for_resource((int) $resource->id);
 
         return true;
     }
@@ -699,5 +703,126 @@ class resource_manager {
             'other' => ['updated' => 'details'],
         ]);
         $event->trigger();
+
+        // The title is in each collection zip's manifest.
+        collection_zip::queue_for_resource($resourceid);
+    }
+
+    /**
+     * Whether the collectiononly column exists yet.
+     *
+     * Every standalone listing calls standalone_where(), and those pages stay
+     * reachable between an rsync deploy and the admin running the upgrade
+     * that adds the column; a query naming a missing column would fail them
+     * all. Cached per request.
+     *
+     * @return bool
+     */
+    protected static function collectiononly_ready(): bool {
+        global $DB;
+
+        static $ready = null;
+        if ($ready === null) {
+            $ready = $DB->get_manager()->field_exists('local_oerexchange_resources', 'collectiononly');
+        }
+
+        return $ready;
+    }
+
+    /**
+     * The WHERE fragment that keeps "collection only" resources out of a
+     * standalone listing: the catalogue, its filter options, the client
+     * sites' search service, profile grids and starred lists.
+     *
+     * A resource is withheld only while its authors chose collection-only
+     * AND it is in at least one public, live collection. The second half is
+     * what makes the setting safe: take the resource out of every public
+     * collection (or unpublish, take down or delete the collection) and it is
+     * back in the catalogue by itself, rather than reachable from nowhere.
+     *
+     * The outer table is named explicitly even when the caller's query does
+     * not alias it: inside the subquery an unqualified `id` would bind to the
+     * subquery's own tables. The parameter names are prefixed so they cannot
+     * collide with the caller's (catalogue_view already uses :status).
+     *
+     * @param string $alias the caller's alias for the resources table, or '' when unaliased
+     * @return array [sql fragment, named params]
+     */
+    public static function standalone_where(string $alias = ''): array {
+        if (!self::collectiononly_ready()) {
+            return ['1 = 1', []];
+        }
+        $outer = $alias !== '' ? $alias . '.' : '{local_oerexchange_resources}.';
+
+        $sql = "({$outer}collectiononly = 0 OR NOT EXISTS (
+                    SELECT 1
+                      FROM {" . collection_manager::ITEM_TABLE . "} sw_i
+                      JOIN {" . collection_manager::TABLE . "} sw_c ON sw_c.id = sw_i.collectionid
+                     WHERE sw_i.resourceid = {$outer}id
+                           AND sw_c.visibility = :swvisibility
+                           AND sw_c.status = :swstatus
+                           AND sw_c.modhidden = 0))";
+
+        return [$sql, [
+            'swvisibility' => collection_manager::VISIBILITY_PUBLIC,
+            'swstatus' => collection_manager::STATUS_ACTIVE,
+        ]];
+    }
+
+    /**
+     * The collections a resource is in that would honour "collection only":
+     * public, live ones, in a stable order.
+     *
+     * @param int $resourceid
+     * @return \stdClass[] collection rows keyed by id
+     */
+    public static function public_collections_containing(int $resourceid): array {
+        global $DB;
+
+        return $DB->get_records_sql(
+            "SELECT c.*
+               FROM {" . collection_manager::TABLE . "} c
+               JOIN {" . collection_manager::ITEM_TABLE . "} i ON i.collectionid = c.id
+              WHERE i.resourceid = :resourceid AND " . collection_manager::public_where('c.') . "
+           ORDER BY c.timepublished DESC, c.id DESC",
+            ['resourceid' => $resourceid] + collection_manager::public_params()
+        );
+    }
+
+    /**
+     * Whether a resource is in any collection that has not been deleted.
+     *
+     * Decides whether the author is offered the collection-only switch at
+     * all: the option only means something once the resource has been
+     * collected.
+     *
+     * @param int $resourceid
+     * @return bool
+     */
+    public static function is_in_any_collection(int $resourceid): bool {
+        global $DB;
+
+        return $DB->record_exists_sql(
+            "SELECT 1
+               FROM {" . collection_manager::ITEM_TABLE . "} i
+               JOIN {" . collection_manager::TABLE . "} c ON c.id = i.collectionid
+              WHERE i.resourceid = :resourceid AND c.status = :active",
+            ['resourceid' => $resourceid, 'active' => collection_manager::STATUS_ACTIVE]
+        );
+    }
+
+    /**
+     * Turn a resource's collection-only display on or off.
+     *
+     * Caller must have established the right to edit (user_can_edit_resource()).
+     *
+     * @param int $resourceid
+     * @param bool $collectiononly
+     * @return void
+     */
+    public static function set_collection_only(int $resourceid, bool $collectiononly): void {
+        global $DB;
+
+        $DB->set_field('local_oerexchange_resources', 'collectiononly', $collectiononly ? 1 : 0, ['id' => $resourceid]);
     }
 }

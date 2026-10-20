@@ -925,4 +925,134 @@ final class collection_controller_test extends route_testcase {
         $authorbody = (string) $this->get_page($mine->slug)->getBody();
         $this->assertStringContainsString('My own pulled resource', $authorbody);
     }
+
+    /**
+     * The owner adds several resources in one POST; one already in the
+     * collection is skipped, not an error for the rest.
+     *
+     * @return void
+     */
+    public function test_bulk_add_adds_every_selected_resource_and_skips_duplicates(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $owner = $this->getDataGenerator()->create_user();
+        $collection = $this->make_public_collection((int) $owner->id, 'Bulk list');
+        $already = $this->make_resource('Already in');
+        $first = $this->make_resource('First new');
+        $second = $this->make_resource('Second new');
+        collection_manager::add_item((int) $collection->id, (int) $already->id, (int) $owner->id);
+
+        $this->register_route();
+        $this->setUser($owner);
+        $this->post_action($collection->slug, [
+            'action' => 'additems',
+            'sesskey' => sesskey(),
+            'resourceids' => [(int) $already->id, (int) $first->id, (int) $second->id],
+        ]);
+
+        $resourceids = $DB->get_fieldset_select(
+            collection_manager::ITEM_TABLE,
+            'resourceid',
+            'collectionid = ? ORDER BY sortorder',
+            [$collection->id]
+        );
+        $this->assertSame([(int) $already->id, (int) $first->id, (int) $second->id], array_map('intval', $resourceids));
+        $messages = $this->queued_notifications();
+        $this->assertContains(
+            get_string('collectionbulkadded', 'local_oerexchange', 2) . ' '
+                . get_string('collectionbulkskipped', 'local_oerexchange', 1),
+            $messages
+        );
+    }
+
+    /**
+     * Bulk add needs the same right as a single add: a stranger to a closed
+     * collection is refused outright.
+     *
+     * @return void
+     */
+    public function test_bulk_add_is_refused_without_the_right_to_add(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $owner = $this->getDataGenerator()->create_user();
+        $stranger = $this->getDataGenerator()->create_user();
+        $collection = $this->make_public_collection((int) $owner->id, 'Closed list');
+        $resource = $this->make_resource('Not for strangers');
+
+        $this->register_route();
+        $this->setUser($stranger);
+        $response = $this->post_action($collection->slug, [
+            'action' => 'additems',
+            'sesskey' => sesskey(),
+            'resourceids' => [(int) $resource->id],
+        ]);
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertFalse($DB->record_exists(collection_manager::ITEM_TABLE, ['collectionid' => $collection->id]));
+    }
+
+    /**
+     * An open contributor's bulk remove takes out only what they added; a
+     * forged id for someone else's item is skipped.
+     *
+     * @return void
+     */
+    public function test_bulk_remove_only_removes_what_this_user_may_remove(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $owner = $this->getDataGenerator()->create_user();
+        $contributor = $this->getDataGenerator()->create_user();
+        $collection = $this->make_public_collection((int) $owner->id, 'Open list', ['opencuration' => 1]);
+        $ownersitem = collection_manager::add_item(
+            (int) $collection->id,
+            (int) $this->make_resource('Owner pick')->id,
+            (int) $owner->id
+        );
+        $mine = collection_manager::add_item(
+            (int) $collection->id,
+            (int) $this->make_resource('My pick')->id,
+            (int) $contributor->id
+        );
+
+        $this->register_route();
+        $this->setUser($contributor);
+        $this->post_action($collection->slug, [
+            'action' => 'removeitems',
+            'sesskey' => sesskey(),
+            'itemids' => [$ownersitem, $mine],
+        ]);
+
+        $this->assertTrue($DB->record_exists(collection_manager::ITEM_TABLE, ['id' => $ownersitem]));
+        $this->assertFalse($DB->record_exists(collection_manager::ITEM_TABLE, ['id' => $mine]));
+    }
+
+    /**
+     * The checkboxes are drawn only where removal is allowed: the owner gets
+     * one per item and the bulk form, a stranger gets neither.
+     *
+     * @return void
+     */
+    public function test_bulk_remove_controls_are_drawn_only_for_those_who_may_remove(): void {
+        $this->resetAfterTest();
+
+        $owner = $this->getDataGenerator()->create_user();
+        $stranger = $this->getDataGenerator()->create_user();
+        $collection = $this->make_public_collection((int) $owner->id, 'Checked list');
+        collection_manager::add_item((int) $collection->id, (int) $this->make_resource('One')->id, (int) $owner->id);
+        collection_manager::add_item((int) $collection->id, (int) $this->make_resource('Two')->id, (int) $owner->id);
+
+        $this->register_route();
+        $this->setUser($owner);
+        $ownerbody = (string) $this->get_page($collection->slug)->getBody();
+        $this->assertSame(2, substr_count($ownerbody, 'name="itemids[]"'));
+        $this->assertStringContainsString('value="removeitems"', $ownerbody);
+
+        $this->setUser($stranger);
+        $strangerbody = (string) $this->get_page($collection->slug)->getBody();
+        $this->assertStringNotContainsString('name="itemids[]"', $strangerbody);
+        $this->assertStringNotContainsString('value="removeitems"', $strangerbody);
+    }
 }

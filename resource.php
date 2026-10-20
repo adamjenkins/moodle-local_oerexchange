@@ -252,7 +252,8 @@ if ($action === 'report' && isloggedin() && !isguestuser()) {
 } else if (
     in_array(
         $action,
-        ['hide', 'unhide', 'deleteconfirm', 'settrydisabled', 'stillfresh', 'addcoauthor', 'removecoauthor'],
+        ['hide', 'unhide', 'deleteconfirm', 'settrydisabled', 'setcollectiononly', 'stillfresh', 'addcoauthor',
+            'removecoauthor'],
         true
     )
     && isloggedin() && !isguestuser()
@@ -272,7 +273,7 @@ if ($action === 'report' && isloggedin() && !isguestuser()) {
     // takedown the author could simply switch back, and that no moderation
     // report listed. Moderators have their own Take down control above.
     if (
-        in_array($action, ['hide', 'unhide'], true)
+        in_array($action, ['hide', 'unhide', 'setcollectiononly'], true)
         && !\local_oerexchange\local\resource_manager::user_is_author($resource, (int) $USER->id)
     ) {
         throw new moodle_exception('error_notyourresource', 'local_oerexchange');
@@ -344,6 +345,16 @@ if ($action === 'report' && isloggedin() && !isguestuser()) {
             // person at once. Nothing is wrong, so this is not an error.
             \core\notification::warning(get_string('coauthornotpresent', 'local_oerexchange'));
         }
+        redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
+    }
+
+    if ($action === 'setcollectiononly') {
+        // Where the resource is listed is the authors' choice, like hiding
+        // it, so this is author-gated above rather than open to moderators.
+        // An unchecked checkbox posts nothing, so this is also the "off" case.
+        $collectiononly = (bool) optional_param('collectiononly', 0, PARAM_BOOL);
+        \local_oerexchange\local\resource_manager::set_collection_only((int) $resource->id, $collectiononly);
+        \core\notification::success(get_string('collectiononlysaved', 'local_oerexchange'));
         redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
     }
 
@@ -883,6 +894,51 @@ if ($canedit) {
         echo html_writer::end_tag('form');
     }
 
+    // Show only inside collections. Offered once the resource has been
+    // collected (and kept visible while it is switched on, so it can always
+    // be switched off). Authors only, like Hide: it decides where the
+    // resource is listed, which is theirs to decide.
+    $incollection = \local_oerexchange\local\resource_manager::is_in_any_collection((int) $resource->id);
+    if ($isauthor && ($incollection || !empty($resource->collectiononly))) {
+        echo html_writer::start_tag('form', [
+            'method' => 'post',
+            'action' => new moodle_url('/local/oerexchange/resource.php', ['id' => $id]),
+            'class' => 'mt-3',
+        ]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'setcollectiononly']);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+        echo html_writer::start_tag('div', ['class' => 'form-check mb-1']);
+        echo html_writer::empty_tag('input', array_merge([
+            'type' => 'checkbox',
+            'class' => 'form-check-input',
+            'id' => 'oerexchange-collectiononly',
+            'name' => 'collectiononly',
+            'value' => '1',
+        ], !empty($resource->collectiononly) ? ['checked' => 'checked'] : []));
+        echo html_writer::tag('label', get_string('collectiononlylabel', 'local_oerexchange'), [
+            'class' => 'form-check-label',
+            'for' => 'oerexchange-collectiononly',
+        ]);
+        echo html_writer::end_tag('div');
+        echo html_writer::tag('p', get_string('collectiononlyhelp', 'local_oerexchange'), ['class' => 'small text-muted mb-1']);
+        if (
+            !empty($resource->collectiononly)
+            && !\local_oerexchange\local\resource_manager::public_collections_containing((int) $resource->id)
+        ) {
+            // Switched on, but not in effect: say so, or the author will
+            // wonder why it is still in the catalogue.
+            echo html_writer::tag('p', get_string('collectiononlyinactive', 'local_oerexchange'), [
+                'class' => 'small text-warning mb-1',
+            ]);
+        }
+        echo html_writer::empty_tag('input', [
+            'type' => 'submit',
+            'class' => 'btn btn-outline-secondary btn-sm',
+            'value' => get_string('collectiononlysave', 'local_oerexchange'),
+        ]);
+        echo html_writer::end_tag('form');
+    }
+
     // Co-authors. Everyone who can edit the resource can manage this list —
     // there is no separate, lesser tier (coauthor_manager's docblock explains
     // why), so a co-author can add another one. That grants nothing they do
@@ -1050,6 +1106,28 @@ if ($sandboxenabled && $version && $resource->type !== 'data' && !empty($resourc
             'div',
             get_string('tryitpluginwarning', 'local_oerexchange'),
             ['class' => 'alert alert-warning mt-2 mb-0 py-2 px-3 small']
+        );
+    }
+}
+// The type badge, in the admin's colour for this kind, as on the cards.
+echo html_writer::tag('p', \local_oerexchange\local\resource_type::badge($resource, ''), ['class' => 'mb-2']);
+
+// A resource shown only inside collections has no catalogue entry of its
+// own, so its page says where it belongs and links back there.
+if (!empty($resource->collectiononly) && $resource->status === 'published') {
+    $partof = \local_oerexchange\local\resource_manager::public_collections_containing((int) $resource->id);
+    if ($partof) {
+        $links = [];
+        foreach ($partof as $partofcollection) {
+            $links[] = html_writer::link(
+                \local_oerexchange\route\controller\collection_controller::collection_url((string) $partofcollection->slug),
+                format_string($partofcollection->title, true, ['context' => context_system::instance()])
+            );
+        }
+        echo html_writer::tag(
+            'p',
+            get_string('collectiononlypartof', 'local_oerexchange') . ' ' . implode(', ', $links),
+            ['class' => 'small text-muted mb-2']
         );
     }
 }
