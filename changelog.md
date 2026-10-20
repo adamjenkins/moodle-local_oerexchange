@@ -3,6 +3,51 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.2.0] - 2026-10-20
+
+### Added
+
+- Whole-collection downloads (`collection_zip`, `collection_download.php`):
+  the current file of every available item plus a `collection.txt` manifest,
+  prebuilt by the adhoc task `build_collection_zip` and served only while the
+  stored zip's signature matches what the collection holds. Builds wait while
+  at least `collectionzipbusyusers` signed-in users were active in the last
+  five minutes (default 20; never longer than six hours). `collectionzipmaxmb`
+  caps the combined size (default 100; 0 disables). Scheduled task
+  `queue_collection_zips` (every 30 minutes) queues any build the change
+  points missed. Zips exist only for public and unlisted collections and
+  follow `download.php`'s access rules.
+- "Show this resource only as part of its collections": new
+  `resources.collectiononly`, set by the resource's authors on its page.
+  `resource_manager::standalone_where()` withholds such a resource from the
+  catalogue and its filter options, `local_oerexchange_search`, profile grids
+  (for visitors) and starred lists, but only while it is in at least one
+  public, live collection.
+- Bulk add and bulk remove on the collection page (`additems`, `removeitems`
+  actions, at most 100 ids per request, each item checked with the same rules
+  as the single controls). The add search now shows 25 results.
+- Coloured type badges (`resource_type::badge()`), with colour settings
+  `badgecolour_course`, `badgecolour_activity`, `badgecolour_data` and
+  `badgecolour_collection`, and black or white text chosen by contrast.
+- `sharedisplay` setting: open, collapsed (default) or hidden share buttons,
+  on resource, collection and profile pages.
+- The Mastodon share remembers the server: a first-party cookie for every
+  visitor and the `local_oerexchange_mastodoninstance` user preference for
+  signed-in users (declared through `local_oerexchange_user_preferences()`,
+  exported by the privacy provider), with a "Change server" control.
+
+### Changed
+
+- Share buttons are drawn in each network's brand colour, set through
+  Bootstrap's `--bs-btn-*` variables.
+- The collection page's star now uses `amd/src/collectionstar.js` (AJAX).
+
+### Fixed
+
+- The Mastodon share asked for the server on every share. The previous code
+  kept the choice in localStorage, which `core/storage_validation` clears on
+  every new login (and on every page load when JS caching is off).
+
 ## [1.1.0] - 2026-10-19
 
 ### Added

@@ -53,9 +53,10 @@ $plugin->component = 'local_oerexchange';
 // than a patch bump, because collections are a new feature with a new
 // capability and new schema, not a fix.
 // 2026102000 adds resources.collectiononly, registers the collection zip
-// tasks (adhoc build, scheduled sweep) and the new settings. The release
-// string is deliberately NOT bumped with it: that is the owner's call
-// (HARNESS.md section 8).
+// tasks (adhoc build, scheduled sweep) and the new settings. Released as
+// 1.2.0 on the owner's approval (2026-10-20): a minor bump, because
+// collection downloads, collection-only resources, bulk editing, badge
+// colours and the share options are new features.
 $plugin->version   = 2026102000;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
@@ -66,5 +67,5 @@ $plugin->version   = 2026102000;
 // earlier off-by-one estimate of nine.
 $plugin->requires  = 2025041400;
 $plugin->supported = [500, 503];
-$plugin->release   = '1.1.0';
+$plugin->release   = '1.2.0';
 $plugin->maturity  = MATURITY_STABLE;

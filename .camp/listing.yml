@@ -31,7 +31,8 @@ description: |
     resources, theirs or anyone's, each with its own shareable page, cover and
     link preview. Draft, unlisted or public; curators can be named, or a
     collection opened to contributions. Public ones are listed, blended into
-    search, shown on profiles and can be featured on the front page.
+    search, shown on profiles and can be featured on the front page, and a
+    whole collection downloads as one zip with its licence information.
   - **Educator profiles** — a shareable profile page per educator (bio,
     expertise, badges, portfolio links, metrics and a resource grid), created
     automatically on their first published resource, with author attribution

@@ -74,8 +74,14 @@ plugin installed on their own Moodle sites.
   items, or open it to additions from anyone signed in. Public collections are
   listed at `/local_oerexchange/collections`, blended into catalogue search,
   shown on their owner's profile, and an admin can feature chosen ones above,
-  below or instead of the catalogue on the front page. See
-  `classes/local/collection_manager.php`.
+  below or instead of the catalogue on the front page. A whole collection can
+  be downloaded as one zip (prebuilt in the background, with a manifest of
+  each item's author, licence and link; size cap set by the admin). Curators
+  can add and remove resources in bulk. See
+  `classes/local/collection_manager.php` and `classes/local/collection_zip.php`.
+- **Collection-only resources**: a resource's authors can show it only as part
+  of its collections; while it is in a public collection it is left out of the
+  catalogue, search, profiles and the browse block.
 - **Link previews**: Open Graph and Twitter Card tags on resource, collection
   and profile pages, so a pasted link renders a preview card on social media
   and in messaging apps; unlisted collections also ask not to be indexed.
@@ -87,11 +93,15 @@ plugin installed on their own Moodle sites.
   co-author record, so nobody they add can remove them. Everyone added is
   notified and is credited publicly on the resource page. See
   `classes/local/coauthor_manager.php`.
-- **Sharing affordances**: share buttons on resource and profile pages, with
-  admin-configurable destinations, each showing its network's logo from
-  Moodle's own bundled FontAwesome (nothing is bundled into the plugin).
-  Every target is a plain link — no third-party script is loaded onto a
-  catalogue page.
+- **Sharing affordances**: share buttons on resource, collection and profile
+  pages, with admin-configurable destinations, each in its network's colour
+  and showing its logo from Moodle's own bundled FontAwesome (nothing is
+  bundled into the plugin). The admin chooses whether they are shown open,
+  collapsed or not at all. Every target is a plain link — no third-party
+  script is loaded onto a catalogue page. The Mastodon button remembers the
+  user's server.
+- **Badges**: coloured type badges for courses, activities, data resources and
+  collections, with admin-configurable colours.
 - **Abandoned courseware** (off by default): a nightly check warns the author
   of any published resource unmaintained past a configurable threshold
   (default 2 years). The author can update it or press a one-click
