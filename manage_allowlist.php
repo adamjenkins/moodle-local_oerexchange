@@ -40,6 +40,7 @@ use local_oerexchange\local\allowlist\resolution_exception;
 use local_oerexchange\local\allowlist\source_resolver;
 use local_oerexchange\local\allowlist\zip_inspector;
 use local_oerexchange\local\sandbox\playground;
+use local_oerexchange\task\rollover_preview;
 
 require(__DIR__ . '/../../config.php');
 require_login();
@@ -122,6 +123,10 @@ if ($addbranchfor !== '' && confirm_sesskey()) {
 // came out" operation. Unlike add_branch above, each plugin is re-resolved
 // from the plugins directory for the target branch, then shown in the same
 // preview-and-confirm as a manual add. Nothing is written here.
+//
+// The lookups run in an ad hoc task (task\rollover_preview), not in this
+// request: each plugin is a directory query plus a download, and doing them
+// all here left the page blank for minutes with no sign of progress.
 $rolloverfrom = optional_param('rolloverfrom', '', PARAM_RAW_TRIMMED);
 $rolloverto = optional_param('rolloverto', '', PARAM_RAW_TRIMMED);
 if ($rolloverfrom !== '' && $rolloverto !== '' && confirm_sesskey()) {
@@ -136,14 +141,7 @@ if ($rolloverfrom !== '' && $rolloverto !== '' && confirm_sesskey()) {
 
     local_oerexchange_allowlist_forget_plan();
 
-    // Persistent, not a request directory: the downloaded packages have to
-    // survive until the admin confirms on the next request — same contract as
-    // the manual add above.
-    $workdir = make_temp_directory('local_oerexchange/allowlist/' . random_string(20));
-    $plan = $ingestor->preview($brancheditor->rollover_plan($rolloverfrom, $rolloverto, $workdir));
-
-    if ($plan->is_empty() && empty($plan->entries)) {
-        remove_dir($workdir);
+    if (!$brancheditor->missing_components($rolloverfrom, $rolloverto)) {
         redirect(
             $pageurl,
             get_string('allowlistrollovernothing', 'local_oerexchange', (object) [
@@ -155,12 +153,53 @@ if ($rolloverfrom !== '' && $rolloverto !== '' && confirm_sesskey()) {
         );
     }
 
-    $SESSION->local_oerexchange_allowlistplan = $plan;
+    // Persistent, not a request directory: the downloaded packages have to
+    // survive until the admin confirms on a later request — same contract as
+    // the manual add below.
+    $dir = random_string(20);
+    $workdir = make_temp_directory(rollover_preview::TEMPDIR . $dir);
+    $task = rollover_preview::create($rolloverfrom, $rolloverto, $dir);
+    $taskid = \core\task\manager::queue_adhoc_task($task);
+    $task->set_id($taskid);
+    $task->initialise_stored_progress();
+
     $SESSION->local_oerexchange_allowlistdir = $workdir;
+    $SESSION->local_oerexchange_rollovertask = $taskid;
     // Bake is per branch and the admin has said nothing about it here, so the
     // rows land unbaked rather than inheriting a flag from another branch.
     $SESSION->local_oerexchange_allowlistbake = false;
     redirect($pageurl);
+}
+
+// A rollover the task has finished: its plan becomes the pending plan, shown
+// below for confirmation exactly as a manual add's is.
+$rollovertask = null;
+if (!empty($SESSION->local_oerexchange_rollovertask)) {
+    $taskid = (int) $SESSION->local_oerexchange_rollovertask;
+    $workdir = $SESSION->local_oerexchange_allowlistdir ?? '';
+    $readplan = static fn(): ?ingest_plan => $workdir !== '' && is_dir($workdir)
+        ? rollover_preview::read_plan($workdir) : null;
+    $rollovertask = rollover_preview::load($taskid);
+    // Read after the task row, not before: a task finishing in between has
+    // deleted its row, and its plan must then be found, not reported missing.
+    $finished = $readplan();
+
+    if ($finished !== null) {
+        $rollovertask = null;
+        unset($SESSION->local_oerexchange_rollovertask);
+        $SESSION->local_oerexchange_allowlistplan = $finished;
+    } else if ($rollovertask === null || rollover_preview::has_failed($taskid)) {
+        // Gone without leaving a plan (or failed for good): say so rather
+        // than showing a progress bar that will never move again.
+        $DB->delete_records('task_adhoc', ['id' => $taskid, 'classname' => '\\' . rollover_preview::class]);
+        local_oerexchange_allowlist_forget_plan();
+        redirect(
+            $pageurl,
+            get_string('allowlistrolloverfailed', 'local_oerexchange'),
+            null,
+            \core\output\notification::NOTIFY_ERROR
+        );
+    }
 }
 
 // Deleting an entry throws away its mirrored ZIP as well as the row, so it
@@ -312,7 +351,27 @@ if ($resolveerror !== null) {
     echo $OUTPUT->notification(s($resolveerror), \core\output\notification::NOTIFY_ERROR);
 }
 
-if ($plan !== null) {
+if ($rollovertask !== null) {
+    // Reloads the page when the task finishes, which turns its plan into the
+    // preview below. Admins also get core's "Run now" while it is queued.
+    $data = $rollovertask->get_custom_data();
+    echo $OUTPUT->render(new \core\output\task_indicator(
+        $rollovertask,
+        get_string('allowlistrolloverheading', 'local_oerexchange'),
+        get_string('allowlistrolloverrunning', 'local_oerexchange', (object) [
+            'from' => s($data->from),
+            'to' => s($data->to),
+        ]),
+        $pageurl
+    ));
+    echo html_writer::start_tag('form', ['method' => 'post', 'action' => $pageurl]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    echo html_writer::empty_tag('input', [
+        'type' => 'submit', 'name' => 'cancel', 'value' => get_string('cancel'),
+        'class' => 'btn btn-secondary mb-3',
+    ]);
+    echo html_writer::end_tag('form');
+} else if ($plan !== null) {
     echo $OUTPUT->heading(get_string('allowlistplanheading', 'local_oerexchange'), 3);
     echo local_oerexchange_allowlist_render_plan($plan, $OUTPUT);
 
@@ -335,7 +394,9 @@ if ($plan !== null) {
 }
 
 echo local_oerexchange_allowlist_render_entries($cansandbox);
-echo local_oerexchange_allowlist_render_rollover();
+if ($rollovertask === null) {
+    echo local_oerexchange_allowlist_render_rollover();
+}
 
 echo $OUTPUT->footer();
 
@@ -364,7 +425,18 @@ function local_oerexchange_allowlist_pending_plan(): ?ingest_plan {
  * Discard any pending plan and the packages downloaded for it.
  */
 function local_oerexchange_allowlist_forget_plan(): void {
-    global $SESSION;
+    global $DB, $SESSION;
+
+    // A rollover still waiting in the queue is dropped; one already running
+    // finds its directory gone and writes nothing (rollover_preview::execute()).
+    $taskid = (int) ($SESSION->local_oerexchange_rollovertask ?? 0);
+    if ($taskid) {
+        $DB->delete_records_select(
+            'task_adhoc',
+            'id = :id AND classname = :classname AND timestarted IS NULL',
+            ['id' => $taskid, 'classname' => '\\' . rollover_preview::class]
+        );
+    }
 
     $dir = $SESSION->local_oerexchange_allowlistdir ?? null;
     if ($dir && is_dir($dir)) {
@@ -374,6 +446,7 @@ function local_oerexchange_allowlist_forget_plan(): void {
     unset($SESSION->local_oerexchange_allowlistplan);
     unset($SESSION->local_oerexchange_allowlistdir);
     unset($SESSION->local_oerexchange_allowlistbake);
+    unset($SESSION->local_oerexchange_rollovertask);
 }
 
 /**

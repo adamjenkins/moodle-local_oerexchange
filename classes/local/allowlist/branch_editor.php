@@ -38,8 +38,9 @@ use local_oerexchange\local\sandbox\playground;
  * - {@see rollover_plan()} re-resolves each plugin's current release from the
  *   plugins directory for the *new* branch, because "Moodle 5.3 exists now"
  *   is exactly the moment a newer release is likely to be the compatible one.
- *   It is a network operation and goes through the same preview-and-confirm
- *   the manual add uses.
+ *   It is a network operation, run in an ad hoc task
+ *   ({@see \local_oerexchange\task\rollover_preview}), and goes through the
+ *   same preview-and-confirm the manual add uses.
  *
  * Both always write the row, marking it {@see ingestor::NOTE_OVERRIDDEN} when
  * the plugin's own version.php disowns the branch, rather than refusing: a
@@ -240,56 +241,85 @@ final class branch_editor {
      * @param string $to dotted branch label being populated
      * @param string $workdir writable directory the downloaded ZIPs live in
      *                        until the admin confirms
+     * @param \core\progress\base|null $progress told about each plugin as it is
+     *                        looked up: each one is a directory query plus a
+     *                        download, so a long list takes minutes
      * @return ingest_plan
      */
-    public function rollover_plan(string $from, string $to, string $workdir): ingest_plan {
+    public function rollover_plan(
+        string $from,
+        string $to,
+        string $workdir,
+        ?\core\progress\base $progress = null
+    ): ingest_plan {
         $entries = [];
         $branchnumber = branch_mapper::branch_number($to);
+        $components = $this->missing_components($from, $to);
+        $progress ??= new \core\progress\none();
 
-        foreach ($this->missing_components($from, $to) as $component) {
-            $url = $this->locator->locate($component, $branchnumber);
-            if ($url === null) {
-                $entries[] = new entry_plan(
-                    $component,
-                    entry_plan::UNRESOLVED,
-                    entry_plan::PRIMARY,
-                    null,
-                    null,
-                    null,
-                    [get_string('allowlistnotindirectory', 'local_oerexchange', $component)]
-                );
-                continue;
-            }
+        $progress->start_progress('', count($components));
+        foreach ($components as $index => $component) {
+            $progress->start_progress(get_string('allowlistrolloverlookingup', 'local_oerexchange', (object) [
+                'plugin' => $component,
+                'number' => $index + 1,
+                'total' => count($components),
+            ]));
+            $entries[] = $this->rollover_entry($component, $to, $branchnumber, $workdir);
+            $progress->end_progress();
+        }
+        $progress->end_progress();
 
-            try {
-                $resolved = $this->resolver->resolve($url, $workdir);
-                $meta = $this->inspector->inspect($resolved->zipfilepath, $workdir, $resolved->sourceurl);
-            } catch (resolution_exception $e) {
-                $entries[] = new entry_plan(
-                    $component,
-                    entry_plan::UNRESOLVED,
-                    entry_plan::PRIMARY,
-                    null,
-                    null,
-                    null,
-                    [$e->getMessage()]
-                );
-                continue;
-            }
+        return new ingest_plan($entries);
+    }
 
-            // Restricted to the target branch deliberately: this operation is
-            // "also offer it on 5.3", never "re-decide 5.0 and 5.2 too", which
-            // would quietly re-pin branches the admin did not ask about.
-            $entries[] = new entry_plan(
-                $meta->component,
-                entry_plan::ADD,
+    /**
+     * Look one plugin up for the target branch and say what adding it would do.
+     *
+     * @param string $component frankenstyle name
+     * @param string $to dotted branch label being populated
+     * @param int|null $branchnumber the same branch as the directory numbers it
+     * @param string $workdir where the downloaded ZIP goes
+     * @return entry_plan
+     */
+    private function rollover_entry(string $component, string $to, ?int $branchnumber, string $workdir): entry_plan {
+        $url = $this->locator->locate($component, $branchnumber);
+        if ($url === null) {
+            return new entry_plan(
+                $component,
+                entry_plan::UNRESOLVED,
                 entry_plan::PRIMARY,
-                $meta,
-                $meta->branches([$to], true),
+                null,
+                null,
+                null,
+                [get_string('allowlistnotindirectory', 'local_oerexchange', $component)]
             );
         }
 
-        return new ingest_plan($entries);
+        try {
+            $resolved = $this->resolver->resolve($url, $workdir);
+            $meta = $this->inspector->inspect($resolved->zipfilepath, $workdir, $resolved->sourceurl);
+        } catch (resolution_exception $e) {
+            return new entry_plan(
+                $component,
+                entry_plan::UNRESOLVED,
+                entry_plan::PRIMARY,
+                null,
+                null,
+                null,
+                [$e->getMessage()]
+            );
+        }
+
+        // Restricted to the target branch deliberately: this operation is
+        // "also offer it on 5.3", never "re-decide 5.0 and 5.2 too", which
+        // would quietly re-pin branches the admin did not ask about.
+        return new entry_plan(
+            $meta->component,
+            entry_plan::ADD,
+            entry_plan::PRIMARY,
+            $meta,
+            $meta->branches([$to], true),
+        );
     }
 
     /**

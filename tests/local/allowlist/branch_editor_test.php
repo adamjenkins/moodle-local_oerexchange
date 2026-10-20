@@ -276,6 +276,37 @@ final class branch_editor_test extends \advanced_testcase {
         $this->assertSame(['5.0'], $entry->branches->declined);
     }
 
+    public function test_rollover_reports_progress_one_plugin_at_a_time(): void {
+        // The rollover runs in an ad hoc task whose progress bar is the
+        // admin's only sign of life, so each plugin must move it.
+        $this->resetAfterTest();
+
+        $this->listed('mod_thing', '[502, 502]');
+        $this->listed('local_helper', '[502, 502]');
+
+        $progress = new class extends \core\progress\base {
+            /** @var string[] descriptions seen, in order */
+            public array $seen = [];
+
+            #[\Override]
+            public function update_progress() {
+                if ($this->is_in_progress_section() && $this->get_current_description() !== '') {
+                    $this->seen[] = $this->get_current_description();
+                }
+            }
+        };
+
+        $editor = new branch_editor($this->locator, new source_resolver($this->fetcher), new zip_inspector());
+        $plan = $editor->rollover_plan('5.2', '5.0', make_request_directory(), $progress);
+
+        $this->assertCount(2, $plan->entries);
+        $this->assertSame([
+            'Looking up local_helper (1 of 2)',
+            'Looking up mod_thing (2 of 2)',
+        ], array_values(array_unique($progress->seen)));
+        $this->assertFalse($progress->is_in_progress_section());
+    }
+
     /**
      * Put a plugin on the allowlist the way a confirmed ingest would.
      *
