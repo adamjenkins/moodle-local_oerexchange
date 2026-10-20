@@ -768,7 +768,7 @@ final class collection_view {
             $out .= \html_writer::tag(
                 'div',
                 get_string('collectionitemunavailable', 'local_oerexchange'),
-                ['class' => 'small text-warning mb-1']
+                ['class' => 'small text-warning-emphasis mb-1']
             );
         }
 

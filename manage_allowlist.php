@@ -486,11 +486,11 @@ function local_oerexchange_allowlist_render_plan(ingest_plan $plan, core_rendere
                     'local_oerexchange',
                     s(implode(', ', $entry->branches->declined))
                 ),
-                ['class' => 'small text-warning']
+                ['class' => 'small text-warning-emphasis']
             );
         }
         foreach ($entry->messages as $message) {
-            $name .= html_writer::tag('div', s($message), ['class' => 'small text-warning']);
+            $name .= html_writer::tag('div', s($message), ['class' => 'small text-warning-emphasis']);
         }
 
         $row = new html_table_row([
@@ -666,7 +666,7 @@ function local_oerexchange_allowlist_render_entries(bool $cansandbox): string {
                 $chip .= html_writer::tag(
                     'div',
                     get_string('allowlistoverriddennote', 'local_oerexchange'),
-                    ['class' => 'small text-warning']
+                    ['class' => 'small text-warning-emphasis']
                 );
             }
 

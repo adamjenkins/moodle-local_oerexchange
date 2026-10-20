@@ -928,7 +928,7 @@ if ($canedit) {
             // Switched on, but not in effect: say so, or the author will
             // wonder why it is still in the catalogue.
             echo html_writer::tag('p', get_string('collectiononlyinactive', 'local_oerexchange'), [
-                'class' => 'small text-warning mb-1',
+                'class' => 'small text-warning-emphasis mb-1',
             ]);
         }
         echo html_writer::empty_tag('input', [
