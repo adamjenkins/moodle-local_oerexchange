@@ -1214,17 +1214,17 @@ if (empty($requiredplugins)) {
             'bakedin' => html_writer::tag(
                 'span',
                 get_string('includedintrial', 'local_oerexchange'),
-                ['class' => 'badge bg-success ms-2']
+                ['class' => 'badge text-bg-success ms-2']
             ),
             'attempted' => html_writer::tag(
                 'span',
                 get_string('attemptedintrial', 'local_oerexchange'),
-                ['class' => 'badge bg-warning text-dark ms-2']
+                ['class' => 'badge text-bg-warning ms-2']
             ),
             default => html_writer::tag(
                 'span',
                 get_string('missingfromtrial', 'local_oerexchange'),
-                ['class' => 'badge bg-secondary ms-2']
+                ['class' => 'badge text-bg-secondary ms-2']
             ),
         };
         echo html_writer::tag('li', s($label) . $badge);

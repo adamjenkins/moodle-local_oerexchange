@@ -129,19 +129,19 @@ foreach ($resources as $r) {
         echo html_writer::tag(
             'span',
             get_string('hiddenchangedunknown', 'local_oerexchange'),
-            ['class' => 'badge bg-light text-dark me-1']
+            ['class' => 'badge text-bg-light me-1']
         );
     } else if ($changed) {
         echo html_writer::tag(
             'span',
             get_string('hiddenchangedyes', 'local_oerexchange'),
-            ['class' => 'badge bg-warning text-dark me-1']
+            ['class' => 'badge text-bg-warning me-1']
         );
     } else {
         echo html_writer::tag(
             'span',
             get_string('hiddenchangedno', 'local_oerexchange'),
-            ['class' => 'badge bg-light text-dark me-1']
+            ['class' => 'badge text-bg-light me-1']
         );
     }
 

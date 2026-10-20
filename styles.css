@@ -69,3 +69,8 @@
 .btn.oerexchange-share-target-sms {
     --oerexchange-share-bg: #1e7e34;
 }
+/* A curator's note under a collection item: set apart by a rule and its label, not by italics. */
+.oerexchange-collection-note {
+    border-left: 3px solid var(--bs-border-color);
+    padding-left: .5rem;
+}

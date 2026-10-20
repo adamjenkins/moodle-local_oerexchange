@@ -420,7 +420,7 @@ final class collection_view {
             $out .= \html_writer::tag(
                 'span',
                 get_string($visibilitykey, 'local_oerexchange'),
-                ['class' => 'badge bg-secondary me-1']
+                ['class' => 'badge text-bg-secondary me-1']
             );
         }
         $out .= \html_writer::tag(
@@ -429,13 +429,13 @@ final class collection_view {
                 empty($collection->opencuration) ? 'collectionopencurationoff' : 'collectionopencurationon',
                 'local_oerexchange'
             ),
-            ['class' => 'badge bg-secondary me-1']
+            ['class' => 'badge text-bg-secondary me-1']
         );
         if (!empty($collection->modhidden)) {
             $out .= \html_writer::tag(
                 'span',
                 get_string('collectionmodhidden', 'local_oerexchange'),
-                ['class' => 'badge bg-danger me-1']
+                ['class' => 'badge text-bg-danger me-1']
             );
         }
         $out .= \html_writer::end_tag('div');
@@ -780,13 +780,18 @@ final class collection_view {
             // invalid nesting browsers repair by closing the <p> early — the
             // same pair of decisions, for the same reasons, as the profile bio
             // in profile_controller::view().
+            // Upright, with a visible label and a rule beside it, rather than
+            // italic: italic text is harder to read, notably for dyslexic
+            // readers, and conveys "this is the curator speaking" only to
+            // those who can see the slant.
             $out .= \html_writer::tag(
                 'p',
-                format_text($item->note, FORMAT_MOODLE, [
-                    'context' => \context_system::instance(),
-                    'para' => false,
-                ]),
-                ['class' => 'oerexchange-collection-note mb-1 fst-italic']
+                \html_writer::tag('strong', get_string('collectionitemnotelabel', 'local_oerexchange')) . ' '
+                    . format_text($item->note, FORMAT_MOODLE, [
+                        'context' => \context_system::instance(),
+                        'para' => false,
+                    ]),
+                ['class' => 'oerexchange-collection-note mb-1']
             );
         }
 
@@ -1130,7 +1135,7 @@ final class collection_view {
             $out .= \html_writer::tag(
                 'span',
                 get_string('addtocollectionalreadyin', 'local_oerexchange'),
-                ['class' => 'badge bg-secondary align-self-center']
+                ['class' => 'badge text-bg-secondary align-self-center']
             );
         } else {
             $out .= self::action_form(

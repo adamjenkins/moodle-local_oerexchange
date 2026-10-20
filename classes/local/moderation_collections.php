@@ -213,13 +213,13 @@ class moderation_collections {
             $cell .= ' ' . \html_writer::tag(
                 'span',
                 get_string('collectiontombstoneheading', 'local_oerexchange'),
-                ['class' => 'badge bg-secondary']
+                ['class' => 'badge text-bg-secondary']
             );
         } else if ($modhidden) {
             $cell .= ' ' . \html_writer::tag(
                 'span',
                 get_string('collectionmodhidden', 'local_oerexchange'),
-                ['class' => 'badge bg-warning text-dark']
+                ['class' => 'badge text-bg-warning']
             );
         }
 

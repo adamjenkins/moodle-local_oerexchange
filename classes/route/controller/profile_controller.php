@@ -204,7 +204,7 @@ class profile_controller {
                 $out .= \html_writer::tag(
                     'span',
                     format_string($tag, true, ['context' => \context_system::instance()]),
-                    ['class' => 'badge bg-secondary me-1']
+                    ['class' => 'badge text-bg-secondary me-1']
                 );
             }
             $out .= \html_writer::end_tag('div');
@@ -214,7 +214,7 @@ class profile_controller {
             $out .= \html_writer::start_tag('div', ['class' => 'mb-2']);
             foreach ($badges as $badgekey) {
                 $out .= \html_writer::tag('span', get_string('badge_' . $badgekey, 'local_oerexchange'), [
-                    'class' => 'badge bg-success me-1',
+                    'class' => 'badge text-bg-success me-1',
                 ]);
             }
             $out .= \html_writer::end_tag('div');
@@ -442,12 +442,12 @@ class profile_controller {
     protected static function collection_state_badges(\stdClass $collection): string {
         $keys = [];
         if (!empty($collection->modhidden)) {
-            $keys[] = ['collectionmodhidden', 'bg-danger'];
+            $keys[] = ['collectionmodhidden', 'text-bg-danger'];
         }
         if ((string) $collection->visibility === collection_manager::VISIBILITY_DRAFT) {
-            $keys[] = ['collectionvisibilitydraft', 'bg-warning text-dark'];
+            $keys[] = ['collectionvisibilitydraft', 'text-bg-warning'];
         } else if ((string) $collection->visibility === collection_manager::VISIBILITY_UNLISTED) {
-            $keys[] = ['collectionvisibilityunlisted', 'bg-info text-dark'];
+            $keys[] = ['collectionvisibilityunlisted', 'text-bg-info'];
         }
 
         $out = '';
@@ -555,7 +555,7 @@ class profile_controller {
                 $out .= \html_writer::tag(
                     'span',
                     get_string('collectiononlybadge', 'local_oerexchange'),
-                    ['class' => 'badge bg-info text-dark mb-1 ms-1']
+                    ['class' => 'badge text-bg-info mb-1 ms-1']
                 );
             }
             if ($r->status === 'hidden') {
@@ -566,7 +566,7 @@ class profile_controller {
                 $out .= \html_writer::tag(
                     'span',
                     get_string('resourcestatus_hidden', 'local_oerexchange'),
-                    ['class' => 'badge bg-warning text-dark mb-1 ms-1']
+                    ['class' => 'badge text-bg-warning mb-1 ms-1']
                 );
             }
             // Uses format_string(), not s(): a multilang span in a title must

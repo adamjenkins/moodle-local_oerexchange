@@ -296,7 +296,7 @@ class contributor_list {
             $out .= \html_writer::tag(
                 'span',
                 get_string('badge_' . $badgekey, 'local_oerexchange'),
-                ['class' => 'badge bg-success ms-2']
+                ['class' => 'badge text-bg-success ms-2']
             );
         }
 

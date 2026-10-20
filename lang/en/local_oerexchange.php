@@ -170,6 +170,7 @@ $string['collectionitemnote'] = 'Curator\'s note';
 $string['collectionitemnote_help'] = 'A sentence or two on why this resource is in the collection, or how to use it. Shown under the resource, attributed to the collection rather than to the resource\'s author.';
 $string['collectionitemnoteadd'] = 'Add a note';
 $string['collectionitemnoteedit'] = 'Edit note';
+$string['collectionitemnotelabel'] = 'Curator\'s note:';
 $string['collectionitemnoteremoved'] = 'Note removed.';
 $string['collectionitemnotesaved'] = 'Note saved.';
 $string['collectionitemremove'] = 'Remove';

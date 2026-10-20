@@ -634,7 +634,7 @@ function local_oerexchange_allowlist_render_entries(bool $cansandbox): string {
             ] + ($e->bake ? ['checked' => 'checked'] : []) + ($cansandbox ? [] : ['disabled' => 'disabled']);
 
             $chip = html_writer::tag('span', s($e->moodlebranch), [
-                'class' => 'badge bg-light text-dark border me-2',
+                'class' => 'badge text-bg-light border me-2',
             ]);
             if (count($releases) > 1 && !empty($e->pluginrelease)) {
                 $chip .= html_writer::tag('span', s($e->pluginrelease), ['class' => 'small text-muted me-2']);
