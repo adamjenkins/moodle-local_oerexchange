@@ -194,12 +194,18 @@ class provider implements
             'filepicker_recentlicense',
             'privacy:metadata:preference:filepicker_recentlicense'
         );
+        // The Mastodon server the share button remembers for this user.
+        $collection->add_user_preference(
+            \local_oerexchange\local\share_targets::MASTODON_PREFERENCE,
+            'privacy:metadata:preference:mastodoninstance'
+        );
 
         return $collection;
     }
 
     /**
-     * Export the remembered-licence preference for a user, when set.
+     * Export this plugin's user preferences, when set: the remembered licence
+     * and the remembered Mastodon server.
      *
      * @param int $userid the user to export for
      */
@@ -212,6 +218,15 @@ class provider implements
                 'filepicker_recentlicense',
                 $recentlicense,
                 get_string('privacy:metadata:preference:filepicker_recentlicense', 'local_oerexchange')
+            );
+        }
+        $mastodon = get_user_preferences(\local_oerexchange\local\share_targets::MASTODON_PREFERENCE, null, $userid);
+        if ($mastodon !== null && $mastodon !== '') {
+            writer::export_user_preference(
+                'local_oerexchange',
+                \local_oerexchange\local\share_targets::MASTODON_PREFERENCE,
+                $mastodon,
+                get_string('privacy:metadata:preference:mastodoninstance', 'local_oerexchange')
             );
         }
     }

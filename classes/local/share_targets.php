@@ -63,6 +63,57 @@ class share_targets {
     const DISPLAYS = [self::DISPLAY_OPEN, self::DISPLAY_COLLAPSED, self::DISPLAY_HIDDEN];
 
     /**
+     * User preference holding a signed-in user's Mastodon server, so the
+     * Mastodon button shares straight there on every device instead of
+     * asking. Declared in local_oerexchange_user_preferences() (lib.php) so
+     * amd/src/share.js may set it through core_user's preference service.
+     */
+    const MASTODON_PREFERENCE = 'local_oerexchange_mastodoninstance';
+
+    /**
+     * Cookie holding the Mastodon server for this browser, for visitors
+     * without an account (and as a fallback for those with one). A cookie,
+     * not localStorage: core's storage_validation module clears the whole of
+     * the site's localStorage whenever the stored login time differs from the
+     * current one, which on a site with JS caching off is every page load and
+     * otherwise every new login, so a value kept there does not survive. A
+     * cookie also lets this class name the button before any script runs.
+     */
+    const MASTODON_COOKIE = 'local_oerexchange_mastodon';
+
+    /**
+     * Whether a value is a plausible Mastodon server host: a bare domain name,
+     * no scheme, path, port or credentials. The same rule as share.js applies
+     * in the browser, so a value one side accepts the other does too.
+     *
+     * @param string $host
+     * @return bool
+     */
+    public static function valid_mastodon_instance(string $host): bool {
+        return strlen($host) <= 253 && (bool) preg_match('/^[a-z0-9.-]+\.[a-z]{2,}$/i', $host);
+    }
+
+    /**
+     * The Mastodon server a user has chosen before, or '' if none: their
+     * account preference first, then this browser's cookie.
+     *
+     * @param int $userid 0 or a guest has no preference, only the cookie
+     * @return string
+     */
+    public static function mastodon_instance(int $userid): string {
+        if ($userid > 0 && !isguestuser($userid)) {
+            $host = (string) get_user_preferences(self::MASTODON_PREFERENCE, '', $userid);
+            if (self::valid_mastodon_instance($host)) {
+                return strtolower($host);
+            }
+        }
+        // Validated like the preference: a cookie is whatever the browser sends.
+        $cookie = isset($_COOKIE[self::MASTODON_COOKIE]) ? (string) $_COOKIE[self::MASTODON_COOKIE] : '';
+
+        return self::valid_mastodon_instance($cookie) ? strtolower($cookie) : '';
+    }
+
+    /**
      * How the share buttons are presented on resource, collection and profile
      * pages, from the 'sharedisplay' setting.
      *
@@ -184,7 +235,7 @@ class share_targets {
         string $summarylabel,
         string $extracontent = ''
     ): string {
-        global $OUTPUT, $PAGE;
+        global $OUTPUT, $PAGE, $USER;
 
         $display = self::display();
         $targets = $display === self::DISPLAY_HIDDEN ? [] : self::build($shareurl, $title);
@@ -221,10 +272,17 @@ class share_targets {
         // finds its controls through data-region, not the element type, so
         // both forms are wired up identically.
         $open = $display === self::DISPLAY_OPEN;
+        // The Mastodon server this user chose before (a signed-in user's
+        // preference, else this browser's cookie), and whether the choice may
+        // be saved to the account at all.
+        $signedin = isloggedin() && !isguestuser();
+        $mastodon = self::mastodon_instance($signedin ? (int) $USER->id : 0);
         $regionattrs = [
             'data-region' => 'oerexchange-share',
             'data-share-url' => $shareurl,
             'data-share-title' => $title,
+            'data-mastodon-instance' => $mastodon,
+            'data-mastodon-save' => $signedin ? '1' : '0',
         ];
         if ($open) {
             $out = \html_writer::start_tag('div', $regionattrs + ['class' => 'oerexchange-share oerexchange-share-open my-2']);
@@ -275,7 +333,34 @@ class share_targets {
                     // mostly mobile — share.js reveals it when supported.
                     $attrs['hidden'] = 'hidden';
                 }
+                if ($target['key'] === 'mastodon') {
+                    // Named after the remembered server, so the user can see
+                    // where it will go before pressing it.
+                    $attrs['data-region'] = 'oerexchange-share-mastodon';
+                    $label = ($usefontawesome
+                        ? $OUTPUT->pix_icon('sharetarget_mastodon', '', 'local_oerexchange')
+                        : '')
+                        . \html_writer::span(
+                            $mastodon !== ''
+                                ? get_string('sharetarget_mastodon_at', 'local_oerexchange', $mastodon)
+                                : $target['label'],
+                            '',
+                            ['data-region' => 'oerexchange-share-mastodon-label']
+                        );
+                }
                 $out .= \html_writer::tag('button', $label, $attrs);
+                if ($target['key'] === 'mastodon') {
+                    // Only offered once there is a server to change from.
+                    $change = [
+                        'type' => 'button',
+                        'class' => 'btn btn-link btn-sm px-1',
+                        'data-action' => 'oerexchange-share-mastodon-change',
+                    ];
+                    if ($mastodon === '') {
+                        $change['hidden'] = 'hidden';
+                    }
+                    $out .= \html_writer::tag('button', get_string('sharemastodonchange', 'local_oerexchange'), $change);
+                }
             } else {
                 $out .= \html_writer::link($target['href'], $label, [
                     'class' => $buttonclass,

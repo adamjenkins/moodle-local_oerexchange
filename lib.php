@@ -45,6 +45,32 @@ function local_oerexchange_get_fontawesome_icon_map() {
 }
 
 /**
+ * User preferences this plugin lets the user set through core_user's
+ * preference service (core_user_set_user_preferences), which refuses any
+ * preference a plugin has not declared here.
+ *
+ * Only the Mastodon server the share button remembers: a user may set their
+ * own and nobody else's, and anything that is not a bare domain name is
+ * stored as '' rather than trusted.
+ *
+ * @return array
+ */
+function local_oerexchange_user_preferences(): array {
+    return [
+        \local_oerexchange\local\share_targets::MASTODON_PREFERENCE => [
+            'type' => PARAM_HOST,
+            'null' => NULL_NOT_ALLOWED,
+            'default' => '',
+            'permissioncallback' => [\core_user::class, 'is_current_user'],
+            'cleancallback' => function ($value) {
+                $value = strtolower(trim((string) $value));
+                return \local_oerexchange\local\share_targets::valid_mastodon_instance($value) ? $value : '';
+            },
+        ],
+    ];
+}
+
+/**
  * Serves files from the local_oerexchange file areas via pluginfile.php.
  *
  * Three areas are servable this way, all itemid-keyed and all stored under
