@@ -61,7 +61,9 @@ $plugin->component = 'local_oerexchange';
 // hoc task (adhoc tasks need no registration), readable badges and warning
 // text, upright curator notes and new lang strings. No schema, services or
 // capability change; the serial moves so the new strings are re-read.
-$plugin->version   = 2026102001;
+// 2026102300 is the 1.2.2 release: the whole resource card on a profile page
+// links to the resource. Markup only; no schema, strings or capability change.
+$plugin->version   = 2026102300;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass
@@ -71,5 +73,5 @@ $plugin->version   = 2026102001;
 // earlier off-by-one estimate of nine.
 $plugin->requires  = 2025041400;
 $plugin->supported = [500, 503];
-$plugin->release   = '1.2.1';
+$plugin->release   = '1.2.2';
 $plugin->maturity  = MATURITY_STABLE;

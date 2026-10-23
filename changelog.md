@@ -3,6 +3,15 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.2.2] - 2026-10-23
+
+### Changed
+
+- On a sharer's profile page, the whole card of a shared or liked resource,
+  thumbnail included, now links to the resource; previously only the title was
+  a link. The title stays the card's only link, so keyboard and screen-reader
+  users still meet one link per resource.
+
 ## [1.2.1] - 2026-10-20
 
 ### Added
