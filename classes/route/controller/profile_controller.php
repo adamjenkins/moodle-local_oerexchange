@@ -577,7 +577,17 @@ class profile_controller {
             // clean_text() itself (lib/classes/formatting.php:105-128),
             // so an s() around it would double-escape.
             $title = format_string($r->title, true, ['context' => \context_system::instance()]);
-            $out .= \html_writer::tag('h5', \html_writer::link($rurl, $title), ['class' => 'card-title']);
+            // Bootstrap's .stretched-link makes the whole card, thumbnail included, the
+            // link to the resource (the .card is its positioned ancestor),
+            // while keeping this title the card's only anchor — so keyboard
+            // and screen-reader users still get one link per resource. Safe
+            // only while nothing else on the card is interactive: the badges
+            // above are plain spans.
+            $out .= \html_writer::tag(
+                'h5',
+                \html_writer::link($rurl, $title, ['class' => 'stretched-link']),
+                ['class' => 'card-title']
+            );
             $out .= \html_writer::tag(
                 'div',
                 get_string('downloadcountlabel', 'local_oerexchange', $r->downloadcount),
