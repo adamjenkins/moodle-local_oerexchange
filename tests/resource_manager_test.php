@@ -408,9 +408,11 @@ final class resource_manager_test extends \advanced_testcase {
         $this->resetAfterTest();
 
         $guest = guest_user();
-        $this->setGuestUser();
         set_config('maxbackupbytes', 1000, 'local_oerexchange');
+        // Core refuses draft item ids to guests, so make the draft first.
+        $this->setAdminUser();
         $draftitemid = $this->create_draft_file((int) $guest->id, str_repeat('x', 50));
+        $this->setGuestUser();
 
         try {
             resource_manager::publish(
