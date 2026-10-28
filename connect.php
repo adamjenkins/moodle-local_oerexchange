@@ -16,8 +16,9 @@
 
 /**
  * Account-linking handshake, Exchange side: the client redirects the teacher
- * here; after they log in/sign up (normal Moodle auth), we mint a one-time
- * code and redirect back to the client's callback. See DESIGN.md §1.
+ * here; after they log in/sign up (normal Moodle auth) and confirm the link,
+ * we issue a one-time code and redirect back to the client's callback. See
+ * DESIGN.md §1.
  *
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
@@ -30,6 +31,7 @@ require(__DIR__ . '/../../config.php');
 
 $siteid = required_param('siteid', PARAM_INT);
 $callback = required_param('callback', PARAM_URL);
+$confirm = optional_param('confirm', 0, PARAM_BOOL);
 
 $PAGE->set_url('/local/oerexchange/connect.php', ['siteid' => $siteid, 'callback' => $callback]);
 $PAGE->set_context(context_system::instance());
@@ -41,8 +43,8 @@ if (!$site) {
     throw new moodle_exception('error_sitenotactive', 'local_oerexchange');
 }
 
-// Prevent an open redirect: the callback must point back at the registered
-// site, on the same scheme as well as the same host — see
+// Prevent an open redirect: the callback must be the registered site's own
+// local_oerclient callback, on the same scheme, host and port — see
 // link_manager::callback_matches_site().
 if (!link_manager::callback_matches_site($site->url, $callback)) {
     throw new moodle_exception('error_sitenotactive', 'local_oerexchange');
@@ -54,6 +56,31 @@ if (isguestuser()) {
     // A guest session isn't a real account — send them through login again.
     redirect(get_login_url());
 }
+
+// Linking hands the site a permanent token that publishes as this user, so
+// it needs the user's say-so: a plain GET only asks. Before this, any link,
+// redirect or same-site <img> pointing here linked a logged-in user's
+// account to the site silently.
+if (!$confirm) {
+    $continueurl = new moodle_url('/local/oerexchange/connect.php', [
+        'siteid' => $siteid,
+        'callback' => $callback,
+        'confirm' => 1,
+    ]);
+    $continue = new single_button($continueurl, get_string('connectallow', 'local_oerexchange'), 'post');
+    echo $OUTPUT->header();
+    echo $OUTPUT->confirm(
+        get_string('connectconfirm', 'local_oerexchange', (object) [
+            'name' => s($site->name),
+            'url' => s($site->url),
+        ]),
+        $continue,
+        new moodle_url('/')
+    );
+    echo $OUTPUT->footer();
+    die();
+}
+require_sesskey();
 
 $code = link_manager::issue_code($siteid, (int) $USER->id);
 

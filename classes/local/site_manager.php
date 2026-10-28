@@ -182,7 +182,7 @@ class site_manager {
      *
      * Known gap (reported, not fixed — see dev-docs): this does NOT revoke
      * personal teacher tokens minted via this site's account-linking
-     * handshakes (link_manager::issue_code() mints those against the
+     * handshakes (link_manager::consume() mints those against the
      * teacher's own userid, not this site's service account, so suspending
      * the service account alone does not touch them). A correct fix needs
      * `local_oerexchange_linkcodes` to durably record the minted token's

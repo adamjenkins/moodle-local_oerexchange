@@ -387,6 +387,51 @@ final class resource_manager_test extends \advanced_testcase {
     }
 
     /**
+     * Every guest session is the one guest account, so a creatorid match
+     * let any guest replace or edit what another guest had shared
+     * (security checklist audit F1, 2026-10-28).
+     */
+    public function test_user_can_edit_resource_refuses_the_guest_account_even_as_creator(): void {
+        $this->resetAfterTest();
+        $guest = guest_user();
+        $resource = (object) ['id' => 0, 'creatorid' => $guest->id];
+        $this->assertFalse(resource_manager::user_can_edit_resource($resource, (int) $guest->id));
+    }
+
+    /**
+     * A guest could publish a data resource straight into the catalogue
+     * through share_upload_data.php (audit F1). publish() refuses the guest
+     * account itself, so no caller can publish as guest.
+     */
+    public function test_publish_refuses_the_guest_account(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $guest = guest_user();
+        $this->setGuestUser();
+        set_config('maxbackupbytes', 1000, 'local_oerexchange');
+        $draftitemid = $this->create_draft_file((int) $guest->id, str_repeat('x', 50));
+
+        try {
+            resource_manager::publish(
+                $draftitemid,
+                (int) $guest->id,
+                null,
+                [
+                    'type' => 'data', 'title' => 't', 'summary' => '', 'language' => '',
+                    'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+                    'dataresourcetype' => 'glossary',
+                ]
+            );
+            $this->fail('publish() must refuse the guest account');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('guestsarenotallowed', $e->errorcode);
+        }
+
+        $this->assertSame(0, $DB->count_records('local_oerexchange_resources', ['creatorid' => $guest->id]));
+    }
+
+    /**
      * "Replace the file" for a co-author. share_upload_mbz.php lets them
      * through its own gate (the shared helper), so publish()'s second,
      * independent ownership check is the one that decides whether the parity

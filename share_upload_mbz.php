@@ -36,6 +36,13 @@ require(__DIR__ . '/../../config.php');
 // moodleform), so it needs the same explicit require.
 require_once($CFG->libdir . '/filelib.php');
 require_login();
+// The guest account is one shared identity: letting it publish meant
+// anonymous resources live in the catalogue at once, and every guest
+// session passing user_can_edit_resource() as the "creator" of every other
+// guest's upload. Same stance as connect.php.
+if (isguestuser()) {
+    redirect(get_login_url());
+}
 
 // Optional "replace the file of an existing resource" mode, linked from
 // resource.php's owner card. Sharing the page keeps the .mbz validation and

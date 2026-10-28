@@ -76,6 +76,13 @@ class resource_manager {
     ): array {
         global $DB;
 
+        // The guest account is shared by every guest session, so it can
+        // never be anyone's creator; refusing here covers every caller,
+        // not only the page scripts that refuse guests themselves.
+        if (isguestuser($creatorid)) {
+            throw new \moodle_exception('guestsarenotallowed');
+        }
+
         $context = \context_system::instance();
         $usercontext = \context_user::instance($creatorid);
         $fs = get_file_storage();
@@ -403,17 +410,22 @@ class resource_manager {
      * $userid must be truthy AND match $resource->creatorid for the owner
      * branch — a tombstoned/anonymized resource has creatorid = 0
      * (profile_manager::delete_creator_resource()), and 0 must never match
-     * as "owner" no matter what $userid is passed. In practice this method
-     * is only ever called with a real, logged-in, non-guest user's id (the
-     * call sites in resource.php gate on isloggedin() && !isguestuser()
-     * before calling it), so $userid is never 0 itself — this guard exists
-     * for defence in depth, not because a 0 caller is expected.
+     * as "owner" no matter what $userid is passed. The guest account is
+     * refused outright for the same reason: it is one shared identity, so a
+     * creatorid match proves nothing about who is asking. The page scripts
+     * refuse guests before calling this too; both guards exist for defence
+     * in depth.
      *
      * @param \stdClass $resource a row from local_oerexchange_resources
      * @param int $userid
      * @return bool
      */
     public static function user_can_edit_resource(\stdClass $resource, int $userid): bool {
+        // Every guest session shares the one guest account, so a creatorid
+        // match would let any guest edit what another guest made.
+        if (isguestuser($userid)) {
+            return false;
+        }
         if ($userid && (int) $resource->creatorid === $userid) {
             return true;
         }

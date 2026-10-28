@@ -36,6 +36,10 @@ use local_oerexchange\local\resource_manager;
 $id = required_param('id', PARAM_INT);
 
 require_login();
+if (isguestuser()) {
+    // A guest session is not a real account — same stance as connect.php.
+    redirect(get_login_url());
+}
 
 $resource = $DB->get_record('local_oerexchange_resources', ['id' => $id], '*', MUST_EXIST);
 

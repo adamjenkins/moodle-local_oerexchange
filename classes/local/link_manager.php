@@ -18,55 +18,102 @@ namespace local_oerexchange\local;
 
 /**
  * Account-linking handshake: after the teacher logs in/signs up on the
- * Exchange (connect.php), mint a scoped WS token and hand it to the client
- * site via a short-lived, single-use, signed code — never the token itself
- * in a URL. See DESIGN.md §1 "Identity (hybrid)".
+ * Exchange and confirms the link (connect.php), issue a short-lived,
+ * single-use code; the client exchanges it for a scoped WS token, minted
+ * at that moment — never the token itself in a URL. See DESIGN.md §1 "Identity (hybrid)".
  *
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class link_manager {
+    /** @var string The one callback local_oerclient uses, relative to the client site's wwwroot. */
+    const CALLBACK_PATH = '/local/oerclient/connect_callback.php';
+
     /**
      * Whether a client-supplied callback URL may be redirected to for a given
      * registered site — the open-redirect gate on connect.php.
      *
-     * Both the host AND the scheme must match the site's registered URL.
-     * Matching on host alone (the behaviour before 0.1.6) let an
-     * https-registered site be handed an http:// callback, carrying the
-     * one-time link code — and so the personal WS token it is exchanged for —
-     * over plaintext.
+     * The scheme, host and port must match the site's registered URL, and
+     * the path must be exactly that site's local_oerclient callback
+     * (CALLBACK_PATH under the registered URL's own path, for a site in a
+     * subdirectory). Matching on host alone (the behaviour before 0.1.6) let
+     * an https-registered site be handed an http:// callback, carrying the
+     * one-time link code — and so the personal WS token it is exchanged
+     * for — over plaintext. Matching host and scheme but not the path let
+     * the code be sent to any page on that host, where whoever reads that
+     * page's requests could consume it.
      *
      * @param string $siteurl the registered site's URL
      * @param string $callback the callback URL supplied in the request
      * @return bool
      */
     public static function callback_matches_site(string $siteurl, string $callback): bool {
-        $sitehost = parse_url($siteurl, PHP_URL_HOST);
-        $callbackhost = parse_url($callback, PHP_URL_HOST);
-        $sitescheme = parse_url($siteurl, PHP_URL_SCHEME);
-        $callbackscheme = parse_url($callback, PHP_URL_SCHEME);
-
-        if (!$sitehost || !$callbackhost || !$sitescheme || !$callbackscheme) {
+        $site = parse_url($siteurl);
+        $cb = parse_url($callback);
+        if (
+            !$site || !$cb || empty($site['host']) || empty($cb['host'])
+            || empty($site['scheme']) || empty($cb['scheme'])
+        ) {
+            return false;
+        }
+        if (isset($cb['user']) || isset($cb['pass'])) {
             return false;
         }
 
-        return strcasecmp($sitehost, $callbackhost) === 0
-            && strcasecmp($sitescheme, $callbackscheme) === 0;
+        if (strcasecmp($site['host'], $cb['host']) !== 0 || strcasecmp($site['scheme'], $cb['scheme']) !== 0) {
+            return false;
+        }
+
+        $defaultport = strcasecmp($site['scheme'], 'https') === 0 ? 443 : 80;
+        if (($site['port'] ?? $defaultport) !== ($cb['port'] ?? $defaultport)) {
+            return false;
+        }
+
+        $expectedpath = rtrim($site['path'] ?? '', '/') . self::CALLBACK_PATH;
+        return ($cb['path'] ?? '') === $expectedpath;
     }
 
     /** @var int Code validity window, seconds. */
     const TTL = 300;
 
     /**
-     * Mint a WS token for $userid scoped to our service, and issue a
-     * one-time code the client can exchange for it.
+     * Issue a one-time code the client can exchange for a WS token for
+     * $userid, scoped to our service.
+     *
+     * The token is minted by consume(), not here: a code that is never
+     * consumed (an abandoned link attempt, or one that simply expires) then
+     * leaves no live permanent token behind.
      *
      * @param int $siteid
      * @param int $userid Exchange-local userid
      * @return string the code to hand back to the client (via redirect)
      */
     public static function issue_code(int $siteid, int $userid): string {
+        global $DB;
+
+        $code = bin2hex(random_bytes(32));
+        $now = time();
+        $DB->insert_record('local_oerexchange_linkcodes', (object) [
+            'code' => $code,
+            'siteid' => $siteid,
+            'userid' => $userid,
+            'token' => '',
+            'status' => 'pending',
+            'timecreated' => $now,
+            'timeexpires' => $now + self::TTL,
+        ]);
+
+        return $code;
+    }
+
+    /**
+     * Mint the permanent personal WS token a consumed code hands out.
+     *
+     * @param int $userid
+     * @return string
+     */
+    protected static function mint_token(int $userid): string {
         global $DB;
 
         $serviceid = $DB->get_field('external_services', 'id', ['shortname' => 'local_oerexchange'], MUST_EXIST);
@@ -78,20 +125,12 @@ class link_manager {
             0,
             ''
         );
-
-        $code = bin2hex(random_bytes(32));
-        $now = time();
-        $DB->insert_record('local_oerexchange_linkcodes', (object) [
-            'code' => $code,
-            'siteid' => $siteid,
-            'userid' => $userid,
-            'token' => $token,
-            'status' => 'pending',
-            'timecreated' => $now,
-            'timeexpires' => $now + self::TTL,
-        ]);
-
-        return $code;
+        // Generate_token() records the session user as the creator, and
+        // link_consume.php has none (NO_MOODLE_COOKIES). The teacher who
+        // confirmed the link on connect.php is the creator, as they were
+        // when the token was minted there.
+        $DB->set_field('external_tokens', 'creatorid', $userid, ['token' => $token]);
+        return $token;
     }
 
     /**
@@ -116,23 +155,30 @@ class link_manager {
             throw new \moodle_exception('error_linkcodeexpired', 'local_oerexchange');
         }
 
-        $token = $record->token;
+        // A code issued before tokens were minted on consumption still
+        // carries its token; hand that one out rather than minting another.
+        $legacytoken = (string) $record->token;
         $userid = (int) $record->userid;
 
         // Atomic single-use claim: two concurrent requests could both read
-        // the 'pending' row above before either wrote 'used', handing the
+        // the 'pending' row above before either wrote 'used', handing a
         // token out twice. The conditional UPDATE lets exactly one request
-        // win; the loser sees no pending row left and gets the same error a
-        // straight replay would. Clearing the token in the same statement
-        // removes it from storage the moment it is handed off.
+        // win: it writes a claim marker only this request knows, and the
+        // loser, seeing someone else's marker (or a cleared one), gets the
+        // same error a straight replay would.
+        $claim = 'claim:' . bin2hex(random_bytes(16));
         $DB->execute(
-            "UPDATE {local_oerexchange_linkcodes} SET status = 'used', token = '' WHERE id = ? AND status = 'pending'",
-            [$record->id]
+            "UPDATE {local_oerexchange_linkcodes} SET status = 'used', token = ? WHERE id = ? AND status = 'pending'",
+            [$claim, $record->id]
         );
         $claimed = $DB->get_record('local_oerexchange_linkcodes', ['id' => $record->id], 'id,status,token', MUST_EXIST);
-        if ($claimed->token !== '' || $claimed->status !== 'used') {
+        if ($claimed->status !== 'used' || $claimed->token !== $claim) {
             throw new \moodle_exception('error_linkcodeused', 'local_oerexchange');
         }
+        // Nothing token-shaped stays in storage once the code is used.
+        $DB->set_field('local_oerexchange_linkcodes', 'token', '', ['id' => $record->id]);
+
+        $token = $legacytoken !== '' ? $legacytoken : self::mint_token($userid);
 
         return (object) ['token' => $token, 'userid' => $userid];
     }

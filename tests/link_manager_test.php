@@ -157,4 +157,81 @@ final class link_manager_test extends \advanced_testcase {
             '/local/oerclient/connect_callback.php'
         ));
     }
+
+    /**
+     * Matching host and scheme alone let connect.php hand the one-time code
+     * to any page on the registered host (security checklist audit F3,
+     * 2026-10-28). Only the site's own local_oerclient callback is accepted.
+     */
+    public function test_callback_matches_site_rejects_another_path_on_the_registered_host(): void {
+        $this->assertFalse(link_manager::callback_matches_site(
+            'https://client.example.net',
+            'https://client.example.net/mod/forum/discuss.php?d=1'
+        ));
+        $this->assertFalse(link_manager::callback_matches_site(
+            'https://client.example.net',
+            'https://client.example.net/local/oerclient/connect_callback.php/extra'
+        ));
+    }
+
+    public function test_callback_matches_site_accepts_a_site_in_a_subdirectory(): void {
+        $this->assertTrue(link_manager::callback_matches_site(
+            'https://client.example.net/moodle/',
+            'https://client.example.net/moodle/local/oerclient/connect_callback.php?state=abc'
+        ));
+        $this->assertFalse(link_manager::callback_matches_site(
+            'https://client.example.net/moodle',
+            'https://client.example.net/local/oerclient/connect_callback.php'
+        ));
+    }
+
+    public function test_callback_matches_site_rejects_another_port(): void {
+        $this->assertFalse(link_manager::callback_matches_site(
+            'https://client.example.net',
+            'https://client.example.net:8443/local/oerclient/connect_callback.php'
+        ));
+        $this->assertTrue(link_manager::callback_matches_site(
+            'https://client.example.net',
+            'https://client.example.net:443/local/oerclient/connect_callback.php'
+        ));
+    }
+
+    /**
+     * issue_code() minted a permanent token on every connect.php visit, so
+     * every code that was never consumed left a live token behind (audit F3).
+     * The token is now minted only when the code is consumed.
+     */
+    public function test_issue_code_mints_no_token_until_the_code_is_consumed(): void {
+        global $DB;
+        $user = $this->getDataGenerator()->create_user();
+
+        $code = link_manager::issue_code(1, (int) $user->id);
+
+        $this->assertSame(0, $DB->count_records('external_tokens', ['userid' => $user->id]));
+        $this->assertSame('', $DB->get_field('local_oerexchange_linkcodes', 'token', ['code' => $code]));
+
+        $result = link_manager::consume($code);
+
+        $tokens = $DB->get_records('external_tokens', ['userid' => $user->id]);
+        $this->assertCount(1, $tokens);
+        $token = reset($tokens);
+        $this->assertSame($result->token, $token->token);
+        $this->assertEquals($user->id, $token->creatorid);
+    }
+
+    public function test_an_expired_unconsumed_code_leaves_no_token(): void {
+        global $DB;
+        $user = $this->getDataGenerator()->create_user();
+        $code = link_manager::issue_code(1, (int) $user->id);
+        $DB->set_field('local_oerexchange_linkcodes', 'timeexpires', time() - 1, ['code' => $code]);
+
+        try {
+            link_manager::consume($code);
+            $this->fail('an expired code must be refused');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('error_linkcodeexpired', $e->errorcode);
+        }
+
+        $this->assertSame(0, $DB->count_records('external_tokens', ['userid' => $user->id]));
+    }
 }

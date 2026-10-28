@@ -26,6 +26,10 @@
 
 require(__DIR__ . '/../../config.php');
 require_login();
+if (isguestuser()) {
+    // A guest session is not a real account — same stance as connect.php.
+    redirect(get_login_url());
+}
 
 $PAGE->set_url('/local/oerexchange/share_new.php');
 $PAGE->set_context(context_system::instance());
