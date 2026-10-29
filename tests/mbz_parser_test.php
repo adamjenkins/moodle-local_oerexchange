@@ -68,4 +68,83 @@ final class mbz_parser_test extends \advanced_testcase {
 
         $this->assertTrue(sanitycheck::passes($this->fixture_path()));
     }
+
+    /** @var string A 1x1 PNG, base64. */
+    const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+    /**
+     * Build a .mbz whose files.xml names one course overview image.
+     *
+     * @param string $dir a scratch directory
+     * @param string $contenthash the manifest's contenthash for the image
+     * @param string|null $content bytes to store at files/<hash[0..1]>/<hash>, or null for none
+     * @return string path to the .mbz
+     */
+    protected function build_cover_mbz(string $dir, string $contenthash, ?string $content = null): string {
+        $src = $dir . '/src';
+        check_dir_exists($src);
+        file_put_contents($src . '/files.xml', '<?xml version="1.0" encoding="UTF-8"?>
+<files>
+  <file id="1">
+    <contenthash>' . s($contenthash) . '</contenthash>
+    <contextid>1</contextid>
+    <component>course</component>
+    <filearea>overviewfiles</filearea>
+    <itemid>0</itemid>
+    <filepath>/</filepath>
+    <filename>cover.png</filename>
+  </file>
+</files>');
+        $files = ['files.xml' => $src . '/files.xml'];
+        if ($content !== null) {
+            file_put_contents($src . '/blob', $content);
+            $files['files/' . substr($contenthash, 0, 2) . '/' . $contenthash] = $src . '/blob';
+        }
+
+        $mbz = $dir . '/backup.mbz';
+        get_file_packer('application/vnd.moodle.backup')->archive_to_pathname($files, $mbz);
+        return $mbz;
+    }
+
+    /**
+     * The contenthash in files.xml comes from the uploaded backup. Before the
+     * fix, '../victim.png' resolved outside the extraction directory and the
+     * image found there was moved into the resource's public cover (security
+     * audit 2026-10-28, F4).
+     */
+    public function test_extract_cover_image_refuses_a_contenthash_that_leaves_the_extraction_dir(): void {
+        $this->resetAfterTest();
+        $base = make_request_directory();
+        $outputdir = $base . '/out';
+        // An earlier, legitimate manifest entry would have created this; the
+        // traversal needs it to exist to resolve.
+        check_dir_exists($outputdir . '/coverimage_content/files');
+        $victim = $outputdir . '/victim.png';
+        file_put_contents($victim, base64_decode(self::PNG));
+
+        $mbz = $this->build_cover_mbz($base, '../victim.png');
+
+        $this->assertNull(mbz_parser::extract_cover_image($mbz, $outputdir));
+        $this->assertFileExists($victim, 'a file outside the extraction directory is never taken');
+    }
+
+    public function test_extract_cover_image_copies_a_well_formed_entry(): void {
+        $this->resetAfterTest();
+        $base = make_request_directory();
+        $outputdir = $base . '/out';
+        check_dir_exists($outputdir);
+        $png = base64_decode(self::PNG);
+        $hash = sha1($png);
+
+        $mbz = $this->build_cover_mbz($base, $hash, $png);
+        $cover = mbz_parser::extract_cover_image($mbz, $outputdir);
+
+        $this->assertNotNull($cover);
+        $this->assertSame('cover.png', basename($cover));
+        $this->assertSame($png, file_get_contents($cover));
+        $this->assertFileExists(
+            $outputdir . '/coverimage_content/files/' . substr($hash, 0, 2) . '/' . $hash,
+            'the extracted file is copied, not moved'
+        );
+    }
 }

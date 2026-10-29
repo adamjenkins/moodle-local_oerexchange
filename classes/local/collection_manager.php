@@ -585,7 +585,7 @@ class collection_manager {
      * Tell a collection's owner that someone else added a resource to it.
      *
      * Plain-text message, so titles are filtered then flattened exactly as
-     * collection_curator_manager::notify_added() does it, for the same reason.
+     * invitation_manager::notify() does it, for the same reason.
      *
      * @param \stdClass $collection the collection row
      * @param \stdClass $resource the added resource (id, title)

@@ -120,6 +120,27 @@ final class collection_view {
     }
 
     /**
+     * The message of collection_edit.php's delete confirmation, as HTML.
+     *
+     * $OUTPUT->confirm() places its message into the page without escaping
+     * it, so the title must arrive escaped: format_string() output, as
+     * resource.php's own delete confirmation passes. Flattening it with
+     * content_to_text() (as this used to) decoded a title saved as
+     * '&lt;img src=x onerror=...&gt;' back into live markup (security audit
+     * 2026-10-28, F8).
+     *
+     * @param \stdClass $collection a collections row
+     * @return string HTML
+     */
+    public static function delete_confirmation(\stdClass $collection): string {
+        return get_string(
+            'collectiondeleteconfirm',
+            'local_oerexchange',
+            format_string($collection->title, true, ['context' => \context_system::instance()])
+        );
+    }
+
+    /**
      * The full collection page body.
      *
      * @param \stdClass $collection a collections row, already known to be viewable by $userid

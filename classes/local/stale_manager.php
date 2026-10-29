@@ -213,7 +213,7 @@ class stale_manager {
 
         $url = new \moodle_url('/local/oerexchange/resource.php', ['id' => $resource->id]);
         // Filter the title, then flatten it back to plain text — see
-        // coauthor_manager::notify_added() for why a FORMAT_PLAIN message
+        // invitation_manager::notify() for why a FORMAT_PLAIN message
         // needs both halves of that.
         $title = content_to_text(
             format_string($resource->title, true, ['context' => \context_system::instance()]),

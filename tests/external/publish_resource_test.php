@@ -252,4 +252,57 @@ final class publish_resource_test extends \advanced_testcase {
         $result2 = publish_resource::execute($secondsiteid, $draft2, 'course', 'From the second site', '', '', '', 'cc-4.0');
         $this->assertGreaterThan(0, $result2['resourceid']);
     }
+
+    /**
+     * Forkedfromid was stored unchecked, and resource.php then showed the
+     * named resource's title: walking ids published the titles of hidden,
+     * pending and held resources (security audit 2026-10-28, F5). It is now
+     * kept only for a parent the caller may view.
+     */
+    public function test_forkedfromid_is_kept_only_for_a_parent_the_caller_may_view(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_oerexchange');
+
+        $siteid = $this->create_site();
+        $user = $this->getDataGenerator()->create_user();
+        $other = $this->getDataGenerator()->create_user();
+        $this->create_link((int) $user->id, $siteid);
+        $this->setUser($user);
+        $public = $generator->create_resource(['creatorid' => (int) $other->id, 'title' => 'Public parent']);
+        $hidden = $generator->create_resource(['creatorid' => (int) $other->id, 'title' => 'Secret parent', 'status' => 'hidden']);
+
+        $kept = publish_resource::execute(
+            $siteid,
+            $this->create_draft_file((int) $user->id, 'one'),
+            'course',
+            'Adapted from a public resource',
+            '',
+            '',
+            '',
+            'cc-4.0',
+            '',
+            0,
+            (int) $public->id
+        );
+        $dropped = publish_resource::execute(
+            $siteid,
+            $this->create_draft_file((int) $user->id, 'two'),
+            'course',
+            'Claims a hidden parent',
+            '',
+            '',
+            '',
+            'cc-4.0',
+            '',
+            0,
+            (int) $hidden->id
+        );
+
+        $this->assertEquals(
+            $public->id,
+            $DB->get_field('local_oerexchange_resources', 'forkedfromid', ['id' => $kept['resourceid']])
+        );
+        $this->assertNull($DB->get_field('local_oerexchange_resources', 'forkedfromid', ['id' => $dropped['resourceid']]));
+    }
 }

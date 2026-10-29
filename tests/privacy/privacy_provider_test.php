@@ -672,7 +672,7 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
         $departing = $this->getDataGenerator()->create_user(['username' => 'departing']);
         $stayer = $this->getDataGenerator()->create_user(['username' => 'stayer']);
         $resource = $this->make_coauthored_resource($creator, 'departing');
-        \local_oerexchange\local\coauthor_manager::add($resource, 'stayer', (int) $departing->id);
+        \local_oerexchange\local\coauthor_manager::grant($resource, (int) $stayer->id, (int) $departing->id);
 
         provider::delete_data_for_user(new approved_contextlist(
             $departing,
@@ -734,7 +734,11 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
             'forkedfromid' => null, 'timeshared' => $now, 'timemodified' => $now,
         ]);
         $resource = $DB->get_record('local_oerexchange_resources', ['id' => $resourceid], '*', MUST_EXIST);
-        \local_oerexchange\local\coauthor_manager::add($resource, $identifier, (int) $creator->id);
+        \local_oerexchange\local\coauthor_manager::grant(
+            $resource,
+            (int) \core_user::get_user_by_username($identifier)->id,
+            (int) $creator->id
+        );
 
         return $resource;
     }

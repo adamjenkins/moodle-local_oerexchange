@@ -63,7 +63,13 @@ $plugin->component = 'local_oerexchange';
 // capability change; the serial moves so the new strings are re-read.
 // 2026102300 is the 1.2.2 release: the whole resource card on a profile page
 // links to the resource. Markup only; no schema, strings or capability change.
-$plugin->version   = 2026102300;
+// 2026102900 adds local_oerexchange_invitations (co-author and curator adds
+// become invitations), linkcodes.tokenid (site revoke deletes the personal
+// tokens its handshakes produced) and sites.ipkey (per-address registration
+// throttle), and registers the cleanup task. Schema change, so the serial
+// MUST move; the release string is deliberately NOT bumped with it: that is
+// the owner's call (HARNESS.md section 8).
+$plugin->version   = 2026102900;
 // 2025041400 = the Moodle 5.0 branching version — matches $supported's floor.
 // Was 2024100700 (Moodle 4.5), which let a site below the tested/supported
 // range install the plugin; found on the fourth MDL Shield audit pass

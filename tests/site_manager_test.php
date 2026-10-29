@@ -210,4 +210,99 @@ final class site_manager_test extends \advanced_testcase {
             'the window slides — yesterday\'s flood does not lock the door today'
         );
     }
+
+    /**
+     * One address could use up the site-wide allowance and lock every real
+     * client site out for the hour (security audit 2026-10-28, F7). It now
+     * hits its own, smaller cap first, and other addresses are unaffected.
+     */
+    public function test_registration_is_capped_per_address(): void {
+        global $DB;
+
+        for ($i = 0; $i < site_manager::REGISTRATION_MAX_PER_ADDRESS; $i++) {
+            $this->assertFalse(site_manager::registration_rate_exceeded('203.0.113.5'));
+            site_manager::register('S' . $i, 'https://s' . $i . '.example.net', 'c@example.com', '203.0.113.5');
+        }
+
+        $this->assertTrue(site_manager::registration_rate_exceeded('203.0.113.5'));
+        $this->assertFalse(site_manager::registration_rate_exceeded('198.51.100.7'), 'another address still registers');
+        $this->assertFalse(site_manager::registration_rate_exceeded(), 'well below the site-wide cap');
+
+        // The address itself is never stored, only its keyed hash.
+        $this->assertFalse($DB->record_exists_select('local_oerexchange_sites', 'ipkey = ?', ['203.0.113.5']));
+        $this->assertSame(
+            site_manager::REGISTRATION_MAX_PER_ADDRESS,
+            $DB->count_records('local_oerexchange_sites', ['ipkey' => site_manager::address_key('203.0.113.5')])
+        );
+    }
+
+    public function test_old_address_keys_are_cleared(): void {
+        global $DB;
+
+        $siteid = site_manager::register('S', 'https://s.example.net', 'c@example.com', '203.0.113.5');
+        site_manager::clear_old_address_keys(time() + site_manager::REGISTRATION_WINDOW + 1);
+
+        $this->assertNull($DB->get_field('local_oerexchange_sites', 'ipkey', ['id' => $siteid]));
+    }
+
+    /**
+     * Pending registrations nobody acts on are removed after the TTL; recent
+     * ones, and sites that were approved, stay.
+     */
+    public function test_expire_pending_registrations_removes_only_stale_pending_rows(): void {
+        global $DB;
+
+        $stale = site_manager::register('Stale', 'https://stale.example.net', 'c@example.com');
+        $fresh = site_manager::register('Fresh', 'https://fresh.example.net', 'c@example.com');
+        $approved = site_manager::register('Approved', 'https://approved.example.net', 'c@example.com');
+        site_manager::approve($approved);
+        $old = time() - site_manager::PENDING_REGISTRATION_TTL - 1;
+        $DB->set_field('local_oerexchange_sites', 'timecreated', $old, ['id' => $stale]);
+        $DB->set_field('local_oerexchange_sites', 'timecreated', $old, ['id' => $approved]);
+
+        $this->assertSame(1, site_manager::expire_pending_registrations());
+
+        $this->assertFalse($DB->record_exists('local_oerexchange_sites', ['id' => $stale]));
+        $this->assertTrue($DB->record_exists('local_oerexchange_sites', ['id' => $fresh]));
+        $this->assertTrue($DB->record_exists('local_oerexchange_sites', ['id' => $approved]));
+    }
+
+    /**
+     * Revoking a site left the personal tokens its account-linking
+     * handshakes had minted working (the known gap since 2026-07-19, audit
+     * F3 point 4). They are now deleted, and a teacher's token from another
+     * site is untouched.
+     */
+    public function test_revoke_deletes_the_personal_tokens_its_handshakes_minted(): void {
+        global $DB;
+
+        $siteid = site_manager::register('Revoked', 'https://revoked.example.net', 'a@example.com');
+        site_manager::approve($siteid);
+        $othersiteid = site_manager::register('Other', 'https://other.example.net', 'b@example.com');
+        site_manager::approve($othersiteid);
+        $teacher = $this->getDataGenerator()->create_user();
+
+        $viarevoked = \local_oerexchange\local\link_manager::consume(
+            \local_oerexchange\local\link_manager::issue_code($siteid, (int) $teacher->id)
+        );
+        $viaother = \local_oerexchange\local\link_manager::consume(
+            \local_oerexchange\local\link_manager::issue_code($othersiteid, (int) $teacher->id)
+        );
+        $this->assertTrue($DB->record_exists('external_tokens', ['token' => $viarevoked->token]));
+
+        site_manager::revoke($siteid);
+
+        $this->assertFalse(
+            $DB->record_exists('external_tokens', ['token' => $viarevoked->token]),
+            'the token this site\'s handshake produced must stop working'
+        );
+        $this->assertTrue(
+            $DB->record_exists('external_tokens', ['token' => $viaother->token]),
+            'the same teacher\'s link to another site is not this revoke\'s business'
+        );
+        $this->assertTrue(
+            $DB->record_exists('local_oerexchange_linkcodes', ['siteid' => $siteid, 'status' => 'used']),
+            'the linking record itself stays'
+        );
+    }
 }

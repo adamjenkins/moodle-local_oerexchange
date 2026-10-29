@@ -147,6 +147,15 @@ class mbz_parser {
                 continue;
             }
 
+            // The contenthash comes from the uploaded files.xml and becomes a
+            // filesystem path below. Anything but a SHA-1 is refused: a value
+            // like '../../x' walked out of the extraction directory, and the
+            // first matching image anywhere on disk was then moved into the
+            // resource's public cover image (security audit 2026-10-28, F4).
+            if (!preg_match('/^[0-9a-f]{40}$/', $contenthash)) {
+                continue;
+            }
+
             $archivepath = 'files/' . substr($contenthash, 0, 2) . '/' . $contenthash;
             $contentdir = $outputdir . '/coverimage_content';
             check_dir_exists($contentdir);
@@ -156,6 +165,18 @@ class mbz_parser {
             if (!is_readable($extracted)) {
                 continue;
             }
+            // Belt and braces for the format check above: whatever the path
+            // resolves to (a symlink in the archive, say) must still be
+            // inside the extraction directory.
+            $realcontentdir = realpath($contentdir);
+            $realextracted = realpath($extracted);
+            if (
+                $realcontentdir === false || $realextracted === false
+                || !str_starts_with($realextracted, $realcontentdir . DIRECTORY_SEPARATOR)
+            ) {
+                continue;
+            }
+            $extracted = $realextracted;
 
             if (!self::is_verified_raster_image($extracted)) {
                 // The extension/mimetype allowlist above only checked the
@@ -167,8 +188,9 @@ class mbz_parser {
                 continue;
             }
 
-            $target = $contentdir . '/' . clean_param($filename, PARAM_FILE);
-            if ($target !== $extracted && @rename($extracted, $target)) {
+            // Copied, not moved: the source is only ever read from here.
+            $target = $realcontentdir . '/' . clean_param($filename, PARAM_FILE);
+            if ($target !== $extracted && @copy($extracted, $target)) {
                 return $target;
             }
             return $extracted;

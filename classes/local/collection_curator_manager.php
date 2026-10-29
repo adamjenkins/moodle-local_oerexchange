@@ -33,6 +33,9 @@ namespace local_oerexchange\local;
  * curator. Every rights question is answered by collection_manager; this
  * class only stores who the curators are.
  *
+ * Nobody is made a curator directly: the owner sends an invitation
+ * (invitation_manager), and add() is called only when the invitee accepts.
+ *
  * Unlike a co-author, being made a curator does NOT create an educator
  * profile. A co-author is an author of the resource and belongs on the public
  * contributors listing; a curator helped assemble somebody else's reading
@@ -50,7 +53,8 @@ class collection_curator_manager {
     /**
      * Add a curator to a collection.
      *
-     * Authorises nothing — the caller has already asked
+     * Called by invitation_manager::accept() once the invitee has accepted.
+     * Authorises nothing — the invitation was sent only after
      * collection_manager::user_can_manage() — but it does refuse the three
      * people who cannot sensibly be curators: the guest account (a shared
      * session, so the grant would be to everybody), the owner (already holds
@@ -216,6 +220,8 @@ class collection_curator_manager {
         global $DB;
 
         $DB->delete_records(self::TABLE, ['collectionid' => $collectionid]);
+        // Invitations to it go too: there is nothing left to join.
+        invitation_manager::delete_for_item(invitation_manager::KIND_CURATOR, $collectionid);
     }
 
     /**
@@ -235,58 +241,5 @@ class collection_curator_manager {
 
         $DB->delete_records(self::TABLE, ['userid' => $userid]);
         $DB->set_field(self::TABLE, 'addedby', 0, ['addedby' => $userid]);
-    }
-
-    /**
-     * Tell a user they have been made a curator of a collection.
-     *
-     * Being handed the ability to add to and rearrange somebody else's
-     * published reading list without being told would be worse than noisy, so
-     * every add should send this. A failed send is not allowed to undo the
-     * add: the rights are granted either way, and message_send() fails for
-     * reasons that have nothing to do with this plugin (a disabled output, a
-     * full queue).
-     *
-     * Not called from add(): coauthor_manager keeps the same split, so a
-     * bulk or administrative grant can choose not to notify.
-     *
-     * @param \stdClass $collection a collections row
-     * @param \stdClass $user the new curator
-     * @param \stdClass $addedby the owner who added them
-     */
-    public static function notify_added(\stdClass $collection, \stdClass $user, \stdClass $addedby): void {
-        // Filter the title, then flatten it back to plain text: this is a
-        // FORMAT_PLAIN message, so an unfiltered title reaches the recipient
-        // as literal `<span lang=... class="multilang">` markup, and a
-        // format_string()-escaped one reaches them as `&amp;`.
-        // format_string() resolves the multilang spans and content_to_text()
-        // undoes the entity escaping it applies. Same ordering, same reason,
-        // as coauthor_manager::notify_added().
-        $title = content_to_text(
-            format_string($collection->title, true, ['context' => \context_system::instance()]),
-            FORMAT_HTML
-        );
-
-        $url = \moodle_url::routed_path('/local_oerexchange/c/' . $collection->slug)->out(false);
-
-        $message = new \core\message\message();
-        $message->component = 'local_oerexchange';
-        $message->name = 'collectioncurator';
-        $message->userfrom = \core_user::get_noreply_user();
-        $message->userto = $user;
-        $message->subject = get_string('notifycollectioncuratorsubject', 'local_oerexchange', $title);
-        $message->fullmessage = get_string('notifycollectioncuratorbody', 'local_oerexchange', (object) [
-            'title' => $title,
-            'addedby' => fullname($addedby),
-            'url' => $url,
-        ]);
-        $message->fullmessageformat = FORMAT_PLAIN;
-        $message->fullmessagehtml = '';
-        $message->smallmessage = $message->subject;
-        $message->notification = 1;
-        $message->contexturl = $url;
-        $message->contexturlname = $title;
-
-        message_send($message);
     }
 }

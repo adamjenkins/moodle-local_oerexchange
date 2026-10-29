@@ -64,13 +64,15 @@ if ($contact === '' || core_text::strlen($contact) > 255) {
 // rate gate is the only thing standing between it and an unbounded row
 // insert. site_manager::register() separately reuses an existing pending row
 // for the same URL, so an honest client retrying is never the caller that
-// trips this.
-if (site_manager::registration_rate_exceeded()) {
+// trips this. The cap is per address as well as site-wide, so one caller
+// cannot use up the site-wide allowance for everybody (audit F7).
+$ipaddress = (string) getremoteaddr();
+if (site_manager::registration_rate_exceeded($ipaddress)) {
     http_response_code(429);
     echo json_encode(['error' => 'too many registrations, try again later']);
     exit;
 }
 
-$siteid = site_manager::register($name, $url, $contact);
+$siteid = site_manager::register($name, $url, $contact, $ipaddress);
 
 echo json_encode(['siteid' => $siteid, 'status' => 'pending']);

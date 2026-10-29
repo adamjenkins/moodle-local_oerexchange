@@ -151,6 +151,9 @@ class link_manager {
             throw new \moodle_exception('error_linkcodeused', 'local_oerexchange');
         }
         if ($record->timeexpires < time()) {
+            // A code issued before tokens were minted on consumption can
+            // still hold a live token; an expired code must not keep it.
+            self::delete_held_token($record);
             $DB->set_field('local_oerexchange_linkcodes', 'status', 'expired', ['id' => $record->id]);
             throw new \moodle_exception('error_linkcodeexpired', 'local_oerexchange');
         }
@@ -180,6 +183,103 @@ class link_manager {
 
         $token = $legacytoken !== '' ? $legacytoken : self::mint_token($userid);
 
+        // Record which token this handshake produced, so revoking the site
+        // deletes it (revoke_site_tokens()).
+        $tokenid = $DB->get_field('external_tokens', 'id', ['token' => $token]);
+        if ($tokenid) {
+            $DB->set_field('local_oerexchange_linkcodes', 'tokenid', (int) $tokenid, ['id' => $record->id]);
+        }
+
         return (object) ['token' => $token, 'userid' => $userid];
+    }
+
+    /**
+     * Delete the personal tokens a site's account-linking handshakes
+     * produced. Called by site_manager::revoke().
+     *
+     * Exactly the tokens recorded on the site's link-code rows go, so a
+     * teacher linked to several sites keeps the tokens the other sites hold.
+     * Also deleted: a token still held by a pending code of this site (a
+     * code issued before tokens were minted on consumption).
+     *
+     * Not reached: a token handed out before linkcodes.tokenid existed
+     * (2026102900). Nothing records which site such a token was minted for,
+     * and deleting a teacher's tokens by guesswork would cut off their other
+     * sites too.
+     *
+     * @param int $siteid
+     * @return int how many tokens were deleted
+     */
+    public static function revoke_site_tokens(int $siteid): int {
+        global $DB;
+
+        $deleted = 0;
+        $codes = $DB->get_records_select(
+            'local_oerexchange_linkcodes',
+            "siteid = ? AND (tokenid IS NOT NULL OR (status <> 'used' AND token <> ''))",
+            [$siteid]
+        );
+        foreach ($codes as $code) {
+            if ($code->tokenid) {
+                $deleted += $DB->count_records('external_tokens', ['id' => $code->tokenid]);
+                $DB->delete_records('external_tokens', ['id' => $code->tokenid]);
+                $DB->set_field('local_oerexchange_linkcodes', 'tokenid', null, ['id' => $code->id]);
+            }
+            $deleted += self::delete_held_token($code);
+        }
+
+        return $deleted;
+    }
+
+    /**
+     * Delete link codes that expired without being used, and any token one
+     * still holds.
+     *
+     * Used codes stay: they are the record that a teacher linked through a
+     * site, which publish_resource and record_import check. A pending code
+     * past its expiry can no longer be consumed, so it is dead weight, and a
+     * pending code issued before tokens were minted on consumption holds a
+     * live permanent token in 'token' that nobody will ever collect.
+     *
+     * @param int|null $now
+     * @return int how many codes were deleted
+     */
+    public static function cleanup_expired_codes(?int $now = null): int {
+        global $DB;
+
+        $codes = $DB->get_records_select(
+            'local_oerexchange_linkcodes',
+            "status <> 'used' AND timeexpires < ?",
+            [$now ?? time()]
+        );
+        foreach ($codes as $code) {
+            self::delete_held_token($code);
+            $DB->delete_records('local_oerexchange_linkcodes', ['id' => $code->id]);
+        }
+
+        return count($codes);
+    }
+
+    /**
+     * Delete the web service token a not-yet-used code still holds, and
+     * clear it from the row. Only codes issued before tokens were minted on
+     * consumption hold one; a claim marker (consume()) is not a token.
+     *
+     * @param \stdClass $code a linkcodes row
+     * @return int 1 when a token was deleted, else 0
+     */
+    protected static function delete_held_token(\stdClass $code): int {
+        global $DB;
+
+        $token = (string) $code->token;
+        if ($code->status === 'used' || $token === '' || str_starts_with($token, 'claim:')) {
+            return 0;
+        }
+
+        $deleted = $DB->count_records('external_tokens', ['token' => $token]);
+        $DB->delete_records('external_tokens', ['token' => $token]);
+        $DB->set_field('local_oerexchange_linkcodes', 'token', '', ['id' => $code->id]);
+
+        return $deleted;
     }
 }

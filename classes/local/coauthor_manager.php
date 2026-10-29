@@ -31,6 +31,10 @@ namespace local_oerexchange\local;
  * The creator is never a row here — they are resources.creatorid, which is
  * what makes them structurally unremovable by a co-author.
  *
+ * Nobody is made a co-author directly: an add is an invitation
+ * (invitation_manager), and the row here is written by grant() only when
+ * the invitee accepts.
+ *
  * @package    local_oerexchange
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -126,11 +130,18 @@ class coauthor_manager {
      * silently picking one of two accounts would hand editing rights to a
      * person the author did not name.
      *
+     * Email is matched only when $allowemail is true: the caller decides
+     * whether the actor may name people by an identity field
+     * (invitation_manager::may_match_by_email()). The two exceptions are for
+     * the caller's own use; invitation_manager deliberately does not pass
+     * the difference on to the person typing.
+     *
      * @param string $identifier username or email address, as typed
+     * @param bool $allowemail whether an email address may match
      * @return \stdClass the user record
      * @throws \moodle_exception error_coauthornotfound, error_coauthorambiguous
      */
-    public static function find_user(string $identifier): \stdClass {
+    public static function find_user(string $identifier, bool $allowemail = false): \stdClass {
         global $DB, $CFG;
 
         $identifier = trim($identifier);
@@ -145,6 +156,9 @@ class coauthor_manager {
         );
         if ($byusername) {
             return $byusername;
+        }
+        if (!$allowemail) {
+            throw new \moodle_exception('error_coauthornotfound', 'local_oerexchange');
         }
 
         $byemail = $DB->get_records_select(
@@ -163,25 +177,27 @@ class coauthor_manager {
     }
 
     /**
-     * Add a co-author to a resource, naming them by username or email.
+     * Grant a user co-author rights over a resource.
      *
-     * Callers must have already checked that $addedby may edit the resource
-     * (resource_manager::user_can_edit_resource()) — this method authorizes
-     * nothing, it only validates the person being added.
+     * Called by invitation_manager::accept() once the person has accepted
+     * an invitation; nobody becomes a co-author without that. This method
+     * authorizes nothing, and creates no profile (accept() does that, on the
+     * invitee's own action). It only refuses the people who cannot sensibly
+     * be co-authors.
      *
      * @param \stdClass $resource a row from local_oerexchange_resources
-     * @param string $identifier username or email address, as typed
-     * @param int $addedby the user doing the adding
-     * @return \stdClass the newly added co-author's user record
-     * @throws \moodle_exception when the identifier resolves to nobody, to more
-     *                           than one account, to the guest account, to the
-     *                           creator, or to an existing co-author
+     * @param int $userid the new co-author
+     * @param int $addedby the user who invited them
+     * @throws \moodle_exception error_coauthornotfound, error_coauthorisguest,
+     *                           error_coauthoriscreator, error_coauthorexists
      */
-    public static function add(\stdClass $resource, string $identifier, int $addedby): \stdClass {
+    public static function grant(\stdClass $resource, int $userid, int $addedby): void {
         global $DB;
 
-        $user = self::find_user($identifier);
-
+        $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0]);
+        if (!$user) {
+            throw new \moodle_exception('error_coauthornotfound', 'local_oerexchange');
+        }
         if (isguestuser($user)) {
             throw new \moodle_exception('error_coauthorisguest', 'local_oerexchange');
         }
@@ -192,23 +208,18 @@ class coauthor_manager {
             throw new \moodle_exception('error_coauthorexists', 'local_oerexchange');
         }
 
-        $DB->insert_record('local_oerexchange_coauthors', (object) [
-            'resourceid' => (int) $resource->id,
-            'userid' => (int) $user->id,
-            'addedby' => $addedby,
-            'timecreated' => time(),
-        ]);
-
-        // Publishing creates the creator's profile lazily
-        // (resource_manager::publish -> profile_manager::get_or_create_for_user).
-        // Being made a co-author is the other way to become a contributor, so
-        // it must create the profile the same way: contributor_list joins on
-        // local_oerexchange_profiles, and a co-author who has published
-        // nothing of their own would otherwise be silently dropped from a
-        // listing they belong in.
-        profile_manager::get_or_create_for_user((int) $user->id);
-
-        return $user;
+        try {
+            $DB->insert_record('local_oerexchange_coauthors', (object) [
+                'resourceid' => (int) $resource->id,
+                'userid' => (int) $user->id,
+                'addedby' => $addedby,
+                'timecreated' => time(),
+            ]);
+        } catch (\dml_write_exception $e) {
+            // The unique (resourceid, userid) index settles the race the
+            // is_coauthor() check above can lose.
+            throw new \moodle_exception('error_coauthorexists', 'local_oerexchange');
+        }
     }
 
     /**
@@ -234,69 +245,6 @@ class coauthor_manager {
     }
 
     /**
-     * Tell a user they have been made a co-author.
-     *
-     * Being handed the ability to replace or delete somebody else's catalogue
-     * entry without being told would be worse than noisy, so this is sent on
-     * every add. Failure to send is not allowed to undo the add: the rights
-     * are granted either way, and message_send() can fail for reasons that
-     * have nothing to do with this plugin (a disabled output, a full queue).
-     *
-     * @param \stdClass $resource a row from local_oerexchange_resources
-     * @param \stdClass $user the new co-author
-     * @param \stdClass $addedby the user who added them
-     */
-    public static function notify_added(\stdClass $resource, \stdClass $user, \stdClass $addedby): void {
-        // Filter the title, then flatten it back to plain text: this is a
-        // FORMAT_PLAIN message, so an unfiltered title reaches the recipient
-        // as literal `<span lang=... class="multilang">` markup, and a
-        // format_string()-escaped one reaches them as `&amp;`. format_string()
-        // resolves the multilang spans and content_to_text() undoes the entity
-        // escaping it applies. (Filters resolve in the *sending* session's
-        // language, not the recipient's — a pre-existing property of this
-        // notification, whose get_string() calls are already unlocalised to
-        // the recipient, not something introduced here.)
-        $title = content_to_text(
-            format_string($resource->title, true, ['context' => \context_system::instance()]),
-            FORMAT_HTML
-        );
-
-        $message = new \core\message\message();
-        $message->component = 'local_oerexchange';
-        $message->name = 'coauthor';
-        $message->userfrom = \core_user::get_noreply_user();
-        $message->userto = $user;
-        $message->subject = get_string('notifycoauthorsubject', 'local_oerexchange', $title);
-        // Being added as a co-author creates this person's profile row
-        // (visible = 1), so somebody else's action has just given them a
-        // public profile page and a place on the public contributors listing.
-        // Say so, and say how to opt out — the alternative was creating them
-        // hidden, which would have denied co-authors the recognition the
-        // design deliberately gives them.
-        $profile = profile_manager::get_by_userid((int) $user->id);
-        $profileurl = $profile
-            ? \moodle_url::routed_path('/local_oerexchange/u/' . $profile->slug . '/edit')->out(false)
-            : '';
-
-        $message->fullmessage = get_string('notifycoauthorbody', 'local_oerexchange', (object) [
-            'title' => $title,
-            'addedby' => fullname($addedby),
-            'profileurl' => $profileurl,
-        ]);
-        $message->fullmessageformat = FORMAT_PLAIN;
-        $message->fullmessagehtml = '';
-        $message->smallmessage = $message->subject;
-        $message->notification = 1;
-        $message->contexturl = (new \moodle_url(
-            '/local/oerexchange/resource.php',
-            ['id' => $resource->id]
-        ))->out(false);
-        $message->contexturlname = $title;
-
-        message_send($message);
-    }
-
-    /**
      * Drop every co-author row for a resource.
      *
      * Called when a resource is tombstoned: the entry no longer has content to
@@ -311,6 +259,8 @@ class coauthor_manager {
 
         $count = $DB->count_records('local_oerexchange_coauthors', ['resourceid' => $resourceid]);
         $DB->delete_records('local_oerexchange_coauthors', ['resourceid' => $resourceid]);
+        // Invitations to it go too: there is nothing left to join.
+        invitation_manager::delete_for_item(invitation_manager::KIND_COAUTHOR, $resourceid);
 
         return $count;
     }

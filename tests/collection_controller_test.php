@@ -774,6 +774,35 @@ final class collection_controller_test extends route_testcase {
     }
 
     /**
+     * One user could file the same complaint again and again, flooding the
+     * moderation queue (security audit 2026-10-28, F7). A second report while
+     * the first is still open writes nothing.
+     *
+     * @return void
+     */
+    public function test_a_second_open_report_by_the_same_user_is_not_written(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $owner = $this->getDataGenerator()->create_user();
+        $reporter = $this->getDataGenerator()->create_user();
+        $collection = $this->make_public_collection((int) $owner->id, 'Reportable list');
+
+        $this->register_route();
+        $this->setUser($reporter);
+        foreach (['First complaint.', 'Same complaint again.'] as $details) {
+            $this->post_action($collection->slug, [
+                'action' => 'report',
+                'reporttype' => 'spam',
+                'reportdetails' => $details,
+                'sesskey' => sesskey(),
+            ]);
+        }
+
+        $this->assertSame(1, $DB->count_records('local_oerexchange_reports', ['collectionid' => $collection->id]));
+    }
+
+    /**
      * A report reason the form never offered is refused, and no row is
      * written.
      *

@@ -91,6 +91,14 @@ class resource_manager {
             throw new \moodle_exception('error_nofile', 'local_oerexchange');
         }
         $draftfile = reset($draftfiles);
+        // Exactly one file, at the root, or refuse. Only this file is
+        // size-checked below, but file_save_draft_area_files() stores the
+        // whole area, so a second file (or one in a sub-folder, which the
+        // draft-file AJAX lets a user create) went into permanent storage
+        // unchecked. The same guard cover_image::save_from_draft() keeps.
+        if (count($draftfiles) > 1 || $draftfile->get_filepath() !== '/') {
+            throw new \moodle_exception('error_draftnotonefile', 'local_oerexchange');
+        }
 
         $maxbytes = size_advice::max_upload_bytes();
         if ($draftfile->get_filesize() > $maxbytes) {
@@ -588,6 +596,48 @@ class resource_manager {
             return true;
         }
         return self::user_can_edit_resource($resource, $userid);
+    }
+
+    /**
+     * The resource a new resource may name as its "adapted from" parent, or
+     * null.
+     *
+     * The parent id is client-supplied (publish_resource's forkedfromid), and
+     * resource.php shows the parent's title as a link. Taken unchecked it let
+     * a caller walk ids and publish the titles of pending, hidden,
+     * moderator-held and deleted resources, and invent attribution chains
+     * (security audit 2026-10-28, F5). Only a resource that still exists, is
+     * not a tombstone, and $userid may view is accepted.
+     *
+     * @param int $forkedfromid the requested parent id; 0 for none
+     * @param int $userid the user publishing
+     * @return int|null the parent id to store, or null
+     */
+    public static function fork_parent_id(int $forkedfromid, int $userid): ?int {
+        global $DB;
+
+        if ($forkedfromid <= 0) {
+            return null;
+        }
+        $parent = $DB->get_record('local_oerexchange_resources', ['id' => $forkedfromid]);
+        if (!$parent || !self::may_show_fork_parent($parent, $userid)) {
+            return null;
+        }
+
+        return (int) $parent->id;
+    }
+
+    /**
+     * Whether resource.php may show $parent as the "adapted from" attribution
+     * to $userid: not a tombstone, and viewable by them. A parent hidden or
+     * taken down after the fork was published stops being named.
+     *
+     * @param \stdClass $parent the parent resource row
+     * @param int $userid the viewer; 0 for a logged-out visitor
+     * @return bool
+     */
+    public static function may_show_fork_parent(\stdClass $parent, int $userid): bool {
+        return $parent->status !== 'deleted' && self::user_can_view_resource($parent, $userid);
     }
 
     /**

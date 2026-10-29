@@ -574,8 +574,6 @@ class collection_controller {
      * @throws \moodle_exception error_invalidreporttype
      */
     protected function report(\stdClass $collection, int $userid): void {
-        global $DB;
-
         $type = required_param('reporttype', PARAM_ALPHA);
         // Re-validated against the same set the form offers: PARAM_ALPHA alone
         // accepts any alphabetic string, and an unrecognised value would later
@@ -588,19 +586,12 @@ class collection_controller {
         }
         $details = required_param('reportdetails', PARAM_TEXT);
 
-        $DB->insert_record('local_oerexchange_reports', (object) [
-            'resourceid' => null,
-            'collectionid' => (int) $collection->id,
-            'userid' => $userid,
-            'type' => $type,
-            'details' => $details,
-            'status' => 'open',
-            'resolvernote' => null,
-            'timecreated' => time(),
-            'timeresolved' => null,
-        ]);
-
-        \core\notification::success(get_string('collectionreported', 'local_oerexchange'));
+        // One open report per user per collection (audit F7).
+        if (\local_oerexchange\local\report_manager::report_collection((int) $collection->id, $userid, $type, $details)) {
+            \core\notification::success(get_string('collectionreported', 'local_oerexchange'));
+        } else {
+            \core\notification::info(get_string('collectionreportalreadyopen', 'local_oerexchange'));
+        }
     }
 
     /**
@@ -677,7 +668,7 @@ class collection_controller {
      * Filtered first so a multilang title collapses to one language rather
      * than appearing as literal markup, then flattened back to text so
      * format_string()'s '&amp;' is not read out as characters. Same ordering,
-     * same reason, as collection_curator_manager::notify_added().
+     * same reason, as invitation_manager::notify().
      *
      * @param \stdClass $collection
      * @return string

@@ -22,7 +22,7 @@ use local_oerexchange\local\resource_manager;
 
 /**
  * Tests for coauthor_manager: resolving a username/email to the right
- * account, the ways an add is refused, and the parity a co-author row grants
+ * account, the ways a grant is refused, and the parity a co-author row grants
  * through resource_manager::user_can_edit_resource() — including the one
  * action that parity deliberately does NOT extend to,
  * resource_manager::user_can_delete_resource() on a moderated resource.
@@ -72,49 +72,14 @@ final class coauthor_manager_test extends \advanced_testcase {
         return $DB->get_record('local_oerexchange_resources', ['id' => $id], '*', MUST_EXIST);
     }
 
-    public function test_add_by_username_seats_the_named_user(): void {
-        $this->resetAfterTest();
-        $creator = $this->getDataGenerator()->create_user();
-        $second = $this->getDataGenerator()->create_user(['username' => 'hanako']);
-        $resource = $this->make_resource((int) $creator->id);
-
-        $added = coauthor_manager::add($resource, 'hanako', (int) $creator->id);
-
-        $this->assertSame((int) $second->id, (int) $added->id);
-        $this->assertTrue(coauthor_manager::is_coauthor((int) $resource->id, (int) $second->id));
-    }
-
-    public function test_adding_a_coauthor_creates_their_profile(): void {
-        global $DB;
-        $this->resetAfterTest();
-
-        $creator = $this->getDataGenerator()->create_user();
-        $coauthor = $this->getDataGenerator()->create_user(['username' => 'newcoauthor']);
-        $resource = $this->make_resource((int) $creator->id);
-
-        $this->assertFalse(
-            $DB->record_exists('local_oerexchange_profiles', ['userid' => $coauthor->id]),
-            'precondition: a user who has published nothing has no profile row yet'
-        );
-
-        coauthor_manager::add($resource, 'newcoauthor', (int) $creator->id);
-
-        $this->assertTrue(
-            $DB->record_exists('local_oerexchange_profiles', ['userid' => $coauthor->id]),
-            'a co-author who has published nothing of their own still needs a profile row, '
-                . 'or contributor_list silently drops them from a listing they belong in'
-        );
-    }
-
-    public function test_add_by_email_seats_the_named_user(): void {
-        $this->resetAfterTest();
-        $creator = $this->getDataGenerator()->create_user();
-        $second = $this->getDataGenerator()->create_user(['email' => 'second.author@example.com']);
-        $resource = $this->make_resource((int) $creator->id);
-
-        $added = coauthor_manager::add($resource, 'second.author@example.com', (int) $creator->id);
-
-        $this->assertSame((int) $second->id, (int) $added->id);
+    /**
+     * The id of the user with this username.
+     *
+     * @param string $username
+     * @return int
+     */
+    protected function uid(string $username): int {
+        return (int) \core_user::get_user_by_username($username, 'id', null, MUST_EXIST)->id;
     }
 
     /**
@@ -130,7 +95,7 @@ final class coauthor_manager_test extends \advanced_testcase {
         $bymail = $this->getDataGenerator()->create_user(['email' => 'mixed.case@example.com']);
 
         $this->assertSame((int) $byname->id, (int) coauthor_manager::find_user('TARO')->id);
-        $this->assertSame((int) $bymail->id, (int) coauthor_manager::find_user('Mixed.Case@Example.COM')->id);
+        $this->assertSame((int) $bymail->id, (int) coauthor_manager::find_user('Mixed.Case@Example.COM', true)->id);
     }
 
     /**
@@ -142,7 +107,7 @@ final class coauthor_manager_test extends \advanced_testcase {
         $byname = $this->getDataGenerator()->create_user(['username' => 'shared@example.com']);
         $this->getDataGenerator()->create_user(['email' => 'shared@example.com']);
 
-        $this->assertSame((int) $byname->id, (int) coauthor_manager::find_user('shared@example.com')->id);
+        $this->assertSame((int) $byname->id, (int) coauthor_manager::find_user('shared@example.com', true)->id);
     }
 
     /**
@@ -160,13 +125,25 @@ final class coauthor_manager_test extends \advanced_testcase {
 
         $this->expectException(\moodle_exception::class);
         $this->expectExceptionMessageMatches('/more than one account/i');
-        coauthor_manager::find_user('dup@example.com');
+        coauthor_manager::find_user('dup@example.com', true);
+    }
+
+    /**
+     * An email address only matches when the caller allows it
+     * (invitation_manager::may_match_by_email()); otherwise it is not found.
+     */
+    public function test_email_does_not_match_unless_allowed(): void {
+        $this->resetAfterTest();
+        $this->getDataGenerator()->create_user(['email' => 'only.by.mail@example.com']);
+
+        $this->expectException(\moodle_exception::class);
+        coauthor_manager::find_user('only.by.mail@example.com');
     }
 
     public function test_unknown_identifier_is_refused(): void {
         $this->resetAfterTest();
         $this->expectException(\moodle_exception::class);
-        coauthor_manager::find_user('nobody@example.com');
+        coauthor_manager::find_user('nobody@example.com', true);
     }
 
     /**
@@ -188,7 +165,24 @@ final class coauthor_manager_test extends \advanced_testcase {
         $resource = $this->make_resource((int) $creator->id);
 
         $this->expectException(\moodle_exception::class);
-        coauthor_manager::add($resource, 'creator', (int) $creator->id);
+        coauthor_manager::grant($resource, (int) $creator->id, (int) $creator->id);
+    }
+
+    /**
+     * A grant creates no profile: invitation_manager::accept() does, on the
+     * invitee's own action (audit F2).
+     */
+    public function test_grant_creates_no_profile(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $creator = $this->getDataGenerator()->create_user();
+        $coauthor = $this->getDataGenerator()->create_user();
+        $resource = $this->make_resource((int) $creator->id);
+
+        coauthor_manager::grant($resource, (int) $coauthor->id, (int) $creator->id);
+
+        $this->assertTrue(coauthor_manager::is_coauthor((int) $resource->id, (int) $coauthor->id));
+        $this->assertFalse($DB->record_exists('local_oerexchange_profiles', ['userid' => $coauthor->id]));
     }
 
     public function test_adding_the_same_person_twice_is_refused(): void {
@@ -198,9 +192,9 @@ final class coauthor_manager_test extends \advanced_testcase {
         $this->getDataGenerator()->create_user(['username' => 'hanako']);
         $resource = $this->make_resource((int) $creator->id);
 
-        coauthor_manager::add($resource, 'hanako', (int) $creator->id);
+        coauthor_manager::grant($resource, $this->uid('hanako'), (int) $creator->id);
         try {
-            coauthor_manager::add($resource, 'hanako', (int) $creator->id);
+            coauthor_manager::grant($resource, $this->uid('hanako'), (int) $creator->id);
             $this->fail('a duplicate add must be refused');
         } catch (\moodle_exception $e) {
             $this->assertSame(1, $DB->count_records('local_oerexchange_coauthors', ['resourceid' => $resource->id]));
@@ -213,7 +207,7 @@ final class coauthor_manager_test extends \advanced_testcase {
         $resource = $this->make_resource((int) $creator->id);
 
         $this->expectException(\moodle_exception::class);
-        coauthor_manager::add($resource, 'guest', (int) $creator->id);
+        coauthor_manager::grant($resource, (int) guest_user()->id, (int) $creator->id);
     }
 
     /**
@@ -232,7 +226,7 @@ final class coauthor_manager_test extends \advanced_testcase {
             'not a co-author yet'
         );
 
-        coauthor_manager::add($resource, 'hanako', (int) $creator->id);
+        coauthor_manager::grant($resource, $this->uid('hanako'), (int) $creator->id);
 
         $this->assertTrue(resource_manager::user_can_edit_resource($resource, (int) $second->id));
     }
@@ -248,7 +242,7 @@ final class coauthor_manager_test extends \advanced_testcase {
         $shared = $this->make_resource((int) $creator->id);
         $other = $this->make_resource((int) $creator->id);
 
-        coauthor_manager::add($shared, 'hanako', (int) $creator->id);
+        coauthor_manager::grant($shared, $this->uid('hanako'), (int) $creator->id);
 
         $this->assertTrue(resource_manager::user_can_edit_resource($shared, (int) $second->id));
         $this->assertFalse(resource_manager::user_can_edit_resource($other, (int) $second->id));
@@ -259,7 +253,7 @@ final class coauthor_manager_test extends \advanced_testcase {
         $creator = $this->getDataGenerator()->create_user();
         $second = $this->getDataGenerator()->create_user(['username' => 'hanako']);
         $resource = $this->make_resource((int) $creator->id);
-        coauthor_manager::add($resource, 'hanako', (int) $creator->id);
+        coauthor_manager::grant($resource, $this->uid('hanako'), (int) $creator->id);
 
         $this->assertTrue(coauthor_manager::remove((int) $resource->id, (int) $second->id));
         $this->assertFalse(resource_manager::user_can_edit_resource($resource, (int) $second->id));
@@ -282,8 +276,8 @@ final class coauthor_manager_test extends \advanced_testcase {
         $third = $this->getDataGenerator()->create_user(['username' => 'jiro']);
         $resource = $this->make_resource((int) $creator->id);
 
-        coauthor_manager::add($resource, 'hanako', (int) $creator->id);
-        coauthor_manager::add($resource, 'jiro', (int) $second->id);
+        coauthor_manager::grant($resource, $this->uid('hanako'), (int) $creator->id);
+        coauthor_manager::grant($resource, $this->uid('jiro'), (int) $second->id);
 
         $this->assertTrue(resource_manager::user_can_edit_resource($resource, (int) $third->id));
         $this->assertTrue(
@@ -317,9 +311,9 @@ final class coauthor_manager_test extends \advanced_testcase {
         $departing = $this->getDataGenerator()->create_user(['username' => 'departing']);
         $resource = $this->make_resource((int) $creator->id);
 
-        coauthor_manager::add($resource, 'zoe', (int) $creator->id);
-        coauthor_manager::add($resource, 'adam', (int) $creator->id);
-        coauthor_manager::add($resource, 'departing', (int) $creator->id);
+        coauthor_manager::grant($resource, $this->uid('zoe'), (int) $creator->id);
+        coauthor_manager::grant($resource, $this->uid('adam'), (int) $creator->id);
+        coauthor_manager::grant($resource, $this->uid('departing'), (int) $creator->id);
         delete_user($departing);
 
         $users = coauthor_manager::get_users((int) $resource->id);
@@ -329,61 +323,6 @@ final class coauthor_manager_test extends \advanced_testcase {
             array_map('intval', array_keys($users)),
             'added order, not alphabetical, and no deleted account'
         );
-    }
-
-    /**
-     * The notification must actually name the resource. Caught live on
-     * 2026-07-27: the subject string used the {$a->title} form while the
-     * caller passes a plain title, so the message went out reading
-     * literally `You are now a co-author of "{$a->title}"` — message_send()
-     * succeeded, which is exactly why the exit code proved nothing.
-     */
-    public function test_notify_added_warns_that_a_public_profile_now_exists(): void {
-        $this->resetAfterTest();
-        $this->preventResetByRollback();
-        $creator = $this->getDataGenerator()->create_user(['firstname' => 'Tomoko', 'lastname' => 'Teacher']);
-        $second = $this->getDataGenerator()->create_user(['username' => 'hanako']);
-        $resource = $this->make_resource((int) $creator->id);
-
-        // Go through add(), which is what creates the profile row, rather than
-        // calling notify_added() against a user who has no profile yet.
-        $sink = $this->redirectMessages();
-        coauthor_manager::add($resource, 'hanako', (int) $creator->id);
-        coauthor_manager::notify_added($resource, $second, $creator);
-        $messages = $sink->get_messages();
-        $sink->close();
-
-        $body = end($messages)->fullmessage;
-
-        $this->assertStringContainsString(
-            'public profile',
-            $body,
-            'somebody else\'s action just published this person; the notification must say so'
-        );
-        $this->assertStringContainsString('Show my profile publicly', $body, 'and how to opt out');
-        $this->assertStringNotContainsString('{$a', $body, 'unsubstituted placeholder');
-    }
-
-    public function test_notify_added_names_the_resource_and_the_person(): void {
-        $this->resetAfterTest();
-        $this->preventResetByRollback();
-        $creator = $this->getDataGenerator()->create_user(['firstname' => 'Tomoko', 'lastname' => 'Teacher']);
-        $second = $this->getDataGenerator()->create_user(['username' => 'hanako']);
-        $resource = $this->make_resource((int) $creator->id);
-        $resource->title = 'Coastal Ecology Field Course';
-
-        $sink = $this->redirectMessages();
-        coauthor_manager::notify_added($resource, $second, $creator);
-        $messages = $sink->get_messages();
-        $sink->close();
-
-        $this->assertCount(1, $messages);
-        $this->assertStringContainsString('Coastal Ecology Field Course', $messages[0]->subject);
-        $this->assertStringNotContainsString('{$a', $messages[0]->subject, 'unsubstituted placeholder');
-        $this->assertStringContainsString('Coastal Ecology Field Course', $messages[0]->fullmessage);
-        $this->assertStringContainsString('Tomoko Teacher', $messages[0]->fullmessage);
-        $this->assertStringNotContainsString('{$a', $messages[0]->fullmessage, 'unsubstituted placeholder');
-        $this->assertSame((int) $second->id, (int) $messages[0]->useridto);
     }
 
     /**
@@ -405,7 +344,7 @@ final class coauthor_manager_test extends \advanced_testcase {
         $creator = $this->getDataGenerator()->create_user();
         $second = $this->getDataGenerator()->create_user(['username' => 'hanako']);
         $resource = $this->make_resource((int) $creator->id);
-        coauthor_manager::add($resource, 'hanako', (int) $creator->id);
+        coauthor_manager::grant($resource, $this->uid('hanako'), (int) $creator->id);
 
         $DB->set_field('local_oerexchange_resources', 'status', $status, ['id' => $resource->id]);
         $resource = $DB->get_record('local_oerexchange_resources', ['id' => $resource->id], '*', MUST_EXIST);
@@ -472,7 +411,7 @@ final class coauthor_manager_test extends \advanced_testcase {
         $second = $this->getDataGenerator()->create_user(['username' => 'hanako']);
         $stranger = $this->getDataGenerator()->create_user();
         $resource = $this->make_resource((int) $creator->id);
-        coauthor_manager::add($resource, 'hanako', (int) $creator->id);
+        coauthor_manager::grant($resource, $this->uid('hanako'), (int) $creator->id);
 
         foreach (['published', 'hidden', 'pending'] as $status) {
             $DB->set_field('local_oerexchange_resources', 'status', $status, ['id' => $resource->id]);
@@ -531,9 +470,9 @@ final class coauthor_manager_test extends \advanced_testcase {
         $this->getDataGenerator()->create_user(['username' => 'jiro']);
         $resource = $this->make_resource((int) $creator->id);
         $survivor = $this->make_resource((int) $creator->id);
-        coauthor_manager::add($resource, 'hanako', (int) $creator->id);
-        coauthor_manager::add($resource, 'jiro', (int) $creator->id);
-        coauthor_manager::add($survivor, 'hanako', (int) $creator->id);
+        coauthor_manager::grant($resource, $this->uid('hanako'), (int) $creator->id);
+        coauthor_manager::grant($resource, $this->uid('jiro'), (int) $creator->id);
+        coauthor_manager::grant($survivor, $this->uid('hanako'), (int) $creator->id);
 
         $this->assertSame(2, coauthor_manager::delete_for_resource((int) $resource->id));
         $this->assertSame(0, $DB->count_records('local_oerexchange_coauthors', ['resourceid' => $resource->id]));
@@ -558,8 +497,8 @@ final class coauthor_manager_test extends \advanced_testcase {
         $stayer = $this->getDataGenerator()->create_user(['username' => 'stayer']);
         $resource = $this->make_resource((int) $creator->id);
 
-        coauthor_manager::add($resource, 'departing', (int) $creator->id);
-        coauthor_manager::add($resource, 'stayer', (int) $departing->id);
+        coauthor_manager::grant($resource, $this->uid('departing'), (int) $creator->id);
+        coauthor_manager::grant($resource, $this->uid('stayer'), (int) $departing->id);
 
         coauthor_manager::delete_for_user((int) $departing->id);
 

@@ -200,4 +200,60 @@ final class record_import_test extends \advanced_testcase {
         $importrow = $DB->get_record('local_oerexchange_imports', ['resourceid' => $resourceid1], '*', MUST_EXIST);
         $this->assertNull($importrow->userid);
     }
+
+    /**
+     * An approved site could record imports of any resource, including
+     * unpublished ones, raising its public import count and notifying its
+     * creator (security audit 2026-10-28, F7). Only a published resource is
+     * counted.
+     */
+    public function test_an_unpublished_resource_is_not_counted_or_notified(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->preventResetByRollback();
+
+        [$siteuser, $resourceid1, $versionid1] = $this->setup_fixtures();
+        $DB->set_field('local_oerexchange_resources', 'status', 'hidden', ['id' => $resourceid1]);
+        $this->setUser($siteuser);
+
+        $sink = $this->redirectMessages();
+        $result = record_import::execute($resourceid1, $versionid1);
+        $messages = $sink->get_messages();
+        $sink->close();
+
+        $this->assertFalse($result['success']);
+        $this->assertEquals(0, $DB->get_field('local_oerexchange_resources', 'importcount', ['id' => $resourceid1]));
+        $this->assertEquals(0, $DB->count_records('local_oerexchange_imports'));
+        $this->assertCount(0, $messages);
+    }
+
+    /**
+     * A repeat from the same site for the same version and importer within
+     * the window is ignored: no second count, no second notification.
+     */
+    public function test_a_repeat_import_within_the_window_is_ignored(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->preventResetByRollback();
+
+        [$siteuser, $resourceid1, $versionid1] = $this->setup_fixtures();
+        $this->setUser($siteuser);
+
+        $sink = $this->redirectMessages();
+        $first = record_import::execute($resourceid1, $versionid1);
+        $second = record_import::execute($resourceid1, $versionid1);
+        $messages = $sink->get_messages();
+        $sink->close();
+
+        $this->assertTrue($first['success']);
+        $this->assertFalse($second['success']);
+        $this->assertEquals(1, $DB->get_field('local_oerexchange_resources', 'importcount', ['id' => $resourceid1]));
+        $this->assertEquals(1, $DB->count_records('local_oerexchange_imports'));
+        $this->assertCount(1, $messages, 'the creator hears about it once');
+
+        // After the window it counts again.
+        $DB->set_field('local_oerexchange_imports', 'timecreated', time() - record_import::REPEAT_WINDOW - 1, []);
+        $this->assertTrue(record_import::execute($resourceid1, $versionid1)['success']);
+        $this->assertEquals(2, $DB->get_field('local_oerexchange_resources', 'importcount', ['id' => $resourceid1]));
+    }
 }

@@ -90,17 +90,12 @@ if ($action === 'report' && isloggedin() && !isguestuser()) {
         throw new moodle_exception('error_invalidreporttype', 'local_oerexchange');
     }
     $details = required_param('reportdetails', PARAM_TEXT);
-    $DB->insert_record('local_oerexchange_reports', (object) [
-        'resourceid' => $resource->id,
-        'userid' => $USER->id,
-        'type' => $type,
-        'details' => $details,
-        'status' => 'open',
-        'resolvernote' => null,
-        'timecreated' => time(),
-        'timeresolved' => null,
-    ]);
-    \core\notification::success(get_string('reportsubmitted', 'local_oerexchange'));
+    // One open report per user per resource (audit F7).
+    if (\local_oerexchange\local\report_manager::report_resource((int) $resource->id, (int) $USER->id, $type, $details)) {
+        \core\notification::success(get_string('reportsubmitted', 'local_oerexchange'));
+    } else {
+        \core\notification::info(get_string('reportalreadyopen', 'local_oerexchange'));
+    }
     redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
 } else if ($action === 'review' && isloggedin() && !isguestuser()) {
     require_login();
@@ -318,19 +313,27 @@ if ($action === 'report' && isloggedin() && !isguestuser()) {
 
     if ($action === 'addcoauthor') {
         // PARAM_RAW_TRIMMED, not PARAM_TEXT: this is matched against
-        // user.username / user.email in a parameterized query and is never
-        // echoed back, so stripping characters out of it would only break
-        // legitimate addresses. The success notice names the resolved user,
-        // not the string that was typed.
+        // user.username / user.email in a parameterized query, so stripping
+        // characters out of it would only break legitimate addresses. It is
+        // echoed back s()-escaped.
+        //
+        // An add is an invitation (invitation_manager): the person becomes
+        // a co-author only when they accept. The notice is the same whatever
+        // the lookup found and names the identifier as typed, never the
+        // account, so this form cannot be used to find out who has an
+        // account or what their name is (security audit 2026-10-28, F2).
         $identifier = required_param('coauthoridentifier', PARAM_RAW_TRIMMED);
         try {
-            $added = \local_oerexchange\local\coauthor_manager::add($resource, $identifier, (int) $USER->id);
-            \local_oerexchange\local\coauthor_manager::notify_added($resource, $added, $USER);
-            \core\notification::success(get_string('coauthoradded', 'local_oerexchange', fullname($added)));
+            \local_oerexchange\local\invitation_manager::invite(
+                \local_oerexchange\local\invitation_manager::KIND_COAUTHOR,
+                $resource,
+                $identifier,
+                $USER
+            );
+            \core\notification::success(get_string('coauthorinvited', 'local_oerexchange', s($identifier)));
         } catch (moodle_exception $e) {
-            // A typo in a username is an ordinary mistake, not an exceptional
-            // one — send them back to the form with the reason rather than to
-            // a full-page error they have to navigate away from.
+            // The only refusal is the inviter's own rate limit: back to the
+            // form with the reason, not a full-page error.
             \core\notification::error($e->getMessage());
         }
         redirect(new moodle_url('/local/oerexchange/resource.php', ['id' => $id]));
@@ -521,7 +524,10 @@ if ($version && $version->filesize) {
 }
 if ($resource->forkedfromid) {
     $parent = $DB->get_record('local_oerexchange_resources', ['id' => $resource->forkedfromid]);
-    if ($parent) {
+    // Named only while this viewer may see the parent and it is not a
+    // tombstone (audit F5): the title of a hidden or held resource is not
+    // public just because somebody forked it.
+    if ($parent && \local_oerexchange\local\resource_manager::may_show_fork_parent($parent, (int) $USER->id)) {
         $purl = new moodle_url('/local/oerexchange/resource.php', ['id' => $parent->id]);
         echo html_writer::tag(
             'p',

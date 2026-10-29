@@ -69,4 +69,15 @@ $tasks = [
         'month' => '*',
         'dayofweek' => '*',
     ],
+    [
+        // Expired link codes (and any token one still holds), stale pending
+        // registrations, old invitations. See task\cleanup_task.
+        'classname' => 'local_oerexchange\task\cleanup_task',
+        'blocking' => 0,
+        'minute' => 'R',
+        'hour' => '*',
+        'day' => '*',
+        'month' => '*',
+        'dayofweek' => '*',
+    ],
 ];

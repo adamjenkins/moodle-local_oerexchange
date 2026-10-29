@@ -24,6 +24,7 @@ use core_privacy\local\request\userlist;
 use core_privacy\local\request\writer;
 use local_oerexchange\local\collection_curator_manager;
 use local_oerexchange\local\collection_manager;
+use local_oerexchange\local\invitation_manager;
 use local_oerexchange\local\star_manager;
 
 /**
@@ -69,6 +70,7 @@ class provider implements
             'url' => 'privacy:metadata:local_oerexchange_sites:url',
             'contact' => 'privacy:metadata:local_oerexchange_sites:contact',
             'serviceuserid' => 'privacy:metadata:local_oerexchange_sites:serviceuserid',
+            'ipkey' => 'privacy:metadata:local_oerexchange_sites:ipkey',
         ], 'privacy:metadata:local_oerexchange_sites');
 
         $collection->add_database_table('local_oerexchange_resources', [
@@ -153,6 +155,17 @@ class provider implements
             'timecreated' => 'privacy:metadata:local_oerexchange_collection_curators:timecreated',
         ], 'privacy:metadata:local_oerexchange_collection_curators');
 
+        // Both ends of an invitation to co-author or curate: the invitee
+        // ('userid', 0 for an attempt that invited nobody) and the inviter.
+        // Both are serviced below; an erasure deletes the row either way.
+        $collection->add_database_table(invitation_manager::TABLE, [
+            'userid' => 'privacy:metadata:local_oerexchange_invitations:userid',
+            'invitedby' => 'privacy:metadata:local_oerexchange_invitations:invitedby',
+            'status' => 'privacy:metadata:local_oerexchange_invitations:status',
+            'timecreated' => 'privacy:metadata:local_oerexchange_invitations:timecreated',
+            'timeresponded' => 'privacy:metadata:local_oerexchange_invitations:timeresponded',
+        ], 'privacy:metadata:local_oerexchange_invitations');
+
         $collection->add_database_table('local_oerexchange_imports', [
             'userid' => 'privacy:metadata:local_oerexchange_imports:userid',
             'timecreated' => 'privacy:metadata:local_oerexchange_imports:timecreated',
@@ -166,6 +179,7 @@ class provider implements
         $collection->add_database_table('local_oerexchange_linkcodes', [
             'userid' => 'privacy:metadata:local_oerexchange_linkcodes:userid',
             'token' => 'privacy:metadata:local_oerexchange_linkcodes:token',
+            'tokenid' => 'privacy:metadata:local_oerexchange_linkcodes:tokenid',
             'timecreated' => 'privacy:metadata:local_oerexchange_linkcodes:timecreated',
         ], 'privacy:metadata:local_oerexchange_linkcodes');
 
@@ -256,6 +270,8 @@ class provider implements
             || $DB->record_exists(collection_manager::ITEM_TABLE, ['addedby' => $userid])
             || $DB->record_exists(collection_curator_manager::TABLE, ['userid' => $userid])
             || $DB->record_exists(collection_curator_manager::TABLE, ['addedby' => $userid])
+            || $DB->record_exists(invitation_manager::TABLE, ['userid' => $userid])
+            || $DB->record_exists(invitation_manager::TABLE, ['invitedby' => $userid])
             || self::site_registration_ids($userid) !== [];
 
         if ($hasdata) {
@@ -346,6 +362,8 @@ class provider implements
             [collection_manager::ITEM_TABLE, 'addedby'],
             [collection_curator_manager::TABLE, 'userid'],
             [collection_curator_manager::TABLE, 'addedby'],
+            [invitation_manager::TABLE, 'userid'],
+            [invitation_manager::TABLE, 'invitedby'],
         ];
         foreach ($collectioncolumns as [$table, $column]) {
             $userids = $DB->get_fieldset_select($table, "DISTINCT $column", "$column <> 0");
@@ -440,6 +458,8 @@ class provider implements
         $itemsadded = $DB->get_records(collection_manager::ITEM_TABLE, ['addedby' => $userid], 'collectionid ASC, sortorder ASC');
         $curatorships = $DB->get_records(collection_curator_manager::TABLE, ['userid' => $userid]);
         $curatorsadded = $DB->get_records(collection_curator_manager::TABLE, ['addedby' => $userid]);
+        $invitationsreceived = $DB->get_records(invitation_manager::TABLE, ['userid' => $userid], 'id ASC');
+        $invitationssent = $DB->get_records(invitation_manager::TABLE, ['invitedby' => $userid], 'id ASC');
         $takedowns = $DB->get_records(collection_manager::TABLE, ['modhiddenby' => $userid]);
         $siteids = self::site_registration_ids($userid);
         $sites = $siteids ? $DB->get_records_list('local_oerexchange_sites', 'id', $siteids) : [];
@@ -511,6 +531,25 @@ class provider implements
                 'collectionid' => $r->collectionid,
                 'timecreated' => \core_privacy\local\request\transform::datetime($r->timecreated),
             ], $curatorsadded)),
+            // Invitations to co-author or curate that this user received...
+            'invitationsreceived' => array_values(array_map(fn($r) => [
+                'kind' => $r->kind,
+                'itemid' => $r->itemid,
+                'status' => $r->status,
+                'timecreated' => \core_privacy\local\request\transform::datetime($r->timecreated),
+                'timeresponded' => $r->timeresponded
+                    ? \core_privacy\local\request\transform::datetime($r->timeresponded)
+                    : '',
+            ], $invitationsreceived)),
+            // ...and the ones they sent. Who was invited is not named: that
+            // person's identity is their own personal data, the same stance
+            // 'coauthorsadded' takes.
+            'invitationssent' => array_values(array_map(fn($r) => [
+                'kind' => $r->kind,
+                'itemid' => $r->itemid,
+                'status' => $r->status,
+                'timecreated' => \core_privacy\local\request\transform::datetime($r->timecreated),
+            ], $invitationssent)),
             // Collections this user took down as a moderator. The takedown
             // itself is the site's decision and survives their erasure with
             // the attribution scrubbed; while it still names them it is
@@ -708,6 +747,7 @@ class provider implements
         // same reason the coauthors delete above follows its loop.
         $DB->delete_records(collection_manager::ITEM_TABLE);
         $DB->delete_records(collection_curator_manager::TABLE);
+        $DB->delete_records(invitation_manager::TABLE);
 
         // Which moderator held a resource is personal data about that
         // moderator; the takedown itself (the status) is a record of the
@@ -733,6 +773,7 @@ class provider implements
         // state, not this site's personal data. An admin re-collects the
         // contact through manage_sites.php if they still need it.
         $DB->set_field_select('local_oerexchange_sites', 'contact', '', "contact <> ''");
+        $DB->set_field_select('local_oerexchange_sites', 'ipkey', null, 'ipkey IS NOT NULL');
     }
 
     #[\Override]
@@ -821,6 +862,10 @@ class provider implements
         // Curatorship: their own rows go entirely, rows they merely granted
         // keep somebody else's rights but lose the attribution.
         collection_curator_manager::delete_for_user($userid);
+
+        // Invitations they received and invitations they sent both go: an
+        // unanswered invitation is not a grant anybody else holds.
+        invitation_manager::delete_for_user($userid);
 
         // Their own collections are tombstoned and scrubbed. Done before the
         // addedby pass below, which then only has other people's collections

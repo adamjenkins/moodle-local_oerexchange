@@ -117,13 +117,13 @@ $string['badge_trusted_contributor'] = 'Trusted Contributor';
 $string['catalogtitle'] = 'Browse OER catalogue';
 $string['catalogueempty'] = 'No resources have been shared to this Exchange yet.';
 $string['coauthoradd'] = 'Add co-author';
-$string['coauthoradded'] = '{$a} can now edit this resource.';
 $string['coauthoridentifierplaceholder'] = 'Username or email address';
+$string['coauthorinvited'] = 'If an Exchange account matches "{$a}", that person has been sent an invitation. They become a co-author when they accept it.';
 $string['coauthornotpresent'] = 'That person is not a co-author of this resource.';
 $string['coauthorremove'] = 'Remove';
 $string['coauthorremoved'] = 'Co-author removed. They can no longer edit this resource.';
 $string['coauthorsheading'] = 'Co-authors';
-$string['coauthorsintro'] = 'A co-author can do everything you can with this resource: replace its file, change its thumbnail, hide it, delete it, and add or remove co-authors. Add someone by their username or the email address on their Exchange account.';
+$string['coauthorsintro'] = 'A co-author can do everything you can with this resource: replace its file, change its thumbnail, hide it, delete it, and add or remove co-authors. Invite someone by their username (an email address works only where this site shows you people\'s email addresses). They are sent an invitation, and become a co-author only if they accept it.';
 $string['coauthorsline'] = 'With {$a}';
 $string['coauthorsnone'] = 'No co-authors yet. You are the only person who can edit this resource.';
 $string['collection'] = 'Collection';
@@ -146,9 +146,9 @@ $string['collectioncover_help'] = 'An image shown at the top of the collection a
 $string['collectioncreate'] = 'Create collection';
 $string['collectioncreated'] = 'Collection created. It is a draft — only you can see it until you publish it.';
 $string['collectioncuratoradd'] = 'Add curator';
-$string['collectioncuratoradded'] = '{$a} can now curate this collection.';
 $string['collectioncuratoridentifier'] = 'Username or email address';
-$string['collectioncuratoridentifier_help'] = 'The username or email address of the person you want to invite. They are notified that you have added them.';
+$string['collectioncuratoridentifier_help'] = 'The username of the person you want to invite (an email address works only where this site shows you people\'s email addresses). They are sent an invitation, and become a curator only if they accept it.';
+$string['collectioncuratorinvited'] = 'If an Exchange account matches "{$a}", that person has been sent an invitation. They become a curator when they accept it.';
 $string['collectioncuratornone'] = 'No curators yet. You are the only person who can change this collection.';
 $string['collectioncuratorremove'] = 'Remove curator';
 $string['collectioncuratorremoveconfirm'] = 'Remove {$a} as a curator of this collection? Resources they added stay in it.';
@@ -208,6 +208,7 @@ $string['collectionopencurationsaved'] = 'Contribution setting saved.';
 $string['collectionpublish'] = 'Publish';
 $string['collectionpublished'] = 'Published {$a}';
 $string['collectionreport'] = 'Report this collection';
+$string['collectionreportalreadyopen'] = 'You have already reported this collection. A moderator will look at your report.';
 $string['collectionreported'] = 'Thank you — this collection has been reported to the moderators.';
 $string['collections'] = 'Collections';
 $string['collectionsave'] = 'Save collection';
@@ -320,13 +321,13 @@ $string['error_collectionnotchosen'] = 'Choose a collection, or "New collection"
 $string['error_collectionnotfound'] = 'That collection does not exist.';
 $string['error_collectiontitlerequired'] = 'A collection needs a title.';
 $string['error_collectiontitletoolong'] = 'A collection title cannot be longer than {$a} characters.';
-$string['error_curatorambiguous'] = 'More than one account uses that email address. Add this person by their username instead.';
 $string['error_curatorexists'] = 'That person is already a curator of this collection.';
 $string['error_curatorisguest'] = 'The guest account cannot be a curator.';
 $string['error_curatorisowner'] = 'You own this collection, so you already have every curator right over it.';
 $string['error_curatornotfound'] = 'No account matches that username or email address.';
 $string['error_deletefailed'] = 'The resource could not be deleted. Nothing was changed — please try again.';
 $string['error_deleteundermoderation'] = 'This resource is currently held by a moderator, so it cannot be deleted. Contact the site\'s moderators if you believe it should be removed.';
+$string['error_draftnotonefile'] = 'The upload must be exactly one file, not in a folder.';
 $string['error_invalidbranch'] = 'Moodle branch must be a plain major.minor version, e.g. 5.2.';
 $string['error_invaliddatafiletype'] = 'That file type isn\'t accepted for a data resource.';
 $string['error_invaliddataresourcetype'] = 'Invalid data resource type.';
@@ -336,6 +337,8 @@ $string['error_invalidreporttype'] = 'Invalid report type.';
 $string['error_invalidresourcetype'] = 'Invalid resource type.';
 $string['error_invalidsitekey'] = 'Invalid site key.';
 $string['error_invalidslug'] = 'Web addresses may only contain letters, numbers, hyphens, and underscores.';
+$string['error_invitationnotfound'] = 'This invitation is not open any more. It may have been answered already, have expired, or no longer apply.';
+$string['error_invitationratelimit'] = 'You have sent too many invitations in the last hour. Please try again later.';
 $string['error_licensenotallowed'] = 'That licence is not accepted for sharing on this Exchange. Choose one of the licences it offers.';
 $string['error_linkcodeexpired'] = 'This link code has expired.';
 $string['error_linkcodeused'] = 'This link code has already been used.';
@@ -386,12 +389,20 @@ $string['hiddenwhenunknown'] = 'Hidden before the Exchange began recording when 
 $string['hideresource'] = 'Hide';
 $string['importcountlabel'] = '{$a} imports';
 $string['includedintrial'] = 'Included in trial';
+$string['invitationaccept'] = 'Accept';
+$string['invitationacceptedcoauthor'] = 'You are now a co-author of this resource.';
+$string['invitationacceptedcurator'] = 'You are now a curator of this collection.';
+$string['invitationcoauthor'] = '{$a->invitedby} has invited you to be a co-author of the shared resource "{$a->title}". A co-author can do everything its original author can: replace its file, edit it, hide it, delete it and invite other co-authors. Accepting also gives you a public educator profile on this Exchange, which you can hide at any time from your profile page.';
+$string['invitationcurator'] = '{$a->invitedby} has invited you to help curate the collection "{$a->title}". A curator can add, remove, reorder and annotate the resources in it. The collection itself stays theirs.';
+$string['invitationdecline'] = 'Decline';
+$string['invitationdeclined'] = 'Invitation declined.';
+$string['invitationheading'] = 'Invitation';
 $string['licenselabel'] = 'Licence: {$a}';
 $string['licenselabelform'] = 'Licence';
 $string['managepluginallowlisttitle'] = 'Sandbox plugin allowlist';
 $string['managesitestitle'] = 'Registered sites';
-$string['messageprovider:coauthor'] = 'Notification that you were added as a co-author of a resource';
-$string['messageprovider:collectioncurator'] = 'Notification that you were made a curator of a collection';
+$string['messageprovider:coauthor'] = 'Invitations to co-author a shared resource';
+$string['messageprovider:collectioncurator'] = 'Invitations to curate a collection';
 $string['messageprovider:collectionitem'] = 'Notification that someone added a resource to your collection';
 $string['messageprovider:import'] = 'Notification that your shared resource was imported';
 $string['messageprovider:report'] = 'Notification that your shared resource was reported';
@@ -424,22 +435,28 @@ $string['nohiddenresources'] = 'No resources are currently held by a moderator.'
 $string['nomoderatedresources'] = 'No resources have been hidden or removed by a moderator.';
 $string['noopenreports'] = 'No open reports.';
 $string['nositesyet'] = 'No sites in this category.';
-$string['notifycoauthorbody'] = '{$a->addedby} has added you as a co-author of the shared resource "{$a->title}". You can now edit it in the same way its original author can.
+$string['notifycoauthorinvitebody'] = '{$a->invitedby} has invited you to be a co-author of the shared resource "{$a->title}". A co-author can edit it in the same way its original author can.
 
-Because co-authors are credited alongside creators, you now have a public profile page on this Exchange and appear in its list of contributors. If you would rather not be listed publicly, open your profile and turn off "Show my profile publicly": {$a->profileurl}';
-$string['notifycoauthorsubject'] = 'You are now a co-author of "{$a}"';
-$string['notifycollectioncuratorbody'] = '{$a->addedby} has made you a curator of the collection "{$a->title}". You can now add, remove, reorder and annotate the resources in it.
+Co-authors are credited alongside creators, so accepting also gives you a public profile page on this Exchange and a place in its list of contributors. If you would rather not be listed publicly, open your profile and turn off "Show my profile publicly".
 
-The collection itself stays theirs — you cannot rename it, change its address or cover, publish or unpublish it, or delete it.
+To accept or decline: {$a->url}
 
-{$a->url}';
-$string['notifycollectioncuratorsubject'] = 'You are now a curator of "{$a}"';
+If you do nothing, the invitation expires in {$a->days} days and nothing changes.';
+$string['notifycoauthorinvitesubject'] = 'Invitation to co-author "{$a}"';
 $string['notifycollectionitembody'] = '{$a->addedby} has added the resource "{$a->resource}" to your collection "{$a->title}".
 
 You can reorder it, annotate it or remove it from the collection at any time.
 
 {$a->url}';
 $string['notifycollectionitemsubject'] = 'A resource was added to "{$a}"';
+$string['notifycuratorinvitebody'] = '{$a->invitedby} has invited you to help curate the collection "{$a->title}". A curator can add, remove, reorder and annotate the resources in it.
+
+The collection itself stays theirs: a curator cannot rename it, change its address or cover, publish or unpublish it, or delete it.
+
+To accept or decline: {$a->url}
+
+If you do nothing, the invitation expires in {$a->days} days and nothing changes.';
+$string['notifycuratorinvitesubject'] = 'Invitation to curate "{$a}"';
 $string['notifyimportbody'] = 'Someone just imported your shared resource "{$a}" on their Moodle site.';
 $string['notifyimportsubject'] = 'Your resource "{$a}" was imported';
 $string['notifyreportbody'] = 'Your shared resource "{$a}" was reported and is now under moderation review.';
@@ -489,9 +506,16 @@ $string['privacy:metadata:local_oerexchange_collections:userid'] = 'The user who
 $string['privacy:metadata:local_oerexchange_imports'] = 'A record that a user imported a resource on a client site.';
 $string['privacy:metadata:local_oerexchange_imports:timecreated'] = 'The time of the import.';
 $string['privacy:metadata:local_oerexchange_imports:userid'] = 'The user who imported the resource.';
+$string['privacy:metadata:local_oerexchange_invitations'] = 'Invitations to co-author a resource or curate a collection, who was invited and who sent them.';
+$string['privacy:metadata:local_oerexchange_invitations:invitedby'] = 'The user who sent the invitation.';
+$string['privacy:metadata:local_oerexchange_invitations:status'] = 'Whether the invitation is pending, accepted or declined.';
+$string['privacy:metadata:local_oerexchange_invitations:timecreated'] = 'The time the invitation was sent.';
+$string['privacy:metadata:local_oerexchange_invitations:timeresponded'] = 'The time the invitation was accepted or declined.';
+$string['privacy:metadata:local_oerexchange_invitations:userid'] = 'The user who was invited.';
 $string['privacy:metadata:local_oerexchange_linkcodes'] = 'A one-time code minted during the account-linking handshake, and the web service token it carries.';
 $string['privacy:metadata:local_oerexchange_linkcodes:timecreated'] = 'The time the link code was issued.';
 $string['privacy:metadata:local_oerexchange_linkcodes:token'] = 'The web service token minted for the linked client site, cleared once consumed.';
+$string['privacy:metadata:local_oerexchange_linkcodes:tokenid'] = 'The web service token the code was exchanged for, so that revoking the client site can delete it.';
 $string['privacy:metadata:local_oerexchange_linkcodes:userid'] = 'The user the linking token belongs to.';
 $string['privacy:metadata:local_oerexchange_modnotes'] = 'Moderators\' shared working notes about resources they are holding.';
 $string['privacy:metadata:local_oerexchange_modnotes:note'] = 'The note text.';
@@ -524,6 +548,7 @@ $string['privacy:metadata:local_oerexchange_reviews:timecreated'] = 'The time th
 $string['privacy:metadata:local_oerexchange_reviews:userid'] = 'The user who wrote the review.';
 $string['privacy:metadata:local_oerexchange_sites'] = 'Client sites registered with this Exchange. The contact address identifies a person and is stored until the registration is removed. It is usually entered by a remote site\'s administrator and belongs to nobody with an account here, but where it does match a user on this site — or where the user is the site\'s dedicated service account — the registration is included in that user\'s data export, and an erasure request empties the contact address while leaving the registration itself in place.';
 $string['privacy:metadata:local_oerexchange_sites:contact'] = 'The contact email address supplied at registration.';
+$string['privacy:metadata:local_oerexchange_sites:ipkey'] = 'A keyed hash of the network address the registration came from, kept for an hour to limit registrations from one address. The address itself is not stored.';
 $string['privacy:metadata:local_oerexchange_sites:name'] = 'The registered site\'s name.';
 $string['privacy:metadata:local_oerexchange_sites:serviceuserid'] = 'The dedicated, non-login service account this site\'s web-service token is minted against.';
 $string['privacy:metadata:local_oerexchange_sites:url'] = 'The registered site\'s URL.';
@@ -566,6 +591,7 @@ $string['replacefileintro'] = 'Uploading here replaces the file for "{$a}". Its 
 $string['replacefilequeued'] = 'File uploaded. It will replace the current one once it has been checked.';
 $string['replacefilesubmit'] = 'Replace the file';
 $string['report'] = 'Report';
+$string['reportalreadyopen'] = 'You have already reported this resource. A moderator will look at your report.';
 $string['reportdetails'] = 'Details';
 $string['reportsubmit'] = 'Submit report';
 $string['reportsubmitted'] = 'Thank you — your report has been submitted for review.';
@@ -769,6 +795,7 @@ $string['summarylabel'] = 'Summary';
 $string['tagslabel'] = 'Tags (comma-separated)';
 $string['task_buildcollectionzip'] = 'Build a collection download';
 $string['task_checkstale'] = 'Check for abandoned resources';
+$string['task_cleanup'] = 'Clean up expired link codes, registrations and invitations';
 $string['task_computebadges'] = 'Compute educator badges';
 $string['task_queuecollectionzips'] = 'Queue out-of-date collection downloads';
 $string['task_rescanrequiredplugins'] = 'Re-scan stored backups for required plugins';

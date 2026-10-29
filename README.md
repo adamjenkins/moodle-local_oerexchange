@@ -85,14 +85,16 @@ plugin installed on their own Moodle sites.
 - **Link previews**: Open Graph and Twitter Card tags on resource, collection
   and profile pages, so a pasted link renders a preview card on social media
   and in messaging apps; unlisted collections also ask not to be indexed.
-- **Co-authors**: an author can name further authors on anything they have
-  shared, by username or email address, from the resource page. A co-author
+- **Co-authors**: an author can invite further authors on anything they have
+  shared, by username (or email address, where the site shows them email
+  addresses), from the resource page. The invitee is notified and becomes a
+  co-author only by accepting; curator invitations work the same way. A co-author
   gets **the same rights as the creator** — replacing the file, the
   thumbnail, hiding, deleting, the Try-it opt-out, freshness confirmation,
   and adding or removing co-authors themselves. The creator is not a
-  co-author record, so nobody they add can remove them. Everyone added is
-  notified and is credited publicly on the resource page. See
-  `classes/local/coauthor_manager.php`.
+  co-author record, so nobody they add can remove them. Everyone who accepts
+  is credited publicly on the resource page. See
+  `classes/local/coauthor_manager.php` and `classes/local/invitation_manager.php`.
 - **Sharing affordances**: share buttons on resource, collection and profile
   pages, with admin-configurable destinations, each in its network's colour
   and showing its logo from Moodle's own bundled FontAwesome (nothing is

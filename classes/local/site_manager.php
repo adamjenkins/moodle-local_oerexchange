@@ -43,6 +43,12 @@ class site_manager {
     /** @var int Most new registrations accepted per REGISTRATION_WINDOW, site-wide. */
     const REGISTRATION_MAX_PER_WINDOW = 30;
 
+    /** @var int Most new registrations accepted per REGISTRATION_WINDOW from one address. */
+    const REGISTRATION_MAX_PER_ADDRESS = 3;
+
+    /** @var int How long a registration may wait for an admin before the cleanup task removes it, seconds. */
+    const PENDING_REGISTRATION_TTL = 30 * DAYSECS;
+
     /**
      * Register a new client site, pending admin approval. No account/token
      * exists yet — this is the one truly anonymous step in the handshake.
@@ -56,9 +62,11 @@ class site_manager {
      * @param string $name
      * @param string $url
      * @param string $contact contact email
+     * @param string $ipaddress the address the request came from (getremoteaddr()), or '' when
+     *                          there is none; only its keyed hash is stored (address_key())
      * @return int the site id — a new one, or the existing pending registration's
      */
-    public static function register(string $name, string $url, string $contact): int {
+    public static function register(string $name, string $url, string $contact, string $ipaddress = ''): int {
         global $DB;
 
         $pending = self::find_pending_registration($url);
@@ -75,7 +83,24 @@ class site_manager {
             'status' => 'pending',
             'timecreated' => $now,
             'timemodified' => $now,
+            'ipkey' => $ipaddress !== '' ? self::address_key($ipaddress) : null,
         ]);
+    }
+
+    /**
+     * The keyed hash a registering address is stored as.
+     *
+     * The throttle only needs to tell "the same address again" from
+     * "another address", so the address itself is never stored: an HMAC
+     * keyed with this site's own identifier cannot be reversed by trying
+     * every IPv4 address without that key. The cleanup task clears it once
+     * the throttle window has passed (clear_old_address_keys()).
+     *
+     * @param string $ipaddress
+     * @return string 64 hex characters
+     */
+    public static function address_key(string $ipaddress): string {
+        return hash_hmac('sha256', $ipaddress, get_site_identifier());
     }
 
     /**
@@ -113,25 +138,76 @@ class site_manager {
      * stranger could insert rows in a loop — filling the sites table and
      * burying real requests in block_oerexchangemodqueue's pending list.
      *
-     * Deliberately site-wide rather than per-IP: there is no IP column to key
-     * on, and adding one to log every anonymous caller's address would create
-     * a new privacy obligation to solve a housekeeping problem. The window is
-     * short enough that a flood locks new registrations out for at most an
-     * hour, and pending rows an admin has not yet acted on do not accumulate
-     * (see find_pending_registration()).
+     * Two caps. A site-wide one bounds the table whatever the source. A
+     * per-address one (keyed on getremoteaddr(), stored only as a keyed hash
+     * — address_key()) stops a single caller using the site-wide cap up and
+     * locking every real client site out for the hour (security audit
+     * 2026-10-28, F7). Pending rows an admin never acts on are removed by
+     * the cleanup task after PENDING_REGISTRATION_TTL.
      *
+     * @param string $ipaddress the caller's address, or '' to check the site-wide cap only
      * @return bool
      */
-    public static function registration_rate_exceeded(): bool {
+    public static function registration_rate_exceeded(string $ipaddress = ''): bool {
         global $DB;
 
-        $recent = $DB->count_records_select(
+        $since = time() - self::REGISTRATION_WINDOW;
+        $recent = $DB->count_records_select('local_oerexchange_sites', 'timecreated > ?', [$since]);
+        if ($recent >= self::REGISTRATION_MAX_PER_WINDOW) {
+            return true;
+        }
+
+        if ($ipaddress === '') {
+            return false;
+        }
+        $fromaddress = $DB->count_records_select(
             'local_oerexchange_sites',
-            'timecreated > ?',
-            [time() - self::REGISTRATION_WINDOW]
+            'timecreated > ? AND ipkey = ?',
+            [$since, self::address_key($ipaddress)]
         );
 
-        return $recent >= self::REGISTRATION_MAX_PER_WINDOW;
+        return $fromaddress >= self::REGISTRATION_MAX_PER_ADDRESS;
+    }
+
+    /**
+     * Remove registrations that have waited longer than
+     * PENDING_REGISTRATION_TTL with no decision. Only rows that never got a
+     * service account are touched: a pending row has none (approve() creates
+     * it), so nothing else (tokens, link codes, resources, imports) can
+     * refer to it.
+     *
+     * @param int|null $now
+     * @return int how many were removed
+     */
+    public static function expire_pending_registrations(?int $now = null): int {
+        global $DB;
+
+        $select = "status = 'pending' AND serviceuserid IS NULL AND timecreated < ?";
+        $params = [($now ?? time()) - self::PENDING_REGISTRATION_TTL];
+        $count = $DB->count_records_select('local_oerexchange_sites', $select, $params);
+        if ($count) {
+            $DB->delete_records_select('local_oerexchange_sites', $select, $params);
+        }
+
+        return $count;
+    }
+
+    /**
+     * Clear the address key from registrations older than the throttle
+     * window, which is the only thing it is kept for.
+     *
+     * @param int|null $now
+     */
+    public static function clear_old_address_keys(?int $now = null): void {
+        global $DB;
+
+        $DB->set_field_select(
+            'local_oerexchange_sites',
+            'ipkey',
+            null,
+            'ipkey IS NOT NULL AND timecreated < ?',
+            [($now ?? time()) - self::REGISTRATION_WINDOW]
+        );
     }
 
     /**
@@ -178,20 +254,16 @@ class site_manager {
 
     /**
      * Revoke a site: suspend its service account (kills every token minted
-     * against it) and delete the tokens for cleanliness.
+     * against it) and delete the tokens for cleanliness, and delete the
+     * personal teacher tokens its account-linking handshakes produced.
      *
-     * Known gap (reported, not fixed — see dev-docs): this does NOT revoke
-     * personal teacher tokens minted via this site's account-linking
-     * handshakes (link_manager::consume() mints those against the
-     * teacher's own userid, not this site's service account, so suspending
-     * the service account alone does not touch them). A correct fix needs
-     * `local_oerexchange_linkcodes` to durably record the minted token's
-     * `external_tokens.id` at mint time (it currently only stores the raw
-     * token, cleared after consume()) — a schema change, deliberately not
-     * made in this pass to avoid an unplanned plugin version bump while
-     * other agents share this test site's PHPUnit environment (bumping any
-     * plugin's version invalidates `core\component::get_all_versions_hash()`
-     * for every plugin, breaking concurrent PHPUnit runs site-wide).
+     * Those personal tokens belong to each teacher's own account, not the
+     * service account, so suspending the service account does not touch
+     * them. link_manager::consume() records each one's external_tokens.id on
+     * its link-code row (linkcodes.tokenid), and link_manager::revoke_site_tokens()
+     * deletes exactly those. A token handed out before tokenid existed has no
+     * record of which site it came from and is not reached; see
+     * link_manager::revoke_site_tokens().
      *
      * @param int $siteid
      */
@@ -204,6 +276,7 @@ class site_manager {
             $DB->set_field('user', 'suspended', 1, ['id' => $site->serviceuserid]);
             $DB->delete_records('external_tokens', ['userid' => $site->serviceuserid]);
         }
+        link_manager::revoke_site_tokens($siteid);
 
         $DB->set_field('local_oerexchange_sites', 'status', 'revoked', ['id' => $siteid]);
         $DB->set_field('local_oerexchange_sites', 'timemodified', time(), ['id' => $siteid]);

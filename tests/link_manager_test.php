@@ -234,4 +234,104 @@ final class link_manager_test extends \advanced_testcase {
 
         $this->assertSame(0, $DB->count_records('external_tokens', ['userid' => $user->id]));
     }
+
+    /**
+     * The minted token's id is recorded on the code, which is what lets a
+     * site revoke delete it (site_manager::revoke()).
+     */
+    public function test_consume_records_the_tokens_id_on_the_code(): void {
+        global $DB;
+        $user = $this->getDataGenerator()->create_user();
+        $code = link_manager::issue_code(1, (int) $user->id);
+
+        $result = link_manager::consume($code);
+
+        $tokenid = $DB->get_field('external_tokens', 'id', ['token' => $result->token], MUST_EXIST);
+        $this->assertEquals($tokenid, $DB->get_field('local_oerexchange_linkcodes', 'tokenid', ['code' => $code]));
+    }
+
+    /**
+     * Insert a code as issue_code() wrote it before tokens were minted on
+     * consumption: pending, holding a live permanent token.
+     *
+     * @param int $userid
+     * @param int $timeexpires
+     * @return array [code, token]
+     */
+    protected function make_legacy_code(int $userid, int $timeexpires): array {
+        global $DB;
+
+        $serviceid = $DB->get_field('external_services', 'id', ['shortname' => 'local_oerexchange'], MUST_EXIST);
+        $token = \core_external\util::generate_token(
+            EXTERNAL_TOKEN_PERMANENT,
+            (object) ['id' => $serviceid],
+            $userid,
+            \context_system::instance(),
+            0,
+            ''
+        );
+        $code = bin2hex(random_bytes(32));
+        $DB->insert_record('local_oerexchange_linkcodes', (object) [
+            'code' => $code,
+            'siteid' => 1,
+            'userid' => $userid,
+            'token' => $token,
+            'status' => 'pending',
+            'timecreated' => $timeexpires - link_manager::TTL,
+            'timeexpires' => $timeexpires,
+        ]);
+
+        return [$code, $token];
+    }
+
+    /**
+     * A code issued before 7dd2a28 holds a live token from the moment it was
+     * issued. Once it expires unused, cleanup deletes that token and the
+     * code; a used code (the record that the teacher linked through the
+     * site) and an unexpired one stay.
+     */
+    public function test_cleanup_deletes_expired_codes_and_the_tokens_they_still_hold(): void {
+        global $DB;
+        $user = $this->getDataGenerator()->create_user();
+        [$expiredcode, $expiredtoken] = $this->make_legacy_code((int) $user->id, time() - 1);
+        [$livecode, $livetoken] = $this->make_legacy_code((int) $user->id, time() + 300);
+        $usedcode = link_manager::issue_code(1, (int) $user->id);
+        $used = link_manager::consume($usedcode);
+        $DB->set_field('local_oerexchange_linkcodes', 'timeexpires', time() - 1, ['code' => $usedcode]);
+
+        $this->assertSame(1, link_manager::cleanup_expired_codes());
+
+        $this->assertFalse($DB->record_exists('external_tokens', ['token' => $expiredtoken]), 'nobody can collect it now');
+        $this->assertFalse($DB->record_exists('local_oerexchange_linkcodes', ['code' => $expiredcode]));
+        $this->assertTrue($DB->record_exists('external_tokens', ['token' => $livetoken]), 'still within its TTL');
+        $this->assertTrue($DB->record_exists('local_oerexchange_linkcodes', ['code' => $livecode]));
+        $this->assertTrue($DB->record_exists('local_oerexchange_linkcodes', ['code' => $usedcode]), 'linking history stays');
+        $this->assertTrue($DB->record_exists('external_tokens', ['token' => $used->token]));
+    }
+
+    public function test_consuming_an_expired_legacy_code_deletes_its_token(): void {
+        global $DB;
+        $user = $this->getDataGenerator()->create_user();
+        [$code, $token] = $this->make_legacy_code((int) $user->id, time() - 1);
+
+        try {
+            link_manager::consume($code);
+            $this->fail('an expired code must be refused');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('error_linkcodeexpired', $e->errorcode);
+        }
+
+        $this->assertFalse($DB->record_exists('external_tokens', ['token' => $token]));
+        $this->assertSame('', $DB->get_field('local_oerexchange_linkcodes', 'token', ['code' => $code]));
+    }
+
+    public function test_revoke_site_tokens_deletes_a_token_a_pending_legacy_code_holds(): void {
+        global $DB;
+        $user = $this->getDataGenerator()->create_user();
+        [, $token] = $this->make_legacy_code((int) $user->id, time() + 300);
+
+        link_manager::revoke_site_tokens(1);
+
+        $this->assertFalse($DB->record_exists('external_tokens', ['token' => $token]));
+    }
 }

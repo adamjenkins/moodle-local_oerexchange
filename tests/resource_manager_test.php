@@ -458,7 +458,7 @@ final class resource_manager_test extends \advanced_testcase {
             ]
         );
         $resource = $DB->get_record('local_oerexchange_resources', ['id' => $resourceid], '*', MUST_EXIST);
-        \local_oerexchange\local\coauthor_manager::add($resource, 'hanako', (int) $creator->id);
+        \local_oerexchange\local\coauthor_manager::grant($resource, (int) $second->id, (int) $creator->id);
 
         $this->setUser($second);
         [, $versionid] = resource_manager::publish(
@@ -652,6 +652,111 @@ final class resource_manager_test extends \advanced_testcase {
 
         $siteid = $DB->get_field('local_oerexchange_resources', 'siteid', ['id' => $resourceid], MUST_EXIST);
         $this->assertNull($siteid);
+    }
+
+    /**
+     * publish() size-checked only the first draft file, then stored the whole
+     * draft area: a second file, or one in a sub-folder, went into permanent
+     * storage unchecked (dev-docs TASKLIST lead). An area with more than one
+     * file, or a file outside '/', is now refused before anything is stored.
+     *
+     * @param string $secondpath the filepath of the extra file, or '' to move the only file into a folder
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('extra_draft_file_provider')]
+    public function test_publish_refuses_a_draft_area_that_is_not_one_root_file(string $secondpath): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+        set_config('maxbackupbytes', 1000, 'local_oerexchange');
+
+        $draftitemid = $this->create_draft_file($user->id, str_repeat('x', 50));
+        $fs = get_file_storage();
+        $usercontext = \context_user::instance($user->id);
+        if ($secondpath === '') {
+            $fs->delete_area_files($usercontext->id, 'user', 'draft', $draftitemid);
+            $secondpath = '/sub/';
+        }
+        $fs->create_file_from_string([
+            'contextid' => $usercontext->id,
+            'component' => 'user',
+            'filearea' => 'draft',
+            'itemid' => $draftitemid,
+            'filepath' => $secondpath,
+            'filename' => 'extra.bin',
+        ], str_repeat('y', 5000));
+
+        try {
+            resource_manager::publish($draftitemid, (int) $user->id, 1, [
+                'type' => 'course', 'title' => 't', 'summary' => '', 'language' => '',
+                'tags' => '', 'licenseshortname' => 'cc-4.0', 'activitytype' => null,
+            ]);
+            $this->fail('the draft area must be refused');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('error_draftnotonefile', $e->errorcode);
+        }
+        $this->assertSame(0, $DB->count_records('local_oerexchange_resources'));
+    }
+
+    /**
+     * The shapes of draft area that are not "one file at the root".
+     *
+     * @return array<string, array{string}>
+     */
+    public static function extra_draft_file_provider(): array {
+        return [
+            'a second file at the root' => ['/'],
+            'a second file in a sub-folder' => ['/sub/'],
+            'the only file in a sub-folder' => [''],
+        ];
+    }
+
+    /**
+     * Forkedfromid is client-supplied. Only a parent that exists, is not a
+     * tombstone and the publisher may view is kept (audit F5).
+     */
+    public function test_fork_parent_id_keeps_only_a_parent_the_publisher_may_view(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_oerexchange');
+        $publisher = $this->getDataGenerator()->create_user();
+        $other = $this->getDataGenerator()->create_user();
+
+        $published = $generator->create_resource(['creatorid' => (int) $other->id]);
+        $own = $generator->create_resource(['creatorid' => (int) $publisher->id, 'status' => 'hidden']);
+        $hidden = $generator->create_resource(['creatorid' => (int) $other->id, 'status' => 'hidden']);
+        $pending = $generator->create_resource(['creatorid' => (int) $other->id, 'status' => 'pending']);
+        $held = $generator->create_resource(['creatorid' => (int) $other->id, 'status' => 'modhidden']);
+        $deleted = $generator->create_resource(['creatorid' => (int) $publisher->id, 'status' => 'deleted']);
+
+        $uid = (int) $publisher->id;
+        $this->assertSame((int) $published->id, resource_manager::fork_parent_id((int) $published->id, $uid));
+        $this->assertSame((int) $own->id, resource_manager::fork_parent_id((int) $own->id, $uid), 'own hidden resource');
+        $this->assertNull(resource_manager::fork_parent_id((int) $hidden->id, $uid));
+        $this->assertNull(resource_manager::fork_parent_id((int) $pending->id, $uid));
+        $this->assertNull(resource_manager::fork_parent_id((int) $held->id, $uid));
+        $this->assertNull(resource_manager::fork_parent_id((int) $deleted->id, $uid), 'a tombstone, even one\'s own');
+        $this->assertNull(resource_manager::fork_parent_id(999999, $uid), 'no such resource');
+        $this->assertNull(resource_manager::fork_parent_id(0, $uid));
+    }
+
+    /**
+     * Resource.php names the parent only to viewers who may see it: a parent
+     * hidden after the fork stops being named to everybody else (audit F5).
+     */
+    public function test_may_show_fork_parent_follows_the_viewers_access(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_oerexchange');
+        $author = $this->getDataGenerator()->create_user();
+        $viewer = $this->getDataGenerator()->create_user();
+        $parent = $generator->create_resource(['creatorid' => (int) $author->id, 'status' => 'hidden']);
+
+        $this->assertFalse(resource_manager::may_show_fork_parent($parent, (int) $viewer->id));
+        $this->assertFalse(resource_manager::may_show_fork_parent($parent, 0), 'logged-out visitor');
+        $this->assertTrue(resource_manager::may_show_fork_parent($parent, (int) $author->id));
+
+        $parent->status = 'deleted';
+        $this->assertFalse(resource_manager::may_show_fork_parent($parent, (int) $author->id));
     }
 
     /**

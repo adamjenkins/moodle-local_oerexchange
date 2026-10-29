@@ -135,7 +135,9 @@ class publish_resource extends external_api {
                 'tags' => $params['tags'],
                 'licenseshortname' => $params['licenseshortname'],
                 'activitytype' => $params['activitytype'] ?: null,
-                'forkedfromid' => $params['forkedfromid'] ?: null,
+                // Kept only when the parent exists and the caller may view it
+                // (audit F5); otherwise the resource is published with no parent.
+                'forkedfromid' => resource_manager::fork_parent_id((int) $params['forkedfromid'], (int) $USER->id),
             ],
             $params['resourceid'] ?: null
         );

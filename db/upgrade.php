@@ -608,5 +608,52 @@ function xmldb_local_oerexchange_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026102000, 'local', 'oerexchange');
     }
 
+    if ($oldversion < 2026102900) {
+        // Co-author and curator adds become invitations (security audit
+        // 2026-10-28, F2). The rights rows themselves are unchanged, and the
+        // invitation is a separate table, so every co-author and curator who
+        // already exists stays exactly as they are: accepted.
+        $table = new xmldb_table('local_oerexchange_invitations');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('kind', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('itemid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('invitedby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('status', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'pending');
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timeresponded', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('kinditemiduserid', XMLDB_INDEX_NOTUNIQUE, ['kind', 'itemid', 'userid']);
+        $table->add_index('invitedbytimecreated', XMLDB_INDEX_NOTUNIQUE, ['invitedby', 'timecreated']);
+        $table->add_index('userid', XMLDB_INDEX_NOTUNIQUE, ['userid']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        // The personal token a link code was exchanged for, so revoking a
+        // site can delete the tokens its handshakes produced (the known gap
+        // recorded in dev-docs since 2026-07-19). Nullable: codes consumed
+        // before this step have no record of their token.
+        $table = new xmldb_table('local_oerexchange_linkcodes');
+        $field = new xmldb_field('tokenid', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'timeexpires');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // A keyed hash of the registering address, for the per-address
+        // registration throttle (audit F7). Nullable: existing rows have none.
+        $table = new xmldb_table('local_oerexchange_sites');
+        $field = new xmldb_field('ipkey', XMLDB_TYPE_CHAR, '64', null, null, null, null, 'timemodified');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        $index = new xmldb_index('ipkey', XMLDB_INDEX_NOTUNIQUE, ['ipkey']);
+        if (!$dbman->index_exists($table, $index)) {
+            $dbman->add_index($table, $index);
+        }
+
+        upgrade_plugin_savepoint(true, 2026102900, 'local', 'oerexchange');
+    }
+
     return true;
 }

@@ -43,11 +43,11 @@ require(__DIR__ . '/../../config.php');
 require_once($CFG->libdir . '/filelib.php');
 
 use local_oerexchange\form\edit_collection_form;
-use local_oerexchange\local\coauthor_manager;
 use local_oerexchange\local\collection_cover;
 use local_oerexchange\local\collection_curator_manager;
 use local_oerexchange\local\collection_manager;
 use local_oerexchange\local\collection_view;
+use local_oerexchange\local\invitation_manager;
 use local_oerexchange\route\controller\collection_controller;
 
 $id = optional_param('id', 0, PARAM_INT);
@@ -118,39 +118,22 @@ if ($collection && $action === 'addcurator') {
     require_sesskey();
 
     // PARAM_RAW_TRIMMED, not PARAM_TEXT: this is matched against
-    // user.username / user.email in a parameterized query and is never echoed
-    // back, so stripping characters out of it would only break legitimate
-    // addresses. The success notice names the resolved user, not the string
-    // that was typed. Same decision, same wording, as resource.php's
+    // user.username / user.email in a parameterized query, so stripping
+    // characters out of it would only break legitimate addresses. It is
+    // echoed back s()-escaped. Same decision, same wording, as resource.php's
     // addcoauthor branch.
     $identifier = required_param('curatoridentifier', PARAM_RAW_TRIMMED);
 
     try {
-        // The coauthor_manager::find_user() method is the plugin's one username-or-email
-        // resolver (case-insensitive username, then a unique local email),
-        // reused rather than copied. Its two failure codes are co-author
-        // worded, so they are translated to the curator wording here — the
-        // only thing this page does differently from resource.php's co-author
-        // add, which calls coauthor_manager::add() and gets both at once.
-        try {
-            $user = coauthor_manager::find_user($identifier);
-        } catch (moodle_exception $e) {
-            throw new moodle_exception(
-                $e->errorcode === 'error_coauthorambiguous'
-                    ? 'error_curatorambiguous'
-                    : 'error_curatornotfound',
-                'local_oerexchange'
-            );
-        }
-
-        // The add() call refuses the guest account, the owner and an existing curator,
-        // and raises error_curatorexists on the unique-index race.
-        collection_curator_manager::add((int) $collection->id, (int) $user->id, (int) $USER->id);
-        collection_curator_manager::notify_added($collection, $user, $USER);
-        \core\notification::success(get_string('collectioncuratoradded', 'local_oerexchange', fullname($user)));
+        // An invitation, not a grant: the person becomes a curator only when
+        // they accept. The notice is the same whatever the lookup found and
+        // names the identifier as typed, never the account (security audit
+        // 2026-10-28, F2).
+        invitation_manager::invite(invitation_manager::KIND_CURATOR, $collection, $identifier, $USER);
+        \core\notification::success(get_string('collectioncuratorinvited', 'local_oerexchange', s($identifier)));
     } catch (moodle_exception $e) {
-        // A typo in a username is an ordinary mistake, not an exceptional one:
-        // back to the form with the reason, not a full-page error.
+        // The only refusal is the inviter's own rate limit: back to the form
+        // with the reason, not a full-page error.
         \core\notification::error($e->getMessage());
     }
 
@@ -334,11 +317,10 @@ if ($collection && $action === 'delete') {
     // and the cover do not), so it gets a confirmation step of its own rather
     // than a one-click button. The sesskey lives on the confirm action, not on
     // reaching this page.
+    // The message carries the title escaped: $OUTPUT->confirm() does not
+    // escape it (collection_view::delete_confirmation(), audit F8).
     echo $OUTPUT->confirm(
-        get_string('collectiondeleteconfirm', 'local_oerexchange', content_to_text(
-            format_string($collection->title, true, ['context' => $context]),
-            FORMAT_HTML
-        )),
+        collection_view::delete_confirmation($collection),
         new moodle_url($thispageurl, ['action' => 'deleteconfirm', 'sesskey' => sesskey()]),
         $collectionurl
     );

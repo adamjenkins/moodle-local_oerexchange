@@ -20,6 +20,7 @@ use core_external\external_api;
 use core_external\external_function_parameters;
 use core_external\external_single_structure;
 use core_external\external_value;
+use local_oerexchange\local\resource_manager;
 use local_oerexchange\local\site_manager;
 
 /**
@@ -32,6 +33,9 @@ use local_oerexchange\local\site_manager;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class record_import extends external_api {
+    /** @var int Window within which a repeat import by the same site, version and importer is not counted, seconds. */
+    const REPEAT_WINDOW = DAYSECS;
+
     /**
      * Describes the parameters this function accepts.
      *
@@ -101,6 +105,32 @@ class record_import extends external_api {
             }
         }
 
+        // Only a listed resource is counted, and one import per (site,
+        // version, importer) per REPEAT_WINDOW: the call is made by the client
+        // site, so without this an approved site could raise any resource's
+        // public import count, including unpublished ones, and send its
+        // creator a notification per call (security audit 2026-10-28, F7).
+        // Neither is an error for the client: nothing is recorded, and it is
+        // told so through 'success'.
+        if ($resource->status !== resource_manager::STATUS_PUBLISHED) {
+            return ['success' => false];
+        }
+        $since = time() - self::REPEAT_WINDOW;
+        $repeat = $verifieduserid
+            ? $DB->record_exists_select(
+                'local_oerexchange_imports',
+                'siteid = ? AND versionid = ? AND userid = ? AND timecreated > ?',
+                [$site->id, $version->id, $verifieduserid, $since]
+            )
+            : $DB->record_exists_select(
+                'local_oerexchange_imports',
+                'siteid = ? AND versionid = ? AND userid IS NULL AND timecreated > ?',
+                [$site->id, $version->id, $since]
+            );
+        if ($repeat) {
+            return ['success' => false];
+        }
+
         $DB->insert_record('local_oerexchange_imports', (object) [
             'resourceid' => $resource->id,
             'versionid' => $version->id,
@@ -156,7 +186,10 @@ class record_import extends external_api {
      */
     public static function execute_returns(): external_single_structure {
         return new external_single_structure([
-            'success' => new external_value(PARAM_BOOL, 'True on success'),
+            'success' => new external_value(
+                PARAM_BOOL,
+                'True when the import was counted; false when it was not (resource not published, or a repeat)'
+            ),
         ]);
     }
 }
