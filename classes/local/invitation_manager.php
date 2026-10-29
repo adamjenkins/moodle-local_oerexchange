@@ -88,9 +88,11 @@ class invitation_manager {
      * by username.
      *
      * An email address is an identity field: core shows it to other users
-     * only when it is listed in $CFG->showuseridentity or the viewer holds
+     * only when it is listed in $CFG->showuseridentity AND the viewer holds
      * moodle/site:viewuseridentity. Matching on it for anybody else would
-     * let them test which addresses have accounts here.
+     * let them test which addresses have accounts here. The list alone is
+     * not enough: its default is 'email', which would let every author
+     * name people by address.
      *
      * @param int $actorid
      * @return bool
@@ -99,8 +101,8 @@ class invitation_manager {
         global $CFG;
 
         $fields = array_map('trim', explode(',', (string) ($CFG->showuseridentity ?? '')));
-        if (in_array('email', $fields, true)) {
-            return true;
+        if (!in_array('email', $fields, true)) {
+            return false;
         }
 
         return has_capability('moodle/site:viewuseridentity', \context_system::instance(), $actorid);

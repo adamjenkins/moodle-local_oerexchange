@@ -195,14 +195,15 @@ final class invitation_manager_test extends \advanced_testcase {
 
     /**
      * Email is an identity field: matching on it is allowed only where core
-     * would show it (showuseridentity) or the actor holds
-     * moodle/site:viewuseridentity.
+     * would show it, i.e. it is listed in showuseridentity and the actor holds
+     * moodle/site:viewuseridentity. The list is 'email' by default, so this
+     * is the default site.
      */
     public function test_email_matches_only_where_the_actor_may_see_identity_fields(): void {
         global $DB;
         $this->resetAfterTest();
         $this->preventResetByRollback();
-        set_config('showuseridentity', '');
+        set_config('showuseridentity', 'email');
         $creator = $this->getDataGenerator()->create_user();
         $invitee = $this->getDataGenerator()->create_user(['email' => 'second.author@example.com']);
         $resource = $this->generator()->create_resource(['creatorid' => (int) $creator->id]);
@@ -226,17 +227,25 @@ final class invitation_manager_test extends \advanced_testcase {
         $this->assertSame(1, $DB->count_records(invitation_manager::TABLE, ['userid' => $invitee->id]));
     }
 
-    public function test_email_matches_when_the_site_shows_email_to_everyone(): void {
+    /**
+     * The capability is not enough either when the site does not list email
+     * as an identity field.
+     */
+    public function test_email_does_not_match_when_the_site_does_not_list_it(): void {
         $this->resetAfterTest();
         $this->preventResetByRollback();
-        set_config('showuseridentity', 'email,idnumber');
+        set_config('showuseridentity', 'idnumber');
         $creator = $this->getDataGenerator()->create_user();
         $invitee = $this->getDataGenerator()->create_user(['email' => 'second.author@example.com']);
         $resource = $this->generator()->create_resource(['creatorid' => (int) $creator->id]);
+        $roleid = $this->getDataGenerator()->create_role();
+        assign_capability('moodle/site:viewuseridentity', CAP_ALLOW, $roleid, \context_system::instance()->id);
+        role_assign($roleid, $creator->id, \context_system::instance()->id);
+        accesslib_clear_all_caches_for_unit_testing();
 
-        $this->assertTrue(invitation_manager::may_match_by_email((int) $creator->id));
-        $this->assertCount(1, $this->invite(invitation_manager::KIND_COAUTHOR, $resource, 'second.author@example.com', $creator));
-        $this->assertNotNull($this->pending_for((int) $invitee->id));
+        $this->assertFalse(invitation_manager::may_match_by_email((int) $creator->id));
+        $this->assertSame([], $this->invite(invitation_manager::KIND_COAUTHOR, $resource, 'second.author@example.com', $creator));
+        $this->assertNull($this->pending_for((int) $invitee->id));
     }
 
     /**
