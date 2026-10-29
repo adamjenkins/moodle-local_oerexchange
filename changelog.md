@@ -3,6 +3,45 @@
 All notable changes to this project are documented in this file, in
 [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [1.2.3] - 2026-10-29
+
+### Security
+
+- Guests can no longer publish or edit: the share upload pages and the resource
+  edit page refuse the guest account, and so do publishing and the edit check
+  themselves.
+- The account-linking page asks for consent before issuing a one-time code, on
+  a confirmed form post only, and accepts only the registered site's own
+  local_oerclient callback (same scheme, host and port). The personal token is
+  created when the client collects the code, and a code can be collected once
+  only, even under concurrent requests.
+- Revoking a client site deletes the personal tokens its account links created
+  (tokens linked before this release are not recorded against a site).
+- Co-authors and curators are invited rather than added: rights, attribution and
+  a public profile follow only acceptance. The inviter's notice is the same
+  whatever the lookup found and never names the person. Email matching needs
+  both email in "Show user identity" and moodle/site:viewuseridentity.
+  Invitations are rate-limited per inviter, re-inviting the same person to the
+  same item waits a day, and invitations expire after 14 days.
+- Cover-image extraction checks the backup's content hash and stays inside the
+  extracted backup.
+- "Adapted from" is shown, and stored, only for an original the viewer or
+  publisher may see.
+- Publishing refuses an upload area holding more than one file.
+- Site registration is limited per network address as well as site-wide; one
+  open report per user per item; import counts and notifications only for
+  published resources, ignoring a same-day repeat.
+- The collection delete confirmation escapes the title.
+
+### Added
+
+- Hourly scheduled task "Clean up expired link codes, registrations and
+  invitations": expired link codes and the
+  tokens old codes still hold, expired invitations, stale pending
+  registrations.
+- Table `local_oerexchange_invitations`; fields
+  `local_oerexchange_linkcodes.tokenid` and `local_oerexchange_sites.ipkey`.
+
 ## [1.2.2] - 2026-10-23
 
 ### Changed
